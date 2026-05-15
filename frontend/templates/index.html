@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hygie</title>
+<link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<style>
+  :root{--accent:#6366f1;--accent2:#818cf8;--bg:#0d0f18;--bg2:#131620;--bg3:#1a1d2e;--border:#2a2d45;--text:#e2e8f0;--muted:#64748b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  #app-shell{flex:1;overflow:hidden}
+  /* Prevent layout flash from Tailwind CDN loading */
+  #app-shell>aside,#app-shell>main{transition:none !important}
+  .sidebar{background:var(--bg2);border-right:1px solid var(--border);width:220px;height:100vh;position:sticky;top:0;display:flex;flex-direction:column;padding:16px 12px;flex-shrink:0;overflow-y:auto}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--muted);transition:all .18s;text-decoration:none;white-space:nowrap;border:none;background:none;width:100%;text-align:left}
+  .nav-item:hover,.nav-item.active{background:#6366f118;color:var(--accent2)}
+  .nav-item i{width:16px;text-align:center;flex-shrink:0}
+  .card{background:var(--bg3);border:1px solid var(--border);border-radius:12px}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;border:none;transition:all .18s;font-weight:500}
+  .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#4f46e5}
+  .btn-danger{background:#ef4444;color:#fff}.btn-danger:hover{background:#dc2626}
+  .btn-ghost{background:#ffffff0d;color:var(--muted)}.btn-ghost:hover{background:#ffffff18;color:var(--text)}
+  .input{background:#0a0c14;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;width:100%;outline:none;font-size:13px}
+  .input:focus{border-color:var(--accent)}
+  .select{background:#0a0c14;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;outline:none;font-size:13px}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+  .badge-pending{background:#f59e0b18;color:#f59e0b}
+  .badge-deleted{background:#10b98118;color:#10b981}
+  .badge-error{background:#ef444418;color:#ef4444}
+  .badge-excluded{background:#6b728018;color:#94a3b8}
+  .badge-success{background:#10b98118;color:#10b981}
+  .badge-warning{background:#f59e0b18;color:#f59e0b}
+  .badge-running{background:#6366f118;color:#818cf8}
+  .toggle-wrap{position:relative;display:inline-block;width:44px;height:24px}
+  .toggle-wrap input{opacity:0;width:0;height:0;position:absolute}
+  .toggle-track{position:absolute;inset:0;background:#374151;border-radius:12px;transition:.2s;cursor:pointer}
+  .toggle-thumb{position:absolute;width:18px;height:18px;background:#fff;border-radius:9px;top:3px;left:3px;transition:.2s;pointer-events:none}
+  input:checked+.toggle-track{background:var(--accent)}
+  input:checked~.toggle-thumb{left:23px}
+  .modal-bg{position:fixed;inset:0;background:#00000099;z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{background:var(--bg3);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+  .condition-row{display:flex;align-items:center;gap:8px;padding:8px;background:#0a0c14;border-radius:8px;border:1px solid var(--border)}
+  .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:10px;font-size:13px;display:flex;align-items:center;gap:8px;animation:slideIn .2s ease;box-shadow:0 4px 20px #0006}
+  @keyframes slideIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
+  .toast-success{background:#10b981;color:#fff}.toast-error{background:#ef4444;color:#fff}
+  .toast-info{background:var(--accent);color:#fff}.toast-warn{background:#f59e0b;color:#0f1117}
+  .page{display:none}.page.active{display:block}
+  table{width:100%;border-collapse:collapse}
+  th{padding:10px 14px;text-align:left;font-size:12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:var(--text)}
+  td{padding:10px 14px;font-size:13px;border-bottom:1px solid #1e2235}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#ffffff04}
+  .log-row{display:flex;gap:12px;padding:3px 0;font-size:12px;font-family:monospace}
+  .log-ts{color:var(--muted);width:145px;flex-shrink:0}
+  .log-level{width:46px;font-weight:700;flex-shrink:0}
+  .log-cat{width:64px;flex-shrink:0;color:#6366f180;font-size:11px;padding-top:1px}
+  .log-INFO .log-level{color:#60a5fa}.log-WARN .log-level{color:#f59e0b}
+  .log-ERROR .log-level{color:#ef4444}.log-DEBUG .log-level{color:#94a3b8}
+  .stat-card{padding:20px 24px;display:flex;flex-direction:column;gap:4px}
+  .stat-num{font-size:28px;font-weight:700}
+  .stat-label{font-size:12px;color:var(--muted)}
+  ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg2)}::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+  .auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
+  .auth-card{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:40px;width:100%;max-width:400px}
+  .media-thumb{width:36px;height:54px;object-fit:cover;border-radius:4px;flex-shrink:0}
+  .media-title-link{color:#e2e8f0;font-weight:500;text-decoration:none}
+  .media-title-link:hover{color:var(--accent2);text-decoration:underline}
+  @keyframes heartbeat {
+    0%,100% { transform: scale(1); }
+    14% { transform: scale(1.3); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.2); }
+  }
+    .lang-btn { background:transparent; color:var(--muted); }
+  .lang-btn.active { background:var(--accent); color:#fff; }
+  .lang-btn:hover:not(.active) { background:#ffffff15; color:var(--text); }
+  .tab-btn { background:transparent; border:none; color:var(--muted); font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer; transition:all .15s; }
+  .tab-btn:hover { background:#ffffff10; color:var(--text); }
+  .tab-btn.tab-active { background:var(--accent); color:#fff; font-weight:600; }
+  @keyframes heartbeat {
+    0%,100% { transform: scale(1); }
+    14% { transform: scale(1.3); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.2); }
+  }
+    .tab-btn { background:transparent; border:none; color:var(--muted); font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer; transition:all .15s; }
+  .tab-btn:hover { background:#ffffff10; color:var(--text); }
+  .tab-btn.tab-active { background:var(--accent); color:#fff; font-weight:600; }
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-card" id="auth-mode" data-mode="login">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px">
+      <img src="/static/img/favicon-32.png" width="40" height="40" style="border-radius:10px" alt="Hygie">
+      <div>
+        <div id="auth-title" style="font-size:20px;font-weight:700;color:#e2e8f0">Connexion</div>
+        <div id="auth-subtitle" style="font-size:12px;color:var(--muted);margin-top:2px">Connectez-vous à Hygie</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom d'utilisateur</label>
+        <input class="input" id="auth-username" autocomplete="username" placeholder="admin">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Mot de passe</label>
+        <input class="input" id="auth-password" type="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div id="auth-error" style="display:none;background:#ef444418;border:1px solid #ef444440;border-radius:8px;padding:8px 12px;font-size:12px;color:#ef4444"></div>
+      <button id="auth-btn" class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px">Se connecter</button>
+    </div>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="app-shell" style="display:none">
+
+<aside class="sidebar">
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 6px 20px">
+    <img src="/static/img/favicon-32.png" width="34" height="34" style="border-radius:8px" alt="Hygie">
+    <div>
+      <div style="font-weight:700;font-size:16px;color:#e2e8f0;letter-spacing:.5px">Hygie</div>
+      <div style="font-size:10px;color:var(--muted)">Media Manager</div>
+    </div>
+  </div>
+  <nav style="display:flex;flex-direction:column;gap:2px">
+    <button class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')"><i class="fas fa-chart-pie"></i data-i18n="nav_dashboard">Tableau de bord</button>
+    <button class="nav-item" id="nav-calendar" onclick="showPage('calendar')"><i class="fas fa-calendar-days"></i data-i18n="nav_calendar">Calendrier</button>
+    <button class="nav-item" id="nav-queue" onclick="showPage('queue')"><i class="fas fa-hourglass-half"></i data-i18n="nav_queue">File d'attente</button>
+    <button class="nav-item" id="nav-libraries" onclick="showPage('libraries')"><i class="fas fa-layer-group"></i data-i18n="nav_libraries">Bibliothèques</button>
+    <button class="nav-item" id="nav-settings" onclick="showPage('settings')"><i class="fas fa-sliders"></i data-i18n="nav_settings">Paramètres</button>
+    <button class="nav-item" id="nav-logs" onclick="showPage('logs')"><i class="fas fa-terminal"></i data-i18n="nav_logs">Logs</button>
+    <button class="nav-item" id="nav-jobs" onclick="showPage('jobs')"><i class="fas fa-clock-rotate-left"></i data-i18n="nav_jobs">Historique jobs</button>
+    <button class="nav-item" id="nav-storage" onclick="showPage('storage')"><i class="fas fa-hard-drive"></i data-i18n="nav_storage">Stockage</button>
+    <button class="nav-item" id="nav-ignored" onclick="showPage('ignored')"><i class="fas fa-ban"></i data-i18n="nav_ignored">Ignorés</button>
+  </nav>
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+    <div id="dry-run-pill" style="display:none;background:#f59e0b18;border:1px solid #f59e0b40;border-radius:8px;padding:7px 10px;font-size:11px;color:#f59e0b;align-items:center;gap:6px">
+      <i class="fas fa-flask"></i> <span data-i18n="settings_dry_run_active">Mode Dry Run actif</span>
+    </div>
+    <div style="padding:0 4px">
+      <div id="scheduler-info" style="font-size:11px;color:var(--muted)"></div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;border-top:1px solid var(--border);margin-top:4px">
+      <span id="user-display" style="font-size:12px;color:var(--muted)"></span>
+      <span id="app-version" style="font-size:10px;color:#374151"></span>
+      <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="logout()" title="Déconnexion"><i class="fas fa-right-from-bracket"></i></button>
+    </div>
+    <a href="https://paypal.me/AnThaumaturge" target="_blank" rel="noopener noreferrer"
+       style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff12;color:#f472b6;font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;cursor:pointer"
+       onmouseover="this.style.background='#f472b620';this.style.borderColor='#f472b640'"
+       onmouseout="this.style.background='#ffffff08';this.style.borderColor='#ffffff12'">
+      <i class="fas fa-heart" style="font-size:14px;animation:heartbeat 1.5s ease-in-out infinite"></i>
+      Soutenir Hygie
+    </a>
+  </div>
+</aside>
+
+<main style="flex:1;overflow-y:auto;padding:28px">
+
+<!-- Dashboard -->
+<div id="page-dashboard" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Tableau de bord</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="triggerScan()"><i class="fas fa-magnifying-glass"></i>Scanner</button>
+      <button class="btn btn-primary" onclick="triggerDeletion()"><i class="fas fa-trash-can"></i>Vérifier suppressions</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_pending">En attente</div><div class="stat-num" style="color:#f59e0b" id="stat-pending">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_deleted">Supprimés (session)</div><div class="stat-num" style="color:#10b981" id="stat-deleted">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_excluded">Exclus</div><div class="stat-num" style="color:#94a3b8" id="stat-excluded">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_errors">Erreurs</div><div class="stat-num" style="color:#ef4444" id="stat-error">—</div></div>
+  </div>
+  <!-- Lifetime global stats -->
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Statistiques globales (depuis le début)</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#10b981" id="global-deleted">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_deleted">Suppressions totales</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#94a3b8" id="global-ignored">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_ignored">Médias ignorés</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:var(--accent2)" id="global-scans">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_scans">Scans effectués</div>
+      </div>
+      <div style="text-align:center">
+        <div id="global-bar" style="display:flex;gap:2px;align-items:flex-end;height:32px;justify-content:center"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" data-i18n="dash_global_months">12 derniers mois</div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="padding:20px">
+    <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px"><i class="fas fa-calendar-xmark" style="color:#f59e0b"></i>Prochaines suppressions</div>
+    <div id="upcoming-list" style="display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+<!-- Queue -->
+<div id="page-queue" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">File d'attente</h1>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="input" id="queue-search" placeholder="Rechercher..." data-i18n="queue_search" data-i18n-attr="placeholder" style="width:180px" oninput="debounceSearch()">
+      <div style="display:flex;gap:4px;background:#ffffff08;border-radius:8px;padding:3px">
+        <button id="tab-all"     class="tab-btn tab-active" onclick="setQueueTab('')">Tous</button>
+        <button id="tab-pending" class="tab-btn" onclick="setQueueTab('pending')">⏳ En attente</button>
+        <button id="tab-deleted" class="tab-btn" onclick="setQueueTab('deleted')">✅ Supprimés</button>
+        <button id="tab-error"   class="tab-btn" onclick="setQueueTab('error')">❌ Erreurs</button>
+      </div>
+      <button id="view-toggle-btn" class="btn btn-ghost" style="font-size:12px" onclick="toggleViewMode()"><i class="fas fa-th-large"></i>Vue grille</button>
+
+      <button class="btn btn-ghost" style="font-size:12px" onclick="purgeDeleted()" title="Vider les entrées supprimées"><i class="fas fa-broom"></i>Purger</button>
+    </div>
+  </div>
+  <!-- Bulk bar -->
+  <div id="bulk-bar" style="display:none;align-items:center;gap:10px;background:#6366f118;border:1px solid #6366f140;border-radius:10px;padding:10px 16px;margin-bottom:12px">
+    <span id="bulk-count" style="font-size:13px;color:var(--accent2);font-weight:500"></span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="bulkExclude()"><i class="fas fa-ban"></i>Exclure</button>
+      <button class="btn btn-danger" style="padding:5px 12px;font-size:12px" onclick="bulkDelete()"><i class="fas fa-trash"></i>Supprimer</button>
+    </div>
+  </div>
+  <div id="queue-table-wrap" class="card" style="overflow:hidden">
+    <table>
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" id="chk-all" onclick="toggleSelectAll()" style="accent-color:var(--accent);width:14px;height:14px"></th>
+        <th class="sortable" onclick="sortQueue('title')">Titre <span id="si-title"></span></th>
+        <th class="sortable" onclick="sortQueue('library_name')">Bibliothèque <span id="si-library_name"></span></th>
+        <th class="sortable" onclick="sortQueue('seerr_username')">Demandé par <span id="si-seerr_username"></span></th>
+        <th class="sortable" onclick="sortQueue('added_date')">Ajouté le <span id="si-added_date"></span></th>
+        <th class="sortable" onclick="sortQueue('last_played')">Vu le <span id="si-last_played"></span></th>
+        <th class="sortable" onclick="sortQueue('delete_at')">Suppression <span id="si-delete_at"></span></th>
+        <th class="sortable" onclick="sortQueue('status')">Statut <span id="si-status"></span></th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody id="queue-tbody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Chargement...</td></tr></tbody>
+    </table>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)">
+        <span id="queue-count">—</span>
+        <span style="color:var(--border)">|</span>
+        <span>Afficher :</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(20)">20</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(50)">50</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(100)">100</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(1000)">Tout</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="btn-prev" class="btn btn-ghost" style="padding:5px 12px" onclick="queuePage(-1)">‹ Préc.</button>
+        <button id="btn-next" class="btn btn-ghost" style="padding:5px 12px" onclick="queuePage(1)">Suiv. ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Libraries -->
+<div id="page-libraries" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Bibliothèques</h1>
+    <button class="btn btn-primary" onclick="openAddLibrary()"><i class="fas fa-plus"></i>Ajouter</button>
+  </div>
+  <div id="libraries-list" style="display:flex;flex-direction:column;gap:12px">Chargement...</div>
+</div>
+
+<!-- Settings -->
+<div id="page-settings" class="page">
+  <h1 style="font-size:22px;font-weight:600;color:#e2e8f0;margin-bottom:24px">Paramètres</h1>
+  <div style="max-width:640px;display:flex;flex-direction:column;gap:16px">
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px"><i class="fas fa-gear" style="color:var(--accent2)"></i>Général</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div><div style="font-size:13px;font-weight:500">Mode Dry Run</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Simule les suppressions sans rien effacer</div></div>
+          <label class="toggle-wrap"><input type="checkbox" id="dry-run-toggle"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Niveau de log</label>
+            <select class="select" id="log_level" style="width:100%">
+              <option value="DEBUG">DEBUG — tout logger</option>
+              <option value="INFO">INFO — actions & tâches</option>
+              <option value="WARN">WARN — avertissements+</option>
+              <option value="ERROR">ERROR — erreurs uniquement</option>
+            </select>
+          </div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Scan toutes les (h)</label>
+            <input class="input" id="scan_interval_hours" type="number" min="1" max="168" value="6">
+          </div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Vérification suppressions toutes les (h)</label>
+          <input class="input" id="deletion_check_interval_hours" type="number" min="1" max="24" value="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> Emby</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL interne (Docker)</label><input class="input" id="emby_url" placeholder="http://emby:8096"></div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="emby_api_key" type="password" placeholder="••••••••"></div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL externe (pour les affiches dans le navigateur)</label>
+          <input class="input" id="emby_external_url" placeholder="https://emby.mondomaine.fr ou http://IP:8096">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Si renseignée, les affiches sont chargées directement depuis cette URL (plus fiable que le proxy interne). Doit être accessible depuis ton navigateur.</div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:8px">Collection "Bientôt supprimé"</div>
+          <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom de la collection (vide = désactivé)</label>
+              <input class="input" id="emby_leaving_soon_collection" placeholder="ex: Bientôt supprimé"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Délai (jours)</label>
+              <input class="input" id="emby_leaving_soon_days" type="number" min="1" max="365" placeholder="30"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle-wrap"><input type="checkbox" id="emby_leaving_soon_overlay"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+            <div>
+              <div style="font-size:12px;font-weight:500;color:#e2e8f0">Bandeau sur les affiches</div>
+              <div style="font-size:10px;color:var(--muted)">Ajoute "Supprimé dans Xj" en haut de l'affiche Emby</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('emby')"><i class="fas fa-plug"></i>Tester</button>
+            <button class="btn btn-ghost" style="align-self:flex-start" onclick="syncEmbyCollection()"><i class="fas fa-rotate"></i>Sync collection</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/qbittorrent.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> qBittorrent</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL</label><input class="input" id="qbit_url" placeholder="http://gluetun:8080"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Utilisateur</label><input class="input" id="qbit_user" placeholder="admin"></div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Mot de passe</label><input class="input" id="qbit_password" type="password" placeholder="••••••••"></div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:8px">Action lors d'une suppression Hygie</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Action sur le torrent</label>
+              <select class="select" id="qbit_action" style="width:100%">
+                <option value="tag_only">🏷️ Tag uniquement — torrent reste dans qBit, fichier continue de seeder</option>
+                <option value="delete_torrent">🗑️ Supprimer torrent + fichier — qBit supprime tout (deleteFiles=true)</option>
+              </select>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;padding:6px;background:#0a0c14;border-radius:4px">
+                <b style="color:#e2e8f0">Tag</b> : le fichier reste seedé, aucun orphelin possible.<br>
+                <b style="color:#e2e8f0">Supprimer</b> : qBittorrent efface le torrent ET le fichier physique. Plus de fichier orphelin.
+              </div>
+            </div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom du tag (si "Ajouter un tag")</label>
+              <input class="input" id="qbit_tag" placeholder="ex: Supprimé-Hygie" style="width:240px">
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('qbit')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/radarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> Radarr</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL</label><input class="input" id="radarr_url" placeholder="http://192.168.1.10:7878"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="radarr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('radarr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sonarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> Sonarr</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL</label><input class="input" id="sonarr_url" placeholder="http://192.168.1.10:8989"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="sonarr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('sonarr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/overseerr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> Seerr</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL interne (API)</label><input class="input" id="seerr_url" placeholder="http://seerr:5055"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL externe (liens cliquables)</label><input class="input" id="seerr_external_url" placeholder="https://seerr.mondomaine.fr">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Utilisée pour les liens dans la file d'attente. Peut être différente de l'URL interne.</div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="seerr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('seerr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/discord.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'"> Discord</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook URL</label><input class="input" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..."></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('discord')"><i class="fab fa-discord"></i>Tester</button>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div>
+              <div style="font-size:12px;font-weight:500;color:#e2e8f0">Mentions utilisateurs</div>
+              <div style="font-size:10px;color:var(--muted)">Associez chaque utilisateur Seerr à son ID Discord pour les mentions dans les notifications.</div>
+            </div>
+            <button class="btn btn-ghost" style="font-size:12px" onclick="loadDiscordMappings()"><i class="fas fa-rotate-right"></i></button>
+          </div>
+          <div id="discord-mappings-list" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:12px;color:var(--muted);font-style:italic">Cliquez sur actualiser pour charger les utilisateurs Seerr</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="saveSettings()">
+      <i class="fas fa-floppy-disk"></i>Enregistrer tous les paramètres
+    </button>
+  </div>
+</div>
+
+<!-- Logs -->
+<div id="page-logs" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Logs</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select class="select" id="log-level-filter" onchange="loadLogs()">
+        <option value="">Tous niveaux</option><option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
+      </select>
+      <select class="select" id="log-cat-filter" onchange="loadLogs()">
+        <option value="">Toutes catégories</option><option value="job">Tâches</option>
+        <option value="scan">Scan</option><option value="deletion">Suppressions</option><option value="system">Système</option>
+      </select>
+      <button class="btn btn-ghost" onclick="loadLogs()"><i class="fas fa-rotate-right"></i></button>
+      <button class="btn btn-ghost" onclick="clearLogs()"><i class="fas fa-trash"></i></button>
+    </div>
+  </div>
+  <div class="card" style="padding:16px;font-family:monospace;max-height:72vh;overflow-y:auto" id="logs-container">Chargement...</div>
+</div>
+
+<!-- Jobs -->
+<div id="page-jobs" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Historique des jobs</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="triggerScan()"><i class="fas fa-magnifying-glass"></i>Scanner</button>
+      <button class="btn btn-primary" onclick="triggerDeletion()"><i class="fas fa-trash-can"></i>Vérifier</button>
+      <button class="btn btn-ghost" onclick="loadJobs()"><i class="fas fa-rotate-right"></i></button>
+    </div>
+  </div>
+  <div id="scheduler-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px"></div>
+  <div id="queue-table-wrap" class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Job</th><th>Démarré</th><th>Terminé</th><th>Durée</th><th>Statut</th><th>Résultat</th></tr></thead>
+      <tbody id="jobs-tbody"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">Chargement...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Calendar -->
+<div id="page-calendar" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Calendrier des suppressions</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="calPrevMonth()"><i class="fas fa-chevron-left"></i></button>
+      <span id="cal-title" style="font-size:15px;font-weight:600;color:#e2e8f0;align-self:center;min-width:160px;text-align:center"></span>
+      <button class="btn btn-ghost" onclick="calNextMonth()"><i class="fas fa-chevron-right"></i></button>
+      <button class="btn btn-ghost" onclick="calGoToday()" title="Aujourd'hui" style="margin-left:4px"><i class="fas fa-calendar-day"></i></button>
+    </div>
+  </div>
+  <div class="card" style="padding:20px">
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:8px">
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Lun</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Mar</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Mer</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Jeu</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Ven</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Sam</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Dim</div>
+    </div>
+    <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px"></div>
+  </div>
+  <div id="cal-detail" style="margin-top:16px"></div>
+</div>
+
+<!-- Storage -->
+<div id="page-storage" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Stockage</h1>
+    <button class="btn btn-ghost" onclick="loadStorage()"><i class="fas fa-rotate-right"></i>Actualiser</button>
+  </div>
+  <div id="storage-content" style="display:flex;flex-direction:column;gap:16px">
+    <div style="text-align:center;padding:40px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+<!-- Ignored -->
+<div id="page-ignored" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Médias ignorés</h1>
+      <p style="font-size:13px;color:var(--muted);margin-top:4px">Ces médias ne seront jamais ajoutés automatiquement à la file d'attente, même s'ils remplissent les conditions.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input class="input" id="ignored-search" placeholder="Rechercher..." style="width:200px" oninput="debounceIgnoredSearch()">
+      <button class="btn btn-ghost" onclick="loadIgnored()"><i class="fas fa-rotate-right"></i></button>
+    </div>
+  </div>
+  <div id="ignored-list" style="display:flex;flex-direction:column;gap:10px">
+    <div style="text-align:center;padding:40px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+</main>
+</div><!-- /app-shell -->
+
+<!-- Modal Library -->
+<div id="modal-library" class="modal-bg" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="font-size:17px;font-weight:600;color:#e2e8f0" id="modal-title">Bibliothèque</h2>
+      <button class="btn btn-ghost" style="padding:6px 10px" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom</label><input class="input" id="lib-name" placeholder="ex: Films"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Bibliothèque Emby</label><select class="select" id="lib-emby-id" style="width:100%"><option>Chargement...</option></select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Délai de grâce (jours)</label><input class="input" id="lib-grace" type="number" min="0" value="7">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Entre détection et suppression</div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Logique</label>
+          <select class="select" id="lib-logic" style="width:100%">
+            <option value="AND">ET — toutes les conditions</option><option value="OR">OU — au moins une</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:12px;font-weight:600;color:#e2e8f0">Conditions</label>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="addCondition()"><i class="fas fa-plus"></i>Ajouter</button>
+        </div>
+        <div id="conditions-container" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:8px;background:#0a0c14;border-radius:6px">
+          💡 <span data-i18n="lib_hint">Un média est mis en file si la combinaison de conditions est satisfaite, puis supprimé après le délai de grâce.</span>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#e2e8f0">Filtres par utilisateur Seerr</label>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Inclure ou exclure certains utilisateurs Seerr de cette règle</div>
+          </div>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="addSeerrCondition()"><i class="fas fa-plus"></i>Ajouter</button>
+        </div>
+        <div id="seerr-conditions-container" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="saveLibrary()"><i class="fas fa-floppy-disk"></i>Enregistrer</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ignore Reason -->
+<div id="modal-ignore" class="modal-bg" style="display:none" onclick="if(event.target===this)closeIgnoreModal()">
+  <div class="modal" style="padding:24px;max-width:440px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:17px;font-weight:600;color:#e2e8f0">Ignorer définitivement</h2>
+      <button class="btn btn-ghost" style="padding:6px 10px" onclick="closeIgnoreModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="ignore-media-info" style="display:flex;align-items:center;gap:12px;padding:12px;background:#0a0c14;border-radius:8px;margin-bottom:14px"></div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px">Raison (optionnelle)</label>
+      <input class="input" id="ignore-reason" placeholder="ex: Garder pour mes enfants, Ne pas supprimer...">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px">Expiration automatique</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input class="input" id="ignore-expire" type="number" min="0" placeholder="0 = permanent" style="width:160px">
+        <span style="font-size:13px;color:var(--muted)">jours (0 ou vide = permanent)</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">Après ce délai, le média sera retiré de la liste d'exclusion et pourra être détecté à nouveau.</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;padding:8px;background:#f59e0b08;border:1px solid #f59e0b30;border-radius:6px">
+      ⚠️ Ce média sera retiré de la file d'attente et ne sera plus jamais ajouté automatiquement par Hygie (sauf expiration).
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-danger" style="flex:1;justify-content:center" onclick="confirmIgnore()"><i class="fas fa-ban"></i>Ignorer définitivement</button>
+      <button class="btn btn-ghost" onclick="closeIgnoreModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+<script src="/static/js/i18n.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

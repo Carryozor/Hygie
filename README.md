@@ -10,7 +10,7 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-1.0-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-brightgreen)](https://github.com/carryozor/hygie/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 

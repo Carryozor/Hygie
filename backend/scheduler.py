@@ -860,8 +860,9 @@ async def _delete_media(row: dict, dry_run: bool) -> bool:
 
 # ═══ Ignored cleanup ══════════════════════════════════════════════════════════
 async def run_ignored_cleanup():
-    """Remove expired ignored_media entries + purge old deleted queue entries."""
+    """Remove expired ignored_media entries + purge old deleted queue entries + rotate logs."""
     now = now_utc().isoformat()
+    purged_rows = 0
 
     # Expire ignored items
     async with aiosqlite.connect(DB_PATH) as db:
@@ -901,6 +902,7 @@ async def run_ignored_cleanup():
                         (cutoff,),
                     )
                     await db.commit()
+                    purged_rows += count
                     await add_log(
                         "INFO",
                         f"Rétention : {count} entrée(s) supprimée(s) de l'historique (>{retention_days}j)",
@@ -908,6 +910,57 @@ async def run_ignored_cleanup():
                     )
     except Exception as e:
         logger.debug(f"Purge retention: {e}")
+
+    # Purge old log entries
+    try:
+        log_retention = int(await get_setting("log_retention_days") or "14")
+        if log_retention > 0:
+            cutoff = (now_utc() - timedelta(days=log_retention)).isoformat()
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM logs WHERE ts < ?", (cutoff,)
+                ) as cur:
+                    count = (await cur.fetchone())[0]
+                if count:
+                    await db.execute("DELETE FROM logs WHERE ts < ?", (cutoff,))
+                    await db.commit()
+                    purged_rows += count
+                    await add_log(
+                        "INFO",
+                        f"Purge logs : {count} entrée(s) > {log_retention}j supprimée(s)",
+                        "system",
+                    )
+    except Exception as e:
+        logger.debug(f"Purge logs: {e}")
+
+    # Purge old job_history entries
+    try:
+        jh_retention = int(await get_setting("job_history_retention_days") or "90")
+        if jh_retention > 0:
+            cutoff = (now_utc() - timedelta(days=jh_retention)).isoformat()
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM job_history WHERE started_at < ?", (cutoff,)
+                ) as cur:
+                    count = (await cur.fetchone())[0]
+                if count:
+                    await db.execute(
+                        "DELETE FROM job_history WHERE started_at < ?", (cutoff,)
+                    )
+                    await db.commit()
+                    purged_rows += count
+    except Exception as e:
+        logger.debug(f"Purge job_history: {e}")
+
+    # VACUUM to reclaim disk space after significant purges
+    if purged_rows > 1000:
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                await db.execute("VACUUM")
+            await add_log("INFO", "VACUUM exécuté — espace disque libéré", "system")
+        except Exception as e:
+            logger.debug(f"VACUUM: {e}")
 
 
 # ═══ Emby "Bientôt supprimé" collection sync ═════════════════════════════════

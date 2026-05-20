@@ -39,7 +39,91 @@ def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
+
+
 logger = logging.getLogger(__name__)
+
+# ─── Encryption (optional) ────────────────────────────────────────────────────
+# Sensitive settings are encrypted at rest when HYGIE_ENCRYPTION_KEY is set.
+# If the env var is absent, values are stored in plaintext (backward-compatible).
+
+_ENC_PREFIX = "enc:"
+
+SENSITIVE_KEYS = frozenset({
+    "emby_api_key",
+    "radarr_api_key",
+    "sonarr_api_key",
+    "seerr_api_key",
+    "qbit_password",
+    "discord_webhook",
+})
+
+_fernet_instance = None
+_fernet_loaded   = False
+
+
+def _get_fernet():
+    """Return a Fernet instance if HYGIE_ENCRYPTION_KEY is configured, else None."""
+    global _fernet_instance, _fernet_loaded
+    if _fernet_loaded:
+        return _fernet_instance
+    _fernet_loaded = True
+    raw_key = os.environ.get("HYGIE_ENCRYPTION_KEY", "").strip()
+    if not raw_key:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        _fernet_instance = Fernet(raw_key.encode())
+        logger.info("HYGIE_ENCRYPTION_KEY loaded — sensitive settings encrypted at rest")
+    except Exception as e:
+        logger.warning(f"Invalid HYGIE_ENCRYPTION_KEY ({e}) — storing settings in plaintext")
+    return _fernet_instance
+
+
+def _encrypt_value(value: str) -> str:
+    """Encrypt value if Fernet is available and value is non-empty."""
+    f = _get_fernet()
+    if not f or not value:
+        return value
+    return _ENC_PREFIX + f.encrypt(value.encode()).decode()
+
+
+def _decrypt_value(value: str) -> str:
+    """Decrypt value if it carries the enc: prefix; return as-is otherwise."""
+    if not value or not value.startswith(_ENC_PREFIX):
+        return value
+    f = _get_fernet()
+    if not f:
+        logger.warning("Encrypted value found but HYGIE_ENCRYPTION_KEY is not set — cannot decrypt")
+        return value
+    try:
+        return f.decrypt(value[len(_ENC_PREFIX):].encode()).decode()
+    except Exception as e:
+        logger.error(f"Failed to decrypt setting: {e}")
+        return value
+
+
+async def _migrate_encrypt_settings(db) -> None:
+    """Encrypt any plaintext sensitive settings when the encryption key is available."""
+    if not _get_fernet():
+        return
+    placeholders = ",".join("?" * len(SENSITIVE_KEYS))
+    async with db.execute(
+        f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
+        list(SENSITIVE_KEYS),
+    ) as cur:
+        rows = await cur.fetchall()
+    migrated = 0
+    for key, value in rows:
+        if value and not value.startswith(_ENC_PREFIX):
+            await db.execute(
+                "UPDATE settings SET value=? WHERE key=?",
+                (_encrypt_value(value), key),
+            )
+            migrated += 1
+    if migrated:
+        await db.commit()
+        logger.info(f"Encrypted {migrated} sensitive setting(s) in database")
 
 # Default settings — written ONCE at first init (INSERT OR IGNORE)
 DEFAULT_SETTINGS = {
@@ -428,6 +512,10 @@ async def init_db():
             )
 
         await db.commit()
+
+        # 6. Encrypt any plaintext sensitive settings (no-op if key not configured)
+        await _migrate_encrypt_settings(db)
+
     logger.info(f"Database initialized: {DB_PATH}")
 
 
@@ -436,13 +524,16 @@ async def get_setting(key: str) -> str:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key=?", (key,)) as cur:
             row = await cur.fetchone()
-            return row[0] if row else ""
+            if not row:
+                return ""
+            return _decrypt_value(row[0]) if key in SENSITIVE_KEYS else row[0]
 
 
 async def set_setting(key: str, value: str):
+    stored = _encrypt_value(value) if key in SENSITIVE_KEYS else value
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value)
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, stored)
         )
         await db.commit()
 
@@ -450,7 +541,10 @@ async def set_setting(key: str, value: str):
 async def get_all_settings() -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT key, value FROM settings") as cur:
-            return {k: v for k, v in await cur.fetchall()}
+            result = {}
+            for k, v in await cur.fetchall():
+                result[k] = _decrypt_value(v) if k in SENSITIVE_KEYS else v
+            return result
 
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────

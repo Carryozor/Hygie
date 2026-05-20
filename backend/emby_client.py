@@ -101,6 +101,38 @@ async def get_items_in_library(
     return [], 0
 
 
+async def get_library_user_data(user_id: str, library_id: str) -> dict:
+    """Return {emby_item_id: UserData} for all items in a library for one user.
+
+    Replaces per-item get_user_data calls during scans: one HTTP request per
+    user per library instead of one per user per item.
+    """
+    url, key = await get_client()
+    if not url or not key:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+            r = await client.get(
+                f"{url}/Users/{user_id}/Items",
+                params={
+                    "api_key": key,
+                    "ParentId": library_id,
+                    "Fields": "UserData",
+                    "Recursive": "true",
+                    "Limit": 100000,
+                    "IncludeItemTypes": "Movie,Episode",
+                },
+            )
+            if r.status_code == 200:
+                return {
+                    item["Id"]: item.get("UserData") or {}
+                    for item in r.json().get("Items", [])
+                }
+    except Exception as e:
+        logger.warning(f"get_library_user_data error: {e}")
+    return {}
+
+
 async def get_user_data(user_id: str, item_id: str) -> Optional[dict]:
     """Get a user's UserData for a specific item (Played, PlayCount, LastPlayedDate)."""
     url, key = await get_client()

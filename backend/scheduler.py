@@ -26,10 +26,16 @@ import httpx
 
 from .database import (
     DB_PATH,
+    STATUS_PENDING,
+    STATUS_DELETED,
+    STATUS_ERROR,
+    TIMEOUT_SHORT,
+    TIMEOUT_LONG,
     add_job_run,
     add_log,
     finish_job_run,
     get_setting,
+    parse_iso_dt,
 )
 from .emby_client import (
     delete_item,
@@ -344,16 +350,15 @@ async def _evaluate_item(
     if not emby_id or not file_path:
         return False
 
-    try:
-        added_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-    except Exception:
+    added_date = parse_iso_dt(date_str)
+    if not added_date:
         return False
 
     # Aggregate UserData across users to determine play status
     last_played: Optional[datetime] = None
     play_count = 0
     never_watched = True
-    for uid in user_ids[:5]:
+    for uid in user_ids:
         ud = await get_user_data(uid, emby_id)
         if not ud:
             continue
@@ -363,12 +368,9 @@ async def _evaluate_item(
             never_watched = False
             lp_str = ud.get("LastPlayedDate") or ""
             if lp_str:
-                try:
-                    lp = datetime.fromisoformat(lp_str.replace("Z", "+00:00"))
-                    if last_played is None or lp > last_played:
-                        last_played = lp
-                except Exception:
-                    pass
+                lp = parse_iso_dt(lp_str)
+                if lp and (last_played is None or lp > last_played):
+                    last_played = lp
 
     if not _evaluate_conditions(
         conditions, logic, added_date, last_played, play_count, never_watched
@@ -513,20 +515,13 @@ async def reevaluate_library_queue(library_id: str) -> int:
         last_played = None
         play_count = 0
         never_watched = True
-        try:
-            if row.get("added_date"):
-                added_date = datetime.fromisoformat(
-                    row["added_date"].replace("Z", "+00:00")
-                )
-            if row.get("last_played"):
-                last_played = datetime.fromisoformat(
-                    row["last_played"].replace("Z", "+00:00")
-                )
-                never_watched = False
-        except Exception:
-            pass
+        added_date = parse_iso_dt(row.get("added_date"))
+        raw_lp = parse_iso_dt(row.get("last_played"))
+        if raw_lp:
+            last_played = raw_lp
+            never_watched = False
 
-        for uid in user_ids[:5]:
+        for uid in user_ids:
             ud = await get_user_data(uid, emby_id)
             if not ud:
                 continue
@@ -536,12 +531,9 @@ async def reevaluate_library_queue(library_id: str) -> int:
                 never_watched = False
                 lp_str = ud.get("LastPlayedDate") or ""
                 if lp_str:
-                    try:
-                        lp = datetime.fromisoformat(lp_str.replace("Z", "+00:00"))
-                        if last_played is None or lp > last_played:
-                            last_played = lp
-                    except Exception:
-                        pass
+                    lp = parse_iso_dt(lp_str)
+                    if lp and (last_played is None or lp > last_played):
+                        last_played = lp
 
         if not _evaluate_conditions(
             conditions, logic, added_date, last_played, play_count, never_watched
@@ -709,7 +701,7 @@ async def run_deletion():
 
             for row in to_delete:
                 ok = await _delete_media(row, dry_run)
-                status_val = "deleted" if ok else "error"
+                status_val = STATUS_DELETED if ok else STATUS_ERROR
                 async with aiosqlite.connect(DB_PATH) as db:
                     await db.execute(
                         "UPDATE media_queue SET status=?, notified_now=1 WHERE id=?",
@@ -1180,9 +1172,9 @@ async def sync_emby_collection():
             if overlay_enabled and wanted:
                 for w in wanted:
                     try:
-                        dt = datetime.fromisoformat(
-                            w["delete_at"].replace("Z", "+00:00")
-                        )
+                        dt = parse_iso_dt(w["delete_at"])
+                        if not dt:
+                            continue
                         days_left = max(0, (dt - now_utc()).days)
 
                         # Fetch ORIGINAL poster from TMDB (via poster_url stored at scan time)

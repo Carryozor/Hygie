@@ -14,7 +14,7 @@ from typing import Optional, Tuple, List
 
 import httpx
 
-from .database import get_setting
+from .database import get_setting, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ async def test_connection() -> Tuple[bool, str]:
     if not url or not key:
         return False, "URL ou clé API manquante"
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(f"{url}/System/Info", params={"api_key": key})
             if r.status_code == 200:
                 info = r.json()
@@ -47,7 +47,7 @@ async def get_libraries() -> List[dict]:
     if not url or not key:
         return []
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
             r = await client.get(
                 f"{url}/Library/MediaFolders", params={"api_key": key}
             )
@@ -63,7 +63,7 @@ async def get_users() -> List[dict]:
     if not url or not key:
         return []
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(f"{url}/Users", params={"api_key": key})
             if r.status_code == 200:
                 return r.json()
@@ -80,7 +80,7 @@ async def get_items_in_library(
     if not url or not key:
         return [], 0
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
             r = await client.get(
                 f"{url}/Items",
                 params={
@@ -107,7 +107,7 @@ async def get_user_data(user_id: str, item_id: str) -> Optional[dict]:
     if not url or not key:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(
                 f"{url}/Users/{user_id}/Items/{item_id}",
                 params={"api_key": key, "Fields": "UserData"},
@@ -125,7 +125,7 @@ async def delete_item(item_id: str) -> bool:
     if not url or not key:
         return False
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.delete(
                 f"{url}/Items/{item_id}", params={"api_key": key}
             )

@@ -6,7 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..database import DB_PATH, get_setting
+from ..database import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, get_setting, TIMEOUT_MEDIUM
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ async def get_storage(user: str = Depends(require_auth)):
     total_media_size: int = 0
     radarr_movies_by_id: dict = {}  # id -> movie (for reclaimable calc)
 
-    async with httpx.AsyncClient(timeout=20) as c:
+    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
         # ── Radarr ────────────────────────────────────────────────────────
         if radarr_url and radarr_key:
             try:

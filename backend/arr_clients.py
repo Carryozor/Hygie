@@ -13,7 +13,7 @@ from typing import Optional, List
 
 import httpx
 
-from .database import get_setting
+from .database import get_setting, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def test_radarr() -> tuple[bool, str]:
     if not url or not key:
         return False, "Non configuré"
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.get(f"{url}/api/v3/system/status", params={"apikey": key})
             if r.status_code == 200:
                 return True, f"Radarr {r.json().get('version', '?')}"
@@ -45,7 +45,7 @@ async def radarr_find_by_path(file_path: str) -> Optional[int]:
     if not url or not key or not file_path:
         return None
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
             r = await c.get(f"{url}/api/v3/movie", params={"apikey": key})
             if r.status_code != 200:
                 return None
@@ -66,7 +66,7 @@ async def radarr_get(radarr_id: int) -> Optional[dict]:
     if not url or not key or not radarr_id:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.get(
                 f"{url}/api/v3/movie/{radarr_id}", params={"apikey": key}
             )
@@ -96,7 +96,7 @@ async def radarr_delete(radarr_id: int, delete_files: bool = False) -> bool:
     if not url or not key or not radarr_id:
         return False
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.delete(
                 f"{url}/api/v3/movie/{radarr_id}",
                 params={
@@ -117,7 +117,7 @@ async def radarr_get_torrent_hash(radarr_id: int) -> Optional[str]:
     if not url or not key or not radarr_id:
         return None
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             # Try /api/v3/history/movie endpoint
             r = await c.get(
                 f"{url}/api/v3/history/movie",
@@ -156,7 +156,7 @@ async def test_sonarr() -> tuple[bool, str]:
     if not url or not key:
         return False, "Non configuré"
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.get(f"{url}/api/v3/system/status", params={"apikey": key})
             if r.status_code == 200:
                 return True, f"Sonarr {r.json().get('version', '?')}"
@@ -171,7 +171,7 @@ async def sonarr_find_by_path(file_path: str) -> Optional[int]:
     if not url or not key or not file_path:
         return None
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
             # Get all series
             rs = await c.get(f"{url}/api/v3/series", params={"apikey": key})
             if rs.status_code != 200:
@@ -200,7 +200,7 @@ async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
     if not url or not key or not episode_file_id:
         return None
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             ref = await c.get(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
                 params={"apikey": key},
@@ -238,7 +238,7 @@ async def sonarr_delete_episode_file(episode_file_id: int) -> bool:
     if not url or not key or not episode_file_id:
         return False
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.delete(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
                 params={"apikey": key},
@@ -255,7 +255,7 @@ async def sonarr_get_torrent_hash(episode_file_id: int) -> Optional[str]:
     if not url or not key or not episode_file_id:
         return None
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             ref = await c.get(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
                 params={"apikey": key},
@@ -292,7 +292,7 @@ async def test_seerr() -> tuple[bool, str]:
     if not url or not key:
         return False, "Non configuré"
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.get(f"{url}/api/v1/status", headers={"X-Api-Key": key})
             if r.status_code == 200:
                 return True, f"Seerr {r.json().get('version', '?')}"
@@ -329,7 +329,7 @@ async def seerr_get_users() -> List[dict]:
         except Exception:
             pass
 
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
             skip = 0
             while True:
                 r = await c.get(
@@ -387,7 +387,7 @@ async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:
     if not url or not key or not tmdb_id:
         return None
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
             skip = 0
             while True:
                 r = await c.get(
@@ -428,7 +428,7 @@ async def seerr_delete_request(media_id: int) -> bool:
     if not url or not key or not media_id:
         return False
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.delete(
                 f"{url}/api/v1/media/{media_id}", headers={"X-Api-Key": key}
             )

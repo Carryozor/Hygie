@@ -43,9 +43,14 @@ async def _login(client: httpx.AsyncClient, url: str, user: str, password: str) 
 
 
 async def _request(method: str, path: str, **kwargs) -> Optional[httpx.Response]:
-    """Make an authenticated qBittorrent API request."""
+    """Make an authenticated qBittorrent API request.
+
+    Uses qbit_proxy_url (QUI) when configured, falls back to qbit_url (direct).
+    """
     global _sid_cookie
-    url = (await get_setting("qbit_url") or "").rstrip("/")
+    proxy_url = (await get_setting("qbit_proxy_url") or "").rstrip("/")
+    direct_url = (await get_setting("qbit_url") or "").rstrip("/")
+    url = proxy_url or direct_url
     user = await get_setting("qbit_user") or ""
     password = await get_setting("qbit_password") or ""
 
@@ -71,14 +76,17 @@ async def _request(method: str, path: str, **kwargs) -> Optional[httpx.Response]
 
 
 async def test_qbit() -> tuple[bool, str]:
-    url = await get_setting("qbit_url") or ""
-    if not url:
+    proxy_url = (await get_setting("qbit_proxy_url") or "").rstrip("/")
+    direct_url = (await get_setting("qbit_url") or "").rstrip("/")
+    active_url = proxy_url or direct_url
+    if not active_url:
         return False, "Non configuré"
     r = await _request("GET", "/api/v2/app/version")
     if r is None:
         return False, "Connexion impossible"
     if r.status_code == 200:
-        return True, f"qBittorrent {r.text}"
+        via = " (via proxy QUI)" if proxy_url else ""
+        return True, f"qBittorrent {r.text.strip()}{via}"
     return False, f"HTTP {r.status_code}"
 
 

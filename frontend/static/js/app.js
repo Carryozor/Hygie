@@ -615,7 +615,7 @@ async function loadSettings(force=false) {
   try {
     const s = await api('/api/settings/');
     ['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-     'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
+     'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_proxy_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
      'discord_webhook','scan_interval_hours','deletion_check_interval_hours'].forEach(f => {
       const el=document.getElementById(f); if(el) el.value=s[f]||'';
     });
@@ -633,7 +633,7 @@ async function loadSettings(force=false) {
 }
 async function saveSettings() {
   const fields=['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-    'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
+    'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_proxy_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
     'discord_webhook','scan_interval_hours','deletion_check_interval_hours'];
   const body={ dry_run:document.getElementById('dry-run-toggle').checked?'true':'false',
     deleted_retention_days:document.getElementById('deleted_retention_days')?.value||'90',
@@ -646,7 +646,7 @@ async function saveSettings() {
 }
 function collectFormValues() {
   const fields=['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-    'seerr_url','seerr_api_key','qbit_url','qbit_user','qbit_password','discord_webhook'];
+    'seerr_url','seerr_api_key','qbit_url','qbit_proxy_url','qbit_user','qbit_password','discord_webhook'];
   const out={}; fields.forEach(f=>{ const el=document.getElementById(f); if(el) out[f]=el.value||''; });
   return out;
 }

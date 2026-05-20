@@ -7,17 +7,19 @@ Public API:
   qbit_add_tag(hash, tag)        — add a tag to a torrent
   qbit_delete_torrent(hash, ...)  — remove torrent (+files optional)
 """
+import asyncio
 import logging
 from typing import Optional
 
 import httpx
 
-from .database import get_setting
+from .database import get_setting, TIMEOUT_MEDIUM
 
 logger = logging.getLogger(__name__)
 
-# Persistent SID cookie — qBittorrent's session ID
+# Persistent SID cookie — protected by a lock to prevent concurrent re-logins
 _sid_cookie: Optional[str] = None
+_sid_lock = asyncio.Lock()
 
 
 async def _login(client: httpx.AsyncClient, url: str, user: str, password: str) -> bool:
@@ -50,18 +52,18 @@ async def _request(method: str, path: str, **kwargs) -> Optional[httpx.Response]
     if not url:
         return None
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        # Try with existing session
+    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
         cookies = {"SID": _sid_cookie} if _sid_cookie else {}
         try:
             r = await client.request(method, f"{url}{path}", cookies=cookies, **kwargs)
             if r.status_code == 403:
-                # Re-login and retry
-                if user and password and await _login(client, url, user, password):
-                    cookies = {"SID": _sid_cookie}
-                    r = await client.request(
-                        method, f"{url}{path}", cookies=cookies, **kwargs
-                    )
+                async with _sid_lock:
+                    # Re-check inside lock — another coroutine may have renewed already
+                    if user and password and await _login(client, url, user, password):
+                        cookies = {"SID": _sid_cookie}
+                        r = await client.request(
+                            method, f"{url}{path}", cookies=cookies, **kwargs
+                        )
             return r
         except Exception as e:
             logger.warning(f"qbit request {path}: {e}")

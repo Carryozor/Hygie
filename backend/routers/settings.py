@@ -38,6 +38,8 @@ class SettingsUpdate(BaseModel):
     deletion_check_interval_hours: Optional[str] = None
     log_level: Optional[str] = None
     deleted_retention_days: Optional[str] = None
+    log_retention_days: Optional[str] = None
+    job_history_retention_days: Optional[str] = None
     ui_language: Optional[str] = None
 
 

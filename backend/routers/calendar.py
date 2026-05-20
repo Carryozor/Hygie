@@ -1,12 +1,10 @@
 """Calendar — upcoming deletions grouped by date."""
 from collections import defaultdict
-from datetime import datetime
-
 import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
-from ..database import DB_PATH
+from ..database import DB_PATH, parse_iso_dt
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -29,12 +27,11 @@ async def calendar(
     grouped: dict = defaultdict(list)
     for row in rows:
         d = dict(row)
-        try:
-            dt = datetime.fromisoformat(d["delete_at"].replace("Z", "+00:00"))
-            key = dt.strftime("%Y-%m-%d")
-            grouped[key].append(d)
-        except Exception:
+        dt = parse_iso_dt(d.get("delete_at"))
+        if not dt:
             continue
+        key = dt.strftime("%Y-%m-%d")
+        grouped[key].append(d)
 
     # Return format: {"events": {"YYYY-MM-DD": [item, ...]}}
     # as expected by the frontend renderCalendar()

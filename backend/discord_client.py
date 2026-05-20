@@ -16,7 +16,7 @@ from typing import List, Optional
 import aiosqlite
 import httpx
 
-from .database import DB_PATH, get_setting
+from .database import DB_PATH, get_setting, parse_iso_dt
 
 logger = logging.getLogger(__name__)
 
@@ -101,14 +101,12 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
     if kind != "now":
         delete_at = m.get("delete_at") or ""
         if delete_at:
-            try:
-                dt = datetime.fromisoformat(delete_at.replace("Z", "+00:00"))
+            dt = parse_iso_dt(delete_at)
+            if dt:
                 days = max(0, (dt - datetime.now(timezone.utc)).days)
                 date_str = dt.strftime("%d/%m/%Y")
                 label = f"{date_str} (dans {days} jour{'s' if days > 1 else ''})"
                 fields.append({"name": "📅 Suppression prévue", "value": label, "inline": True})
-            except Exception:
-                pass
 
     embed: dict = {
         "title": f"{icon} {title}",

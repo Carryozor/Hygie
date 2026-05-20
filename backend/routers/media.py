@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..database import DB_PATH, add_log, get_setting
+from ..database import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, add_log, get_setting
 from ..scheduler import _delete_media, _get_poster_url
 from ..arr_clients import seerr_find_request_by_tmdb
 
@@ -39,9 +39,9 @@ async def stats(user: str = Depends(require_auth)):
             rows = await cur.fetchall()
     counts = {status: c for status, c in rows}
     return {
-        "pending": counts.get("pending", 0),
-        "deleted": counts.get("deleted", 0),
-        "error": counts.get("error", 0),
+        "pending": counts.get(STATUS_PENDING, 0),
+        "deleted": counts.get(STATUS_DELETED, 0),
+        "error": counts.get(STATUS_ERROR, 0),
         "total": sum(counts.values()),
     }
 

@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 import aiosqlite
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -310,8 +310,6 @@ async def proxy_image(request: Request):
             "thetvdb.com",
             "fanart.tv",
             "assets.fanart.tv",
-            "127.0.0.1",
-            "localhost",
         }
         for setting_key in (
             "emby_url",
@@ -383,7 +381,11 @@ async def scheduler_status(user: str = Depends(auth.require_auth)):
 
 
 @app.post("/api/scheduler/run/{job_id}")
-async def scheduler_run(job_id: str, user: str = Depends(auth.require_auth)):
+async def scheduler_run(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(auth.require_auth),
+):
     """Trigger a job manually."""
     job_map = {
         "scan": run_scan,
@@ -395,42 +397,50 @@ async def scheduler_run(job_id: str, user: str = Depends(auth.require_auth)):
     if not fn:
         return JSONResponse({"error": "Unknown job"}, status_code=404)
 
-    import asyncio
-    asyncio.create_task(fn())
+    background_tasks.add_task(fn)
     return {"status": "started"}
 
 
 # ─── Legacy endpoints (kept for frontend compatibility) ──────────────────────
 @app.post("/api/scan/trigger")
-async def scan_trigger(user: str = Depends(auth.require_auth)):
+async def scan_trigger(
+    background_tasks: BackgroundTasks,
+    user: str = Depends(auth.require_auth),
+):
     """Manual scan trigger (legacy URL — use /api/scheduler/run/scan)."""
-    import asyncio
-    asyncio.create_task(run_scan())
+    background_tasks.add_task(run_scan)
     return {"status": "started"}
 
 
 @app.post("/api/deletion/trigger")
-async def deletion_trigger(user: str = Depends(auth.require_auth)):
+async def deletion_trigger(
+    background_tasks: BackgroundTasks,
+    user: str = Depends(auth.require_auth),
+):
     """Manual deletion check trigger."""
-    import asyncio
-    asyncio.create_task(run_deletion())
+    background_tasks.add_task(run_deletion)
     return {"status": "started"}
 
 
 @app.post("/api/scan/library/{library_id}")
-async def scan_library_trigger(library_id: str, user: str = Depends(auth.require_auth)):
+async def scan_library_trigger(
+    library_id: str,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(auth.require_auth),
+):
     """Manual scan for a single library."""
     from .scheduler import run_scan_library
-    import asyncio
-    asyncio.create_task(run_scan_library(library_id))
+    background_tasks.add_task(run_scan_library, library_id)
     return {"status": "started"}
 
 
 @app.post("/api/emby-collection/sync")
-async def emby_collection_sync(user: str = Depends(auth.require_auth)):
+async def emby_collection_sync(
+    background_tasks: BackgroundTasks,
+    user: str = Depends(auth.require_auth),
+):
     """Manual sync of the Emby 'Bientôt supprimé' collection."""
-    import asyncio
-    asyncio.create_task(sync_emby_collection())
+    background_tasks.add_task(sync_emby_collection)
     return {"status": "started"}
 
 

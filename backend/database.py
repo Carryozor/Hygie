@@ -19,6 +19,26 @@ from typing import Optional
 import aiosqlite
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/hygie.db")
+
+# ─── Status constants ─────────────────────────────────────────────────────────
+STATUS_PENDING = "pending"
+STATUS_DELETED = "deleted"
+STATUS_ERROR   = "error"
+
+# ─── HTTP timeout constants (seconds) ─────────────────────────────────────────
+TIMEOUT_SHORT  = 10   # fast API calls (auth, status, single item)
+TIMEOUT_MEDIUM = 20   # bulk listing calls (movies, series, torrents)
+TIMEOUT_LONG   = 30   # paginated or library-wide calls
+
+
+def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO-8601 string (with or without trailing Z) to an aware datetime."""
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 logger = logging.getLogger(__name__)
 
 # Default settings — written ONCE at first init (INSERT OR IGNORE)
@@ -138,6 +158,7 @@ _TABLES = [
             added_date TEXT,
             last_played TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
+            notified_30d INTEGER DEFAULT 0,
             notified_7d INTEGER DEFAULT 0,
             notified_1d INTEGER DEFAULT 0,
             notified_now INTEGER DEFAULT 0

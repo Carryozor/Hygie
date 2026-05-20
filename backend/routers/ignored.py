@@ -1,10 +1,9 @@
 """Ignored media — list, add, remove, with expiration."""
-import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import require_auth
@@ -47,7 +46,11 @@ async def list_ignored(
 
 
 @router.post("")
-async def add_ignored(body: IgnoreBody, user: str = Depends(require_auth)):
+async def add_ignored(
+    body: IgnoreBody,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(require_auth),
+):
     expire_at = None
     if body.expire_days and body.expire_days > 0:
         expire_at = (
@@ -79,11 +82,8 @@ async def add_ignored(body: IgnoreBody, user: str = Depends(require_auth)):
         await db.commit()
 
     # Resync Emby collection in background
-    try:
-        from ..scheduler import sync_emby_collection
-        asyncio.create_task(sync_emby_collection())
-    except Exception:
-        pass
+    from ..scheduler import sync_emby_collection
+    background_tasks.add_task(sync_emby_collection)
 
     return {"status": "ignored"}
 

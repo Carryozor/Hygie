@@ -47,6 +47,8 @@ DEFAULT_SETTINGS = {
     "deletion_check_interval_hours": "1",
     "log_level": "INFO",
     "deleted_retention_days": "90",
+    "log_retention_days": "14",
+    "job_history_retention_days": "90",
     "ui_language": "fr",
 }
 

@@ -14,6 +14,7 @@ Internal:
   _get_poster_url           — best-effort public poster URL
 """
 import asyncio
+import base64
 import io
 import json
 import logging
@@ -47,6 +48,8 @@ from .emby_client import (
 )
 from .arr_clients import (
     build_radarr_path_cache,
+    build_seerr_request_cache,
+    build_sonarr_path_cache,
     radarr_delete,
     radarr_find_by_path,
     radarr_find_by_path_cached,
@@ -56,6 +59,7 @@ from .arr_clients import (
     seerr_find_request_by_tmdb,
     sonarr_delete_episode_file,
     sonarr_find_by_path,
+    sonarr_find_by_path_cached,
     sonarr_get_poster_url,
     sonarr_get_torrent_hash,
 )
@@ -316,13 +320,19 @@ async def _scan_library(lib: dict, user_ids: list) -> int:
     await add_log("INFO", f"Scan : {lib['name']}", "scan")
 
     # ── Build caches once per library (avoids per-item HTTP calls) ────────────
-    # user_data_cache[uid][emby_id] = UserData dict
+    # user_data_cache[uid][emby_id] = UserData dict  (1 call/user instead of 1/user/item)
     user_data_cache: dict = {}
     for uid in user_ids:
         user_data_cache[uid] = await get_library_user_data(uid, emby_library_id)
 
-    # radarr_cache[file_path or folder] = radarr_id  (1 HTTP call instead of N)
+    # radarr_cache[path] = radarr_id        (1 call total instead of 1/item)
     radarr_cache: dict = await build_radarr_path_cache()
+
+    # sonarr_cache[episode_path] = ep_id   (1+n_series calls instead of n_series/item)
+    sonarr_cache: dict = await build_sonarr_path_cache()
+
+    # seerr_cache[tmdb_id] = {seerr_id, user_id, username}  (1 paginated scan instead of 1/item)
+    seerr_cache: dict = await build_seerr_request_cache()
 
     while True:
         items, total = await get_items_in_library(
@@ -335,6 +345,8 @@ async def _scan_library(lib: dict, user_ids: list) -> int:
                 item, lib, conditions, logic, grace_days, user_ids, seerr_conditions,
                 user_data_cache=user_data_cache,
                 radarr_cache=radarr_cache,
+                sonarr_cache=sonarr_cache,
+                seerr_cache=seerr_cache,
             ):
                 added += 1
         start += 500
@@ -356,11 +368,15 @@ async def _evaluate_item(
     *,
     user_data_cache: Optional[dict] = None,
     radarr_cache: Optional[dict] = None,
+    sonarr_cache: Optional[dict] = None,
+    seerr_cache: Optional[dict] = None,
 ) -> bool:
     """Evaluate a single Emby item; insert into queue if it matches.
 
-    user_data_cache: {uid: {emby_id: UserData}} — pre-fetched per library.
-    radarr_cache:    {file_path: radarr_id}       — pre-fetched once per scan.
+    user_data_cache: {uid: {emby_id: UserData}}       — pre-fetched per library.
+    radarr_cache:    {file_path: radarr_id}            — pre-fetched once per scan.
+    sonarr_cache:    {episode_file_path: ep_file_id}   — pre-fetched once per scan.
+    seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — pre-fetched once per scan.
     Falls back to individual HTTP calls when caches are absent.
     """
     emby_id = item.get("Id")
@@ -415,8 +431,11 @@ async def _evaluate_item(
             if await cur.fetchone():
                 return False
 
-    # Seerr lookup
-    seerr_data = await seerr_find_request_by_tmdb(tmdb_id) if tmdb_id else None
+    # Seerr lookup — use pre-built cache when available (0 HTTP calls vs 1 per item)
+    if seerr_cache is not None:
+        seerr_data = seerr_cache.get(tmdb_id) if tmdb_id else None
+    else:
+        seerr_data = await seerr_find_request_by_tmdb(tmdb_id) if tmdb_id else None
     seerr_id = seerr_data.get("seerr_id") if seerr_data else None
     seerr_user_id = seerr_data.get("user_id") if seerr_data else None
     seerr_username = seerr_data.get("username", "") if seerr_data else ""
@@ -438,7 +457,7 @@ async def _evaluate_item(
     delete_at = now_utc() + timedelta(days=effective_grace)
 
     # Get Radarr/Sonarr ID FIRST so we can build the poster URL from TMDB.
-    # Use pre-built cache for Radarr (0 HTTP calls); fall back for Sonarr.
+    # Use pre-built caches (0 HTTP calls); fall back to individual calls if absent.
     radarr_id_val: Optional[int] = None
     sonarr_id_val: Optional[int] = None
     if media_type == "Movie":
@@ -447,7 +466,10 @@ async def _evaluate_item(
         else:
             radarr_id_val = await radarr_find_by_path(file_path)
     else:
-        sonarr_id_val = await sonarr_find_by_path(file_path)
+        if sonarr_cache is not None:
+            sonarr_id_val = sonarr_find_by_path_cached(file_path, sonarr_cache)
+        else:
+            sonarr_id_val = await sonarr_find_by_path(file_path)
 
     # Poster URL (will use Radarr/Sonarr → TMDB CDN if available)
     poster_url = await _get_poster_url(
@@ -578,8 +600,7 @@ async def reevaluate_library_queue(library_id: str) -> int:
                         async with httpx.AsyncClient(timeout=10) as hc:
                             pr = await hc.get(poster_url, follow_redirects=True)
                             if pr.status_code == 200 and pr.headers.get("content-type","").startswith("image"):
-                                import base64 as _b64
-                                b64 = _b64.b64encode(pr.content).decode("ascii")
+                                b64 = base64.b64encode(pr.content).decode("ascii")
                                 await hc.post(
                                     f"{emby_url_val}/Items/{emby_id}/Images/Primary",
                                     params={"api_key": emby_key_val},
@@ -605,19 +626,24 @@ async def reevaluate_library_queue(library_id: str) -> int:
             f"Réévaluation {lib['name']} : {removed} média(s) retirés",
             "scan",
         )
+        await sync_emby_collection()
     return removed
 
 
 _VALID_FLAG_COLS = frozenset({"notified_30d", "notified_7d", "notified_1d", "notified_now"})
 
 async def _send_notif_batch(items: list, kind: str, flag_col: str, dry_run: bool):
-    """Send a notification batch and mark items as notified."""
+    """Send a notification batch and mark items as notified only on success."""
     if flag_col not in _VALID_FLAG_COLS:
         raise ValueError(f"Invalid flag_col: {flag_col!r}")
     if not items:
         return
+    sent = True
     if not dry_run:
-        await send_notification(items, kind, dry_run=False)
+        sent = await send_notification(items, kind, dry_run=False)
+    if not sent:
+        logger.warning(f"Discord notification '{kind}' failed — flag not set, will retry next cycle")
+        return
     async with aiosqlite.connect(DB_PATH) as db:
         ids = [r["id"] for r in items]
         placeholders = ",".join("?" * len(ids))
@@ -861,7 +887,6 @@ async def _delete_media(row: dict, dry_run: bool) -> bool:
         await add_log("INFO", f"Suppression complète : {title}", "deletion")
         # Increment global stats
         try:
-            from datetime import datetime as _dt
             month = now_utc().strftime("%Y-%m")
             async with aiosqlite.connect(DB_PATH) as _db:
                 await _db.execute(
@@ -1179,8 +1204,7 @@ async def sync_emby_collection():
                                 if poster_url and poster_url.startswith("http"):
                                     pr = await client.get(poster_url, follow_redirects=True)
                                     if pr.status_code == 200 and pr.headers.get("content-type","").startswith("image"):
-                                        import base64 as _b64
-                                        b64 = _b64.b64encode(pr.content).decode("ascii")
+                                        b64 = base64.b64encode(pr.content).decode("ascii")
                                         resp = await client.post(
                                             f"{emby_url}/Items/{emby_id}/Images/Primary",
                                             params={"api_key": emby_key},
@@ -1235,7 +1259,6 @@ async def sync_emby_collection():
                         if not modified:
                             continue
                         # Emby image upload: body must be base64-encoded
-                        import base64
                         b64 = base64.b64encode(modified).decode("ascii")
                         resp = await client.post(
                             f"{emby_url}/Items/{w['emby_id']}/Images/Primary",

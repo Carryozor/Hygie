@@ -9,8 +9,11 @@ Endpoints:
   WS   /ws                     — log stream
   *    /api/...                — authenticated API
 """
+import asyncio
+import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from urllib.parse import unquote, urlparse
@@ -32,6 +35,7 @@ from .database import (
     set_setting,
     unregister_ws,
 )
+from .auth import verify_token
 from .scheduler import (
     run_deletion,
     run_ignored_cleanup,
@@ -122,6 +126,37 @@ async def lifespan(app: FastAPI):
     # Shutdown
     scheduler.shutdown(wait=False)
     logger.info("Hygie shutdown")
+
+
+# ─── Image proxy whitelist cache (TTL: 5 min) ────────────────────────────────
+_proxy_whitelist: set = set()
+_proxy_whitelist_ts: float = 0.0
+_PROXY_WHITELIST_TTL = 300
+
+
+async def _get_proxy_whitelist() -> set:
+    global _proxy_whitelist, _proxy_whitelist_ts
+    if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
+        return _proxy_whitelist
+    allowed = {
+        "image.tmdb.org",
+        "artworks.thetvdb.com",
+        "thetvdb.com",
+        "fanart.tv",
+        "assets.fanart.tv",
+    }
+    for setting_key in ("emby_url", "emby_external_url", "radarr_url", "sonarr_url"):
+        s = await get_setting(setting_key)
+        if s:
+            try:
+                h = (urlparse(s).hostname or "").lower()
+                if h:
+                    allowed.add(h)
+            except Exception:
+                pass
+    _proxy_whitelist = allowed
+    _proxy_whitelist_ts = time.time()
+    return allowed
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -303,28 +338,7 @@ async def proxy_image(request: Request):
 
         host = (parsed.hostname or "").lower()
 
-        # Build allowed hosts whitelist
-        allowed = {
-            "image.tmdb.org",
-            "artworks.thetvdb.com",
-            "thetvdb.com",
-            "fanart.tv",
-            "assets.fanart.tv",
-        }
-        for setting_key in (
-            "emby_url",
-            "emby_external_url",
-            "radarr_url",
-            "sonarr_url",
-        ):
-            s = await get_setting(setting_key)
-            if s:
-                try:
-                    h = (urlparse(s).hostname or "").lower()
-                    if h:
-                        allowed.add(h)
-                except Exception:
-                    pass
+        allowed = await _get_proxy_whitelist()
 
         if host not in allowed:
             logger.warning(f"Proxy: host {host!r} not in whitelist")
@@ -353,11 +367,24 @@ async def proxy_image(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    try:
+        # First message must carry the auth token (sent by frontend onopen).
+        # 10-second window — reject if auth is missing or invalid.
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
+        data = json.loads(raw)
+        if not verify_token(data.get("token", "")):
+            raise ValueError("invalid token")
+    except Exception:
+        try:
+            await ws.close(code=1008)  # 1008 = Policy Violation
+        except Exception:
+            pass
+        return
+
     register_ws(ws)
     try:
         await ws.send_json({"type": "hello", "version": VERSION})
         while True:
-            # Keep alive — client doesn't need to send anything
             await ws.receive_text()
     except WebSocketDisconnect:
         pass

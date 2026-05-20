@@ -208,6 +208,44 @@ async def test_sonarr() -> tuple[bool, str]:
         return False, str(e)
 
 
+async def build_sonarr_path_cache() -> dict:
+    """Build {episode_file_path: episode_file_id} for all Sonarr series.
+
+    1 + n_series HTTP calls total instead of n_series per item lookup.
+    Falls back to empty dict if Sonarr is unreachable.
+    """
+    url, key = await _sonarr_config()
+    if not url or not key:
+        return {}
+    cache: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
+            rs = await c.get(f"{url}/api/v3/series", params={"apikey": key})
+            if rs.status_code != 200:
+                return {}
+            for series in rs.json():
+                folder = (series.get("path") or "").rstrip("/")
+                if not folder:
+                    continue
+                rf = await c.get(
+                    f"{url}/api/v3/episodefile",
+                    params={"apikey": key, "seriesId": series["id"]},
+                )
+                if rf.status_code == 200:
+                    for ef in rf.json():
+                        ep_path = ef.get("path") or ""
+                        if ep_path:
+                            cache[ep_path] = ef.get("id")
+    except Exception as e:
+        logger.debug(f"build_sonarr_path_cache: {e}")
+    return cache
+
+
+def sonarr_find_by_path_cached(file_path: str, cache: dict) -> Optional[int]:
+    """Look up a Sonarr episode file ID from a pre-built cache (no HTTP call)."""
+    return cache.get(file_path) if cache else None
+
+
 async def sonarr_find_by_path(file_path: str) -> Optional[int]:
     """Find Sonarr episode file ID by matching the file path."""
     url, key = await _sonarr_config()
@@ -422,6 +460,54 @@ async def seerr_get_users() -> List[dict]:
     except Exception as e:
         logger.debug(f"seerr_get_users: {e}")
     return out
+
+
+async def build_seerr_request_cache() -> dict:
+    """Build {tmdb_id: {seerr_id, user_id, username}} for all Seerr requests.
+
+    One paginated scan instead of one per media item during scan.
+    Falls back to empty dict if Seerr is unreachable.
+    """
+    url, key = await _seerr_config()
+    if not url or not key:
+        return {}
+    cache: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
+            skip = 0
+            while True:
+                r = await c.get(
+                    f"{url}/api/v1/request",
+                    headers={"X-Api-Key": key},
+                    params={"take": 100, "skip": skip, "sort": "added", "filter": "all"},
+                )
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                items = data.get("results", []) if isinstance(data, dict) else data
+                total = data.get("pageInfo", {}).get("results", len(items))
+                for req in items:
+                    media = req.get("media") or {}
+                    tmdb_id = str(media.get("tmdbId") or "")
+                    if not tmdb_id:
+                        continue
+                    user = req.get("requestedBy") or {}
+                    cache[tmdb_id] = {
+                        "seerr_id": media.get("id"),
+                        "user_id": user.get("id"),
+                        "username": (
+                            user.get("displayName")
+                            or user.get("username")
+                            or user.get("email")
+                            or ""
+                        ),
+                    }
+                if skip + 100 >= total or not items:
+                    break
+                skip += 100
+    except Exception as e:
+        logger.debug(f"build_seerr_request_cache: {e}")
+    return cache
 
 
 async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:

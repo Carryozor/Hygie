@@ -55,6 +55,7 @@ SENSITIVE_KEYS = frozenset({
     "sonarr_api_key",
     "seerr_api_key",
     "qbit_password",
+    "qbit_proxy_url",
     "discord_webhook",
 })
 
@@ -141,6 +142,7 @@ DEFAULT_SETTINGS = {
     "seerr_api_key": "",
     "seerr_external_url": "",
     "qbit_url": "",
+    "qbit_proxy_url": "",
     "qbit_user": "",
     "qbit_password": "",
     "qbit_action": "tag_only",  # tag_only | delete_torrent

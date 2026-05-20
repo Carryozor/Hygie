@@ -28,6 +28,7 @@ class SettingsUpdate(BaseModel):
     seerr_api_key: Optional[str] = None
     seerr_external_url: Optional[str] = None
     qbit_url: Optional[str] = None
+    qbit_proxy_url: Optional[str] = None
     qbit_user: Optional[str] = None
     qbit_password: Optional[str] = None
     qbit_action: Optional[str] = None

@@ -85,7 +85,8 @@ async def test_qbit() -> tuple[bool, str]:
     if r is None:
         return False, "Connexion impossible"
     if r.status_code == 200:
-        via = " (via proxy QUI)" if proxy_url else ""
+        is_proxy = bool(proxy_url) or "proxy" in direct_url.lower()
+        via = " (via proxy QUI)" if is_proxy else ""
         return True, f"qBittorrent {r.text.strip()}{via}"
     return False, f"HTTP {r.status_code}"
 

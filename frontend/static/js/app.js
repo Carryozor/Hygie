@@ -651,8 +651,9 @@ function collectFormValues() {
   return out;
 }
 async function testConn(service) {
-  const vals=collectFormValues();
-  try { const r=await api(`/api/libraries/test/${service}`,'POST',vals); toast(r.message||'OK',r.ok?'success':'error'); }
+  // Save current form values first so the test backend reads fresh settings from DB
+  try { await api('/api/settings/','POST',collectFormValues()); _settingsDirty=false; } catch(e) {}
+  try { const r=await api(`/api/libraries/test/${service}`,'POST'); toast(r.message||'OK',r.ok?'success':'error'); }
   catch(e) { toast('Erreur connexion','error'); }
 }
 

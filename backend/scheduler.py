@@ -41,12 +41,15 @@ from .emby_client import (
     delete_item,
     get_client,
     get_items_in_library,
+    get_library_user_data,
     get_user_data,
     get_users,
 )
 from .arr_clients import (
+    build_radarr_path_cache,
     radarr_delete,
     radarr_find_by_path,
+    radarr_find_by_path_cached,
     radarr_get_poster_url,
     radarr_get_torrent_hash,
     seerr_delete_request,
@@ -306,20 +309,32 @@ async def _scan_library(lib: dict, user_ids: list) -> int:
     logic = lib.get("logic") or "AND"
     grace_days = lib.get("grace_days") or 7
     seerr_conditions = json.loads(lib.get("seerr_conditions") or "[]")
+    emby_library_id = lib["emby_library_id"]
 
     added = 0
     start = 0
     await add_log("INFO", f"Scan : {lib['name']}", "scan")
 
+    # ── Build caches once per library (avoids per-item HTTP calls) ────────────
+    # user_data_cache[uid][emby_id] = UserData dict
+    user_data_cache: dict = {}
+    for uid in user_ids:
+        user_data_cache[uid] = await get_library_user_data(uid, emby_library_id)
+
+    # radarr_cache[file_path or folder] = radarr_id  (1 HTTP call instead of N)
+    radarr_cache: dict = await build_radarr_path_cache()
+
     while True:
         items, total = await get_items_in_library(
-            lib["emby_library_id"], limit=500, start=start
+            emby_library_id, limit=500, start=start
         )
         if not items:
             break
         for item in items:
             if await _evaluate_item(
-                item, lib, conditions, logic, grace_days, user_ids, seerr_conditions
+                item, lib, conditions, logic, grace_days, user_ids, seerr_conditions,
+                user_data_cache=user_data_cache,
+                radarr_cache=radarr_cache,
             ):
                 added += 1
         start += 500
@@ -338,8 +353,16 @@ async def _evaluate_item(
     grace_days: int,
     user_ids: list,
     seerr_conditions: list,
+    *,
+    user_data_cache: Optional[dict] = None,
+    radarr_cache: Optional[dict] = None,
 ) -> bool:
-    """Evaluate a single Emby item; insert into queue if it matches."""
+    """Evaluate a single Emby item; insert into queue if it matches.
+
+    user_data_cache: {uid: {emby_id: UserData}} — pre-fetched per library.
+    radarr_cache:    {file_path: radarr_id}       — pre-fetched once per scan.
+    Falls back to individual HTTP calls when caches are absent.
+    """
     emby_id = item.get("Id")
     title = item.get("Name") or "?"
     media_type = item.get("Type") or ""
@@ -354,14 +377,16 @@ async def _evaluate_item(
     if not added_date:
         return False
 
-    # Aggregate UserData across users to determine play status
+    # Aggregate UserData across users to determine play status.
+    # Use the pre-fetched cache when available; fall back to per-item HTTP call.
     last_played: Optional[datetime] = None
     play_count = 0
     never_watched = True
     for uid in user_ids:
-        ud = await get_user_data(uid, emby_id)
-        if not ud:
-            continue
+        if user_data_cache is not None:
+            ud = user_data_cache.get(uid, {}).get(emby_id) or {}
+        else:
+            ud = await get_user_data(uid, emby_id) or {}
         pc = ud.get("PlayCount") or 0
         play_count = max(play_count, pc)
         if ud.get("Played") or pc > 0:
@@ -412,11 +437,15 @@ async def _evaluate_item(
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)
     delete_at = now_utc() + timedelta(days=effective_grace)
 
-    # Get Radarr/Sonarr ID FIRST so we can build the poster URL from TMDB
+    # Get Radarr/Sonarr ID FIRST so we can build the poster URL from TMDB.
+    # Use pre-built cache for Radarr (0 HTTP calls); fall back for Sonarr.
     radarr_id_val: Optional[int] = None
     sonarr_id_val: Optional[int] = None
     if media_type == "Movie":
-        radarr_id_val = await radarr_find_by_path(file_path)
+        if radarr_cache is not None:
+            radarr_id_val = radarr_find_by_path_cached(file_path, radarr_cache)
+        else:
+            radarr_id_val = await radarr_find_by_path(file_path)
     else:
         sonarr_id_val = await sonarr_find_by_path(file_path)
 
@@ -1165,12 +1194,14 @@ async def sync_emby_collection():
                             except Exception as e_restore:
                                 logger.warning(f"Restore poster error pour {emby_id}: {e_restore}")
 
-            # Apply overlay on new posters
+            # Apply overlay only on newly added items — avoids reprocessing the
+            # entire collection on every sync (O(n) PIL ops → O(new_items)).
             overlay_enabled = (
                 await get_setting("emby_leaving_soon_overlay") or "false"
             ).lower() == "true"
-            if overlay_enabled and wanted:
-                for w in wanted:
+            items_needing_overlay = [w for w in wanted if w["emby_id"] in to_add]
+            if overlay_enabled and items_needing_overlay:
+                for w in items_needing_overlay:
                     try:
                         dt = parse_iso_dt(w["delete_at"])
                         if not dt:

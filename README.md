@@ -10,7 +10,7 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-1.0.2-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-1.2-brightgreen)](https://github.com/carryozor/hygie/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -127,6 +127,41 @@ All configuration is done through the web interface. No config files to edit.
 | `DB_PATH` | `/app/data/hygie.db` | SQLite database path |
 | `HYGIE_VERSION` | `dev` | Displayed version (injected via `--build-arg`) |
 | `TZ` | UTC | Timezone |
+| `HYGIE_ENCRYPTION_KEY` | *(unset)* | Fernet key for encrypting API keys at rest *(optional — see below)* |
+
+### 🔐 Encrypting API Keys at Rest
+
+By default, service credentials (API keys, passwords, webhook URL) are stored in plaintext in the SQLite database. You can enable **transparent at-rest encryption** by setting `HYGIE_ENCRYPTION_KEY`.
+
+**1. Generate a key** (do this once, store it safely):
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# → qqUH3Oa9xK2mP8...  (copy this value)
+```
+
+**2. Add it to your `docker-compose.yml`:**
+
+```yaml
+services:
+  hygie:
+    image: ghcr.io/carryozor/hygie:latest
+    container_name: hygie
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Europe/Paris
+      - HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...   # ← add this line
+```
+
+**3. Restart Hygie.** On first startup with the key set, all existing plaintext credentials are automatically encrypted in place. No manual migration needed.
+
+> **Important:** Back up your key. If it is lost, your stored API keys cannot be decrypted and will need to be re-entered in Settings.
+
+**Behavior without the key:** Hygie runs normally with plaintext storage — no breaking change for existing installations.
 
 ### 🔄 Deletion Workflow
 
@@ -165,6 +200,7 @@ Added to queue (delete_at = now + grace_days)
 | HTTP headers | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` |
 | Container | **Non-root** user (UID 1000), **tini** as PID 1 |
 | Database | **WAL mode**, integrity check in healthcheck |
+| API keys at rest | Optional **Fernet AES-128** encryption via `HYGIE_ENCRYPTION_KEY` |
 
 > ⚠️ HTTPS strongly recommended via reverse proxy (Caddy, Traefik, Nginx)
 
@@ -316,6 +352,41 @@ Toute la configuration se fait depuis l'interface web.
 | `DB_PATH` | `/app/data/hygie.db` | Chemin de la base SQLite |
 | `HYGIE_VERSION` | `dev` | Version affichée (injectée via `--build-arg`) |
 | `TZ` | UTC | Fuseau horaire |
+| `HYGIE_ENCRYPTION_KEY` | *(absent)* | Clé Fernet pour chiffrer les clés API en base *(optionnel — voir ci-dessous)* |
+
+### 🔐 Chiffrement des clés API au repos
+
+Par défaut, les credentials de services (clés API, mots de passe, webhook Discord) sont stockés en clair dans la base SQLite. Vous pouvez activer un **chiffrement transparent au repos** en définissant `HYGIE_ENCRYPTION_KEY`.
+
+**1. Générer une clé** (une seule fois, à conserver précieusement) :
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# → qqUH3Oa9xK2mP8...  (copier cette valeur)
+```
+
+**2. L'ajouter dans votre `docker-compose.yml` :**
+
+```yaml
+services:
+  hygie:
+    image: ghcr.io/carryozor/hygie:latest
+    container_name: hygie
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Europe/Paris
+      - HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...   # ← ajouter cette ligne
+```
+
+**3. Redémarrer Hygie.** Au premier démarrage avec la clé configurée, tous les credentials en clair existants sont automatiquement chiffrés en base. Aucune migration manuelle nécessaire.
+
+> **Important :** Sauvegardez votre clé. En cas de perte, les clés API stockées ne pourront plus être déchiffrées et devront être re-saisies dans les Paramètres.
+
+**Comportement sans la clé :** Hygie fonctionne normalement avec le stockage en clair — aucun changement pour les installations existantes.
 
 ### 🔄 Workflow de suppression
 
@@ -354,6 +425,7 @@ Ajouté à la file (delete_at = maintenant + grace_days)
 | En-têtes HTTP | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` |
 | Conteneur | Utilisateur **non-root** (UID 1000), **tini** comme PID 1 |
 | Base de données | **Mode WAL**, vérification d'intégrité dans le healthcheck |
+| Clés API au repos | Chiffrement **Fernet AES-128** optionnel via `HYGIE_ENCRYPTION_KEY` |
 
 > ⚠️ HTTPS fortement recommandé via reverse proxy (Caddy, Traefik, Nginx)
 

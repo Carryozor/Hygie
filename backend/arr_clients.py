@@ -39,8 +39,51 @@ async def test_radarr() -> tuple[bool, str]:
         return False, str(e)
 
 
+async def build_radarr_path_cache() -> dict:
+    """Build and return a path→radarr_id cache for all movies in one HTTP call.
+
+    Returns {file_path: radarr_id} and {folder_path: radarr_id}.
+    Pass the result to radarr_find_by_path_cached() to avoid per-item HTTP calls.
+    """
+    url, key = await _radarr_config()
+    if not url or not key:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            r = await c.get(f"{url}/api/v3/movie", params={"apikey": key})
+            if r.status_code != 200:
+                return {}
+            cache: dict = {}
+            for movie in r.json():
+                mid = movie.get("id")
+                if not mid:
+                    continue
+                mf_path = (movie.get("movieFile") or {}).get("path") or ""
+                if mf_path:
+                    cache[mf_path] = mid
+                folder = (movie.get("path") or "").rstrip("/")
+                if folder:
+                    cache[folder] = mid
+            return cache
+    except Exception as e:
+        logger.debug(f"build_radarr_path_cache: {e}")
+    return {}
+
+
+def radarr_find_by_path_cached(file_path: str, cache: dict) -> Optional[int]:
+    """Look up a Radarr movie ID from a pre-built cache (no HTTP call)."""
+    if not file_path or not cache:
+        return None
+    if file_path in cache:
+        return cache[file_path]
+    for path, mid in cache.items():
+        if file_path.startswith(path + "/"):
+            return mid
+    return None
+
+
 async def radarr_find_by_path(file_path: str) -> Optional[int]:
-    """Find Radarr movie ID by matching the file path."""
+    """Find Radarr movie ID by matching the file path (single-item fallback)."""
     url, key = await _radarr_config()
     if not url or not key or not file_path:
         return None

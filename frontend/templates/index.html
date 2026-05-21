@@ -341,10 +341,11 @@
     <!-- ── Général ── -->
     <div id="spanel-general" class="card" style="padding:20px">
       <div style="display:flex;flex-direction:column;gap:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div><div style="font-size:13px;font-weight:500">Mode Dry Run</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Simule les suppressions sans rien effacer</div></div>
-          <label class="toggle-wrap"><input type="checkbox" id="dry-run-toggle"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        <div style="background:#6366f110;border:1px solid #6366f130;border-radius:8px;padding:8px 12px;font-size:11px;color:#818cf8;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-flask"></i> Le Mode Dry Run est accessible depuis le bas de la barre latérale gauche.
         </div>
+        <!-- dry-run-toggle kept hidden for JS sync -->
+        <input type="checkbox" id="dry-run-toggle" style="display:none">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Niveau de log</label>
             <select class="select" id="log_level" style="width:100%">

@@ -130,7 +130,7 @@ All configuration is done through the web interface. Settings are organized by s
 
 | Service | Required fields |
 |---------|----------------|
-| **Media Server** | Internal URL, API key, External URL *(for Discord posters)* |
+| **Media Server** | Internal URL, API key, External URL *(optional)* |
 | **Radarr** | URL, API key |
 | **Sonarr** | URL, API key |
 | **Seerr** | URL, API key, External URL *(for clickable links)* |

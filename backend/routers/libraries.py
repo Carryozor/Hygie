@@ -2,7 +2,7 @@
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -22,12 +22,12 @@ router = APIRouter(prefix="/api/libraries", tags=["libraries"])
 
 class Condition(BaseModel):
     field: str
-    op: str = "gt"
-    value: int = 0
+    op: Literal["gt", "gte", "lt", "lte", "eq"] = "gt"
+    value: int = Field(default=0, ge=0)
 
 
 class SeerrCondition(BaseModel):
-    type: str  # "user_include" | "user_exclude"
+    type: Literal["user_include", "user_exclude"]
     user_id: int
     username: str = ""
 
@@ -36,18 +36,18 @@ class LibraryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     emby_library_id: str
     conditions: List[Condition] = []
-    logic: str = "AND"
-    grace_days: int = 7
+    logic: Literal["AND", "OR"] = "AND"
+    grace_days: int = Field(default=7, ge=0, le=3650)
     seerr_conditions: List[SeerrCondition] = []
     enabled: bool = True
 
 
 class LibraryUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     emby_library_id: Optional[str] = None
     conditions: Optional[List[Condition]] = None
-    logic: Optional[str] = None
-    grace_days: Optional[int] = None
+    logic: Optional[Literal["AND", "OR"]] = None
+    grace_days: Optional[int] = Field(default=None, ge=0, le=3650)
     seerr_conditions: Optional[List[SeerrCondition]] = None
     enabled: Optional[bool] = None
 

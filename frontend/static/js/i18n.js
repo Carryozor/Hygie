@@ -86,7 +86,6 @@ const TRANSLATIONS = {
     'Nouvelle bibliothèque': 'New library',
     'Ajouter une bibliothèque': 'Add library',
     'Modifier la bibliothèque': 'Edit library',
-    'Nouvelle bibliothèque': 'New library',
     'Aucune bibliothèque.': 'No libraries configured.',
     'Nom': 'Name',
     'Bibliothèque Emby': 'Emby Library',
@@ -104,9 +103,7 @@ const TRANSLATIONS = {
     'Logique des conditions': 'Condition logic',
     'Ajouter': 'Add',
     'Aucune condition': 'No conditions',
-    'Aucune condition': 'No conditions',
     'Cliquez sur "Ajouter" pour créer une condition': 'Click "Add" to create a condition',
-    'Aucune condition': 'No conditions',
     'Ajouté depuis': 'Added since',
     'Ajouté depuis (jours)': 'Added since (days)',
     'Jamais regardé': 'Never watched',
@@ -114,7 +111,6 @@ const TRANSLATIONS = {
     'Nombre de lectures': 'Play count',
     'Filtres par utilisateur Seerr': 'Seerr user filters',
     'Inclure ou exclure certains utilisateurs Seerr de cette règle': 'Include or exclude specific Seerr users from this rule',
-    'Filtres par utilisateur Seerr': 'Seerr user filters',
     'Scan démarré': 'Scan started',
     'Un scan est déjà en cours': 'A scan is already running',
 
@@ -305,7 +301,7 @@ const TRANSLATIONS = {
     'Scan terminé —': 'Scan complete —',
     'média(s) ajouté(s)': 'media added',
     'ajouté(s)': 'added',
-    'Hygie 3.4.6 démarré': 'Hygie 3.4.6 started',
+    'démarré': 'started',
 
     // ── Storage labels ────────────────────────────────────────────────────
     'Total dans la bibliothèque': 'Total in library',
@@ -342,7 +338,6 @@ const TRANSLATIONS = {
     'Logique': 'Logic',
     'Conditions': 'Conditions',
     'Seerr user filters': 'Seerr user filters',
-    'Filtres par utilisateur Seerr': 'Seerr user filters',
     'ET — toutes les conditions': 'AND — all conditions',
     'OU — au moins une condition': 'OR — at least one condition',
 
@@ -443,7 +438,7 @@ function applyTranslations() {
     // Only translate if EXACT match AND key is a UI string (not user data)
     // Skip very short keys (1-2 chars) and keys that look like user content
     if (key && key.length > 2 && dict[key] !== undefined) {
-      n.textContent = n.textContent.replace(key, dict[key]);
+      n.textContent = n.textContent.split(key).join(dict[key]);
     }
   });
 

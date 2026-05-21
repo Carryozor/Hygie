@@ -108,6 +108,12 @@ services:
       # Optional: encrypt API keys at rest.
       # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # - HYGIE_ENCRYPTION_KEY=your-generated-key-here
+    healthcheck:
+      test: ["CMD", "python3", "/app/backend/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 ```
 
 ```bash
@@ -339,6 +345,12 @@ services:
       # Optionnel : chiffrer les clés API au repos.
       # Générer : python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # - HYGIE_ENCRYPTION_KEY=votre-clé-générée-ici
+    healthcheck:
+      test: ["CMD", "python3", "/app/backend/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 ```
 
 ```bash
@@ -361,7 +373,7 @@ Toute la configuration se fait depuis l'interface web, organisée en onglets par
 
 | Service | Champs requis |
 |---------|--------------|
-| **Serveur Multimédia** | URL interne, clé API, URL externe *(pour les affiches Discord)* |
+| **Serveur Multimédia** | URL interne, clé API, URL externe *(optionnel)* |
 | **Radarr** | URL, clé API |
 | **Sonarr** | URL, clé API |
 | **Seerr** | URL, clé API, URL externe *(pour les liens cliquables)* |

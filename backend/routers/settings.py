@@ -3,7 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
-from ..database import get_all_settings, set_setting, get_setting
+import json
+from ..database import get_all_settings, set_setting, get_setting, get_media_servers, save_media_servers
 from ..emby_client import test_connection as test_emby
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit
@@ -41,6 +42,9 @@ class SettingsUpdate(BaseModel):
     deleted_retention_days: Optional[str] = None
     log_retention_days: Optional[str] = None
     job_history_retention_days: Optional[str] = None
+    scan_interval_minutes: Optional[str] = None
+    deletion_check_interval_minutes: Optional[str] = None
+    media_server_type: Optional[str] = None
     ui_language: Optional[str] = None
 
 
@@ -69,21 +73,20 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         await set_setting(key, value)
         updated.append(key)
 
-    # Reschedule les jobs si les intervalles ont changé
+    # Reschedule jobs si les intervalles ont changé (en minutes)
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
-        if "scan_interval_hours" in updated:
+        if "scan_interval_minutes" in updated:
             try:
-                h = int(await get_setting("scan_interval_hours") or "6")
-                scheduler.reschedule_job("scan_job", trigger="interval", hours=h)
-            except Exception as e:
-                pass  # Job pas encore créé ou autre erreur non-bloquante
-
-        if "deletion_check_interval_hours" in updated:
+                m = int(await get_setting("scan_interval_minutes") or "360")
+                scheduler.reschedule_job("scan_job", trigger="interval", minutes=m)
+            except Exception:
+                pass
+        if "deletion_check_interval_minutes" in updated:
             try:
-                h = int(await get_setting("deletion_check_interval_hours") or "1")
-                scheduler.reschedule_job("deletion_job", trigger="interval", hours=h)
-            except Exception as e:
+                m = int(await get_setting("deletion_check_interval_minutes") or "60")
+                scheduler.reschedule_job("deletion_job", trigger="interval", minutes=m)
+            except Exception:
                 pass
 
     # Invalidate image proxy whitelist when service URLs change
@@ -98,11 +101,67 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
     return {"updated": updated}
 
 
+# ─── Media servers CRUD ────────────────────────────────────────────────────────
+
+@router.get("/media-servers")
+async def list_media_servers(user: str = Depends(require_auth)):
+    servers = await get_media_servers()
+    return servers
+
+
+@router.post("/media-servers")
+async def add_media_server(body: dict, user: str = Depends(require_auth)):
+    servers = await get_media_servers()
+    new_id = str(max([int(s.get("id", 0)) for s in servers], default=-1) + 1)
+    servers.append({
+        "id": new_id,
+        "name": body.get("name") or f"Serveur {new_id}",
+        "url": (body.get("url") or "").rstrip("/"),
+        "api_key": body.get("api_key") or "",
+        "ext_url": (body.get("ext_url") or "").rstrip("/"),
+        "type": "",
+        "enabled": body.get("enabled", True),
+    })
+    await save_media_servers(servers)
+    return {"id": new_id, "servers": servers}
+
+
+@router.put("/media-servers/{server_id}")
+async def update_media_server(server_id: str, body: dict, user: str = Depends(require_auth)):
+    servers = await get_media_servers()
+    for s in servers:
+        if str(s.get("id")) == server_id:
+            for k in ("name", "url", "api_key", "ext_url", "enabled"):
+                if k in body:
+                    val = body[k]
+                    if k in ("url", "ext_url") and isinstance(val, str):
+                        val = val.rstrip("/")
+                    s[k] = val
+    await save_media_servers(servers)
+    return {"servers": servers}
+
+
+@router.delete("/media-servers/{server_id}")
+async def delete_media_server(server_id: str, user: str = Depends(require_auth)):
+    servers = await get_media_servers()
+    servers = [s for s in servers if str(s.get("id")) != server_id]
+    await save_media_servers(servers)
+    return {"servers": servers}
+
+
+@router.post("/media-servers/{server_id}/test")
+async def test_media_server(server_id: str, user: str = Depends(require_auth)):
+    ok, message, server_type = await test_emby(server_id=server_id)
+    return {"ok": ok, "message": message, "server_type": server_type}
+
+
 @router.post("/test/{service}")
 async def test_service(service: str, user: str = Depends(require_auth)):
     """Test a service connection."""
     tester = _TESTERS.get(service)
     if not tester:
         raise HTTPException(404, "Service inconnu")
-    ok, message = await tester()
+    result = await tester()
+    # test_connection returns (bool, str, str); others return (bool, str)
+    ok, message = result[0], result[1]
     return {"ok": ok, "message": message}

@@ -14,31 +14,88 @@ from typing import Optional, Tuple, List
 
 import httpx
 
-from .database import get_setting, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from .database import get_setting, set_setting, get_media_servers, save_media_servers, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 
 logger = logging.getLogger(__name__)
 
 
-async def get_client() -> Tuple[str, str]:
-    """Return (url, api_key) from settings. Both stripped of trailing slashes."""
+async def get_client(server_id: str = "0") -> Tuple[str, str]:
+    """Return (url, api_key) for the given server_id.
+    Falls back to legacy emby_url/emby_api_key if media_servers is empty.
+    """
+    from .database import _decrypt_value
+    servers = await get_media_servers()
+    for s in servers:
+        if str(s.get("id", "")) == str(server_id):
+            url = (s.get("url") or "").rstrip("/")
+            key = s.get("api_key") or ""
+            # Defensive: decrypt if value was accidentally stored encrypted
+            if key.startswith("enc:"):
+                key = _decrypt_value(key)
+            return url, key
+    # Fallback to legacy settings (backward compat) — get_setting decrypts automatically
     url = (await get_setting("emby_url") or "").rstrip("/")
     key = await get_setting("emby_api_key") or ""
     return url, key
 
 
-async def test_connection() -> Tuple[bool, str]:
-    url, key = await get_client()
+async def get_client_ext_url(server_id: str = "0") -> str:
+    """Return the external URL for the given server."""
+    from .database import _decrypt_value
+    servers = await get_media_servers()
+    for s in servers:
+        if str(s.get("id", "")) == str(server_id):
+            ext = (s.get("ext_url") or "").rstrip("/")
+            if ext.startswith("enc:"):
+                ext = _decrypt_value(ext)
+            return ext
+    return (await get_setting("emby_external_url") or "").rstrip("/")
+
+
+async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
+    """Test connection and auto-detect server type (emby|jellyfin|unknown).
+    Returns (ok, message, server_type). Updates server type in media_servers on success.
+    """
+    url, key = await get_client(server_id)
     if not url or not key:
-        return False, "URL ou clé API manquante"
+        return False, "URL ou clé API manquante", ""
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(f"{url}/System/Info", params={"api_key": key})
             if r.status_code == 200:
                 info = r.json()
-                return True, f"Emby {info.get('Version', '?')}"
-            return False, f"HTTP {r.status_code}"
+                version = info.get("Version", "?")
+                product = (info.get("ProductName") or "").lower()
+                v_parts = version.split(".")
+                v_major = v_parts[0] if v_parts else ""
+                # Detection logic (priority order):
+                # 1. ProductName explicit → most reliable
+                # 2. Version major: Emby = 4.x.x.x, Jellyfin = 10.x.x
+                if "jellyfin" in product or (not product and v_major == "10"):
+                    server_type, label = "jellyfin", f"Jellyfin {version}"
+                elif "emby" in product or (not product and (v_major == "4" or len(v_parts) >= 4)):
+                    server_type, label = "emby", f"Emby {version}"
+                elif product:
+                    server_type = "unknown"
+                    label = (info.get("ProductName") or "?") + f" {version}"
+                else:
+                    server_type = "unknown"
+                    label = f"Unknown {version}"
+                # Update type in media_servers for this server_id
+                servers = await get_media_servers()
+                updated = False
+                for s in servers:
+                    if str(s.get("id", "")) == str(server_id):
+                        s["type"] = server_type
+                        updated = True
+                if updated:
+                    await save_media_servers(servers)
+                # Keep legacy field in sync
+                await set_setting("media_server_type", server_type)
+                return True, label, server_type
+            return False, f"HTTP {r.status_code}", ""
     except Exception as e:
-        return False, str(e)
+        return False, str(e), ""
 
 
 async def get_libraries() -> List[dict]:
@@ -58,8 +115,8 @@ async def get_libraries() -> List[dict]:
     return []
 
 
-async def get_users() -> List[dict]:
-    url, key = await get_client()
+async def get_users(server_id: str = "0") -> List[dict]:
+    url, key = await get_client(server_id)
     if not url or not key:
         return []
     try:
@@ -73,10 +130,10 @@ async def get_users() -> List[dict]:
 
 
 async def get_items_in_library(
-    library_id: str, limit: int = 500, start: int = 0
+    library_id: str, limit: int = 500, start: int = 0, server_id: str = "0"
 ) -> Tuple[List[dict], int]:
     """Return (items, total_count) for items in a library."""
-    url, key = await get_client()
+    url, key = await get_client(server_id)
     if not url or not key:
         return [], 0
     try:
@@ -101,13 +158,13 @@ async def get_items_in_library(
     return [], 0
 
 
-async def get_library_user_data(user_id: str, library_id: str) -> dict:
+async def get_library_user_data(user_id: str, library_id: str, server_id: str = "0") -> dict:
     """Return {emby_item_id: UserData} for all items in a library for one user.
 
     Replaces per-item get_user_data calls during scans: one HTTP request per
     user per library instead of one per user per item.
     """
-    url, key = await get_client()
+    url, key = await get_client(server_id)
     if not url or not key:
         return {}
     try:
@@ -133,9 +190,9 @@ async def get_library_user_data(user_id: str, library_id: str) -> dict:
     return {}
 
 
-async def get_user_data(user_id: str, item_id: str) -> Optional[dict]:
+async def get_user_data(user_id: str, item_id: str, server_id: str = "0") -> Optional[dict]:
     """Get a user's UserData for a specific item (Played, PlayCount, LastPlayedDate)."""
-    url, key = await get_client()
+    url, key = await get_client(server_id)
     if not url or not key:
         return None
     try:
@@ -151,9 +208,9 @@ async def get_user_data(user_id: str, item_id: str) -> Optional[dict]:
     return None
 
 
-async def delete_item(item_id: str) -> bool:
-    """Delete an item from Emby. Removes the hardlink but not the physical file."""
-    url, key = await get_client()
+async def delete_item(item_id: str, server_id: str = "0") -> bool:
+    """Delete an item from the media server. Removes the hardlink but not the physical file."""
+    url, key = await get_client(server_id)
     if not url or not key:
         return False
     try:

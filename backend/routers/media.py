@@ -16,11 +16,19 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 logger = logging.getLogger(__name__)
 
 
-_SORT_FIELDS = {
-    "title", "library_name", "media_type", "delete_at",
-    "detected_at", "added_date", "last_played",
-    "status", "seerr_username",
+# Explicit safe mapping — column names validated at definition time
+_SORT_MAP: dict = {
+    "title":          "title",
+    "library_name":   "library_name",
+    "media_type":     "media_type",
+    "delete_at":      "delete_at",
+    "detected_at":    "detected_at",
+    "added_date":     "added_date",
+    "last_played":    "last_played",
+    "status":         "status",
+    "seerr_username": "seerr_username",
 }
+_SORT_FIELDS = set(_SORT_MAP.keys())
 
 
 class BulkAction(BaseModel):
@@ -56,8 +64,7 @@ async def list_queue(
     sort: str = "delete_at",
     dir: str = "asc",
 ):
-    if sort not in _SORT_FIELDS:
-        sort = "delete_at"
+    sort_col = _SORT_MAP.get(sort, "delete_at")  # safe mapping — never raw interpolation
     dir = "DESC" if dir.lower() == "desc" else "ASC"
 
     where = []
@@ -81,7 +88,7 @@ async def list_queue(
 
         async with db.execute(
             f"SELECT * FROM media_queue {where_clause} "
-            f"ORDER BY {sort} {dir} LIMIT ? OFFSET ?",
+            f"ORDER BY {sort_col} {dir} LIMIT ? OFFSET ?",
             params + [limit, offset],
         ) as cur:
             items = [dict(r) for r in await cur.fetchall()]

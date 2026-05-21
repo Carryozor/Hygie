@@ -36,11 +36,13 @@ from .database import (
     add_log,
     finish_job_run,
     get_setting,
+    get_media_servers,
     parse_iso_dt,
 )
 from .emby_client import (
     delete_item,
     get_client,
+    get_client_ext_url,
     get_items_in_library,
     get_library_user_data,
     get_user_data,
@@ -92,6 +94,7 @@ async def _get_poster_url(
     media_type: str = "Movie",
     radarr_id: Optional[int] = None,
     sonarr_id: Optional[int] = None,
+    server_id: str = "0",
 ) -> str:
     """
     Return a publicly accessible poster URL.
@@ -114,10 +117,10 @@ async def _get_poster_url(
     except Exception as e:
         logger.debug(f"_get_poster_url arr lookup: {e}")
 
-    # 2. Emby external URL (if configured)
+    # 2. Emby/Jellyfin external URL (if configured)
     try:
-        emby_url, emby_key = await get_client()
-        ext_url = (await get_setting("emby_external_url") or "").rstrip("/")
+        emby_url, emby_key = await get_client(server_id)
+        ext_url = await get_client_ext_url(server_id)
         if ext_url and emby_id:
             return f"{ext_url}/Items/{emby_id}/Images/Primary?api_key={emby_key}&maxHeight=300"
     except Exception:
@@ -125,7 +128,7 @@ async def _get_poster_url(
 
     # 3. Internal proxy fallback (won't work in Discord but does in the app)
     try:
-        emby_url, emby_key = await get_client()
+        emby_url, emby_key = await get_client(server_id)
         if emby_url and emby_key and emby_id:
             internal = (
                 f"{emby_url}/Items/{emby_id}/Images/Primary"
@@ -237,23 +240,37 @@ async def run_scan():
         await add_log("INFO", "Scan démarré", "job")
         added = 0
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM libraries WHERE enabled=1"
-                ) as cur:
-                    libraries = [dict(r) for r in await cur.fetchall()]
+            # Get enabled servers — fall back to a single "legacy" server if none configured
+            servers = await get_media_servers()
+            enabled_servers = [s for s in servers if s.get("enabled", True)]
+            if not enabled_servers:
+                # Legacy: treat as single server with id "0"
+                enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
 
-            if not libraries:
-                await add_log("WARN", "Aucune bibliothèque activée", "scan")
-                await finish_job_run(run_id, "warning", "No libraries")
-                return
+            for server in enabled_servers:
+                server_id = str(server.get("id", "0"))
+                server_type = server.get("type", "")
+                # Skip Jellyfin/unknown for scan operations (same API, but log for clarity)
+                if server_type not in ("emby", "jellyfin", ""):
+                    await add_log("INFO", f"Serveur {server_id} ignoré (type: {server_type})", "scan")
+                    continue
 
-            users = await get_users()
-            user_ids = [u["Id"] for u in users] if users else []
+                async with aiosqlite.connect(DB_PATH) as db:
+                    db.row_factory = aiosqlite.Row
+                    async with db.execute(
+                        "SELECT * FROM libraries WHERE enabled=1 AND (server_id=? OR server_id IS NULL OR server_id='')",
+                        (server_id,)
+                    ) as cur:
+                        libraries = [dict(r) for r in await cur.fetchall()]
 
-            for lib in libraries:
-                added += await _scan_library(lib, user_ids)
+                if not libraries:
+                    continue
+
+                users = await get_users(server_id=server_id)
+                user_ids = [u["Id"] for u in users] if users else []
+
+                for lib in libraries:
+                    added += await _scan_library(lib, user_ids, server_id=server_id)
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             await finish_job_run(run_id, "success", f"{added} queued")
@@ -291,9 +308,10 @@ async def run_scan_library(library_id: str):
                 await finish_job_run(run_id, "warning", "Library not found")
                 return
 
-            users = await get_users()
+            server_id = str(lib.get("server_id") or "0")
+            users = await get_users(server_id=server_id)
             user_ids = [u["Id"] for u in users] if users else []
-            added = await _scan_library(lib, user_ids)
+            added = await _scan_library(lib, user_ids, server_id=server_id)
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             await finish_job_run(run_id, "success", f"{added} queued")
@@ -307,7 +325,7 @@ async def run_scan_library(library_id: str):
             await finish_job_run(run_id, "error", str(e))
 
 
-async def _scan_library(lib: dict, user_ids: list) -> int:
+async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
     """Scan one library — returns count of items added."""
     conditions = json.loads(lib.get("conditions") or "[]")
     logic = lib.get("logic") or "AND"
@@ -320,23 +338,17 @@ async def _scan_library(lib: dict, user_ids: list) -> int:
     await add_log("INFO", f"Scan : {lib['name']}", "scan")
 
     # ── Build caches once per library (avoids per-item HTTP calls) ────────────
-    # user_data_cache[uid][emby_id] = UserData dict  (1 call/user instead of 1/user/item)
     user_data_cache: dict = {}
     for uid in user_ids:
-        user_data_cache[uid] = await get_library_user_data(uid, emby_library_id)
+        user_data_cache[uid] = await get_library_user_data(uid, emby_library_id, server_id=server_id)
 
-    # radarr_cache[path] = radarr_id        (1 call total instead of 1/item)
     radarr_cache: dict = await build_radarr_path_cache()
-
-    # sonarr_cache[episode_path] = ep_id   (1+n_series calls instead of n_series/item)
     sonarr_cache: dict = await build_sonarr_path_cache()
-
-    # seerr_cache[tmdb_id] = {seerr_id, user_id, username}  (1 paginated scan instead of 1/item)
     seerr_cache: dict = await build_seerr_request_cache()
 
     while True:
         items, total = await get_items_in_library(
-            emby_library_id, limit=500, start=start
+            emby_library_id, limit=500, start=start, server_id=server_id
         )
         if not items:
             break
@@ -556,7 +568,8 @@ async def reevaluate_library_queue(library_id: str) -> int:
     conditions = json.loads(lib.get("conditions") or "[]")
     logic = lib.get("logic") or "AND"
 
-    users = await get_users()
+    server_id = str(lib.get("server_id") or "0")
+    users = await get_users(server_id=server_id)
     user_ids = [u["Id"] for u in users] if users else []
     removed = 0
 
@@ -594,7 +607,8 @@ async def reevaluate_library_queue(library_id: str) -> int:
             emby_id = row.get("emby_id", "")
             if poster_url and poster_url.startswith("http") and emby_id:
                 try:
-                    emby_url_val, emby_key_val = await get_client()
+                    _lib_srv = str(lib.get("server_id") or "0")
+                    emby_url_val, emby_key_val = await get_client(_lib_srv)
                     overlay_on = (await get_setting("emby_leaving_soon_overlay") or "false").lower() == "true"
                     if overlay_on:
                         async with httpx.AsyncClient(timeout=10) as hc:
@@ -802,6 +816,19 @@ async def _delete_media(row: dict, dry_run: bool) -> bool:
     emby_id = row.get("emby_id")
     file_path = row.get("file_path", "")
     media_type = row.get("media_type", "")
+    # Resolve server_id from the item's library for multi-server correctness
+    library_server_id = "0"
+    if row.get("library_id"):
+        try:
+            async with aiosqlite.connect(DB_PATH) as _ldb:
+                async with _ldb.execute(
+                    "SELECT server_id FROM libraries WHERE id=?", (row["library_id"],)
+                ) as _cur:
+                    _lrow = await _cur.fetchone()
+                    if _lrow and _lrow[0]:
+                        library_server_id = str(_lrow[0])
+        except Exception:
+            pass
 
     prefix = "[DRY RUN] " if dry_run else ""
     await add_log("INFO", f"{prefix}Suppression : {title}", "deletion")
@@ -834,7 +861,7 @@ async def _delete_media(row: dict, dry_run: bool) -> bool:
 
         # ── 3. Emby ──────────────────────────────────────────────────────────
         if emby_id:
-            await delete_item(emby_id)
+            await delete_item(emby_id, server_id=library_server_id)
             await add_log("DEBUG", f"Emby : hardlink retiré pour {title}", "deletion")
 
         # ── 4. Radarr / Sonarr ───────────────────────────────────────────────
@@ -1080,7 +1107,25 @@ async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]
 
 
 async def sync_emby_collection():
-    """Sync the Emby 'Bientôt supprimé' collection bidirectionally."""
+    """Sync the 'Bientôt supprimé' collection — compatible with both Emby and Jellyfin.
+    Uses the first enabled server from media_servers; falls back to legacy server "0".
+    """
+    # Find first enabled server that supports collections (emby or jellyfin)
+    sync_server_id = "0"
+    servers = await get_media_servers()
+    enabled = [s for s in servers if s.get("enabled", True) and s.get("type") in ("emby", "jellyfin", "")]
+    if enabled:
+        sync_server_id = str(enabled[0].get("id", "0"))
+    elif servers:
+        # No enabled server with known type — skip
+        first_type = servers[0].get("type", "")
+        if first_type not in ("emby", "jellyfin", ""):
+            return
+    # Skip for truly unknown/untested servers (legacy path)
+    if not servers:
+        server_type = await get_setting("media_server_type")
+        if server_type not in ("emby", "jellyfin", ""):
+            return
     collection_name = await get_setting("emby_leaving_soon_collection")
     if not collection_name:
         return
@@ -1103,7 +1148,7 @@ async def sync_emby_collection():
 
     wanted_ids = {w["emby_id"] for w in wanted}
 
-    emby_url, emby_key = await get_client()
+    emby_url, emby_key = await get_client(sync_server_id)
     if not emby_url or not emby_key:
         return
 
@@ -1217,14 +1262,13 @@ async def sync_emby_collection():
                             except Exception as e_restore:
                                 logger.warning(f"Restore poster error pour {emby_id}: {e_restore}")
 
-            # Apply overlay only on newly added items — avoids reprocessing the
-            # entire collection on every sync (O(n) PIL ops → O(new_items)).
+            # Apply overlay to ALL items — ensures banners are always correct
+            # after poster refresh, Emby restart, or code updates.
             overlay_enabled = (
                 await get_setting("emby_leaving_soon_overlay") or "false"
             ).lower() == "true"
-            items_needing_overlay = [w for w in wanted if w["emby_id"] in to_add]
-            if overlay_enabled and items_needing_overlay:
-                for w in items_needing_overlay:
+            if overlay_enabled and wanted:
+                for w in wanted:
                     try:
                         dt = parse_iso_dt(w["delete_at"])
                         if not dt:

@@ -9,6 +9,76 @@ function escapeHtml(str) {
     .replace(/'/g, '&#x27;');
 }
 
+
+// ─── Confirmation modal (remplace les confirm() natifs) ──────────────────────
+let _confirmResolve = () => {};
+let _confirmReject  = () => {};
+
+function showConfirm({ title, body, detail, icon, color, okLabel, okClass }) {
+  icon = icon || 'triangle-exclamation';
+  color = color || '#ef4444';
+  okLabel = okLabel || 'Confirmer';
+  okClass = okClass || 'btn-danger';
+  return new Promise((resolve, reject) => {
+    _confirmResolve = () => { _closeConfirm(); resolve(true); };
+    _confirmReject  = () => { _closeConfirm(); reject(false); };
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-body').innerHTML = body || '';
+    const detailEl = document.getElementById('confirm-detail');
+    if (detail) { detailEl.innerHTML = detail; detailEl.style.display = 'block'; }
+    else { detailEl.style.display = 'none'; }
+    const wrap = document.getElementById('confirm-icon-wrap');
+    const ico  = document.getElementById('confirm-icon');
+    wrap.style.background = color + '20';
+    ico.className = 'fas fa-' + icon;
+    ico.style.color = color;
+    const okBtn = document.getElementById('confirm-ok-btn');
+    okBtn.textContent = okLabel;
+    okBtn.className = 'btn ' + okClass;
+    okBtn.style.padding = '8px 20px';
+    document.getElementById('modal-confirm').style.display = 'flex';
+    setTimeout(() => okBtn.focus(), 50);
+  });
+}
+
+function _updateSidebarDryRunStyle(enabled) {
+  const wrap  = document.getElementById('sidebar-dry-run-wrap');
+  const icon  = document.getElementById('sidebar-dry-run-icon');
+  const label = document.getElementById('sidebar-dry-run-label');
+  if (!wrap) return;
+  if (enabled) {
+    wrap.style.background   = '#f59e0b18';
+    wrap.style.borderColor  = '#f59e0b40';
+    if (icon)  icon.style.color  = '#f59e0b';
+    if (label) label.style.color = '#f59e0b';
+  } else {
+    wrap.style.background   = 'var(--bg3)';
+    wrap.style.borderColor  = 'var(--border)';
+    if (icon)  icon.style.color  = 'var(--muted)';
+    if (label) label.style.color = 'var(--muted)';
+  }
+}
+async function toggleSidebarDryRun(enabled) {
+  try {
+    await api('/api/settings', 'POST', { dry_run: enabled ? 'true' : 'false' });
+    _updateSidebarDryRunStyle(enabled);
+    // Sync settings page toggle if open
+    const settingsToggle = document.getElementById('dry-run-toggle');
+    if (settingsToggle) settingsToggle.checked = enabled;
+    toast(enabled ? 'Dry Run activé — aucune suppression réelle' : 'Dry Run désactivé', enabled ? 'warn' : 'info');
+  } catch(e) { toast('Erreur','error'); }
+}
+
+function _closeConfirm() {
+  document.getElementById('modal-confirm').style.display = 'none';
+}
+document.addEventListener('keydown', e => {
+  if (document.getElementById('modal-confirm') && document.getElementById('modal-confirm').style.display !== 'none') {
+    if (e.key === 'Enter') { e.preventDefault(); _confirmResolve(); }
+    if (e.key === 'Escape') _confirmReject();
+  }
+});
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 let _token = localStorage.getItem('hygie_token') || '';
@@ -68,6 +138,7 @@ function showApp(username) {
   document.getElementById('user-display').textContent = username;
   showPage('dashboard');
   setTimeout(initWebSocket, 500);
+  setTimeout(loadSchedulerInfo, 100);  // load bars immediately, don't wait for dashboard
   // Load version
   fetch('/api/version').then(r=>r.json()).then(v=>{
     const el = document.getElementById('app-version');
@@ -136,7 +207,11 @@ function toast(msg, type='info') {
   const icons = {success:'check-circle',error:'triangle-exclamation',info:'circle-info',warn:'exclamation'};
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.innerHTML = `<i class="fas fa-${icons[type]||'circle-info'}"></i><span>${msg}</span>`;
+  const _icon = document.createElement('i');
+  _icon.className = `fas fa-${icons[type]||'circle-info'}`;
+  const _span = document.createElement('span');
+  _span.textContent = msg;
+  el.append(_icon, _span);
   document.getElementById('toast-wrap').prepend(el);
   setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }, 3500);
 }
@@ -197,17 +272,72 @@ async function loadDashboard() {
   } catch(e) {}
   try {
     const s = await api('/api/settings/');
-    document.getElementById('dry-run-pill').style.display = s.dry_run==='true' ? 'flex' : 'none';
+    const _drEnabled = s.dry_run === 'true';
+    const _sdrt = document.getElementById('sidebar-dry-run');
+    if (_sdrt) _sdrt.checked = _drEnabled;
+    _updateSidebarDryRunStyle(_drEnabled);
     loadSchedulerInfo();
   } catch(e) {}
 }
+function _fmtCountdown(diffMin) {
+  if (diffMin <= 0) return 'Imminent';
+  if (diffMin < 60) return `dans ${diffMin}min`;
+  const h = Math.floor(diffMin / 60), m = diffMin % 60;
+  return `dans ${h}h${m > 0 ? String(m).padStart(2,'0') : ''}`;
+}
+
 async function loadSchedulerInfo() {
   try {
-    const jobs = await api('/api/scheduler/status');
-    const scan = jobs.find(j => j.id==='scan_job');
-    if (scan?.next_run) {
-      const diff = Math.round((new Date(scan.next_run)-Date.now())/60000);
-      document.getElementById('scheduler-info').textContent = `Prochain scan dans ${diff<60?diff+'min':Math.round(diff/60)+'h'}`;
+    const [jobs, status] = await Promise.all([
+      api('/api/scheduler/status'),
+      api('/api/media/job-status').catch(() => ({})),
+    ]);
+    const scanJob = jobs.find(j => j.id === 'scan_job');
+    const delJob  = jobs.find(j => j.id === 'deletion_job');
+
+    // ── Scan bar ──
+    const scanEl  = document.getElementById('scan-countdown');
+    const scanBar = document.getElementById('scan-progress-bar');
+    if (status.scan_running) {
+      // Scan in progress — pulse animation + label
+      if (scanEl) scanEl.textContent = 'En cours...';
+      if (scanBar) {
+        scanBar.style.width = '100%';
+        scanBar.style.opacity = '0.6';
+        scanBar.style.animation = 'pulse-bar 1.2s ease-in-out infinite';
+      }
+    } else {
+      if (scanBar) { scanBar.style.animation = ''; scanBar.style.opacity = '1'; }
+      if (scanJob?.next_run) {
+        const remainMin = Math.max(0, Math.round((new Date(scanJob.next_run) - Date.now()) / 60000));
+        const pct = _scanIntervalMin > 0
+          ? Math.max(0, Math.min(100, Math.round((1 - remainMin / _scanIntervalMin) * 100)))
+          : 0;
+        if (scanEl) scanEl.textContent = _fmtCountdown(remainMin);
+        if (scanBar) scanBar.style.width = Math.max(2, pct) + '%';
+      }
+    }
+
+    // ── Deletion check bar ──
+    const delEl  = document.getElementById('del-countdown');
+    const delBar = document.getElementById('del-progress-bar');
+    if (status.deletion_running) {
+      if (delEl) delEl.textContent = 'En cours...';
+      if (delBar) {
+        delBar.style.width = '100%';
+        delBar.style.opacity = '0.6';
+        delBar.style.animation = 'pulse-bar 1.2s ease-in-out infinite';
+      }
+    } else {
+      if (delBar) { delBar.style.animation = ''; delBar.style.opacity = '1'; }
+      if (delJob?.next_run) {
+        const remainMin = Math.max(0, Math.round((new Date(delJob.next_run) - Date.now()) / 60000));
+        const pct = _delIntervalMin > 0
+          ? Math.max(0, Math.min(100, Math.round((1 - remainMin / _delIntervalMin) * 100)))
+          : 0;
+        if (delEl) delEl.textContent = _fmtCountdown(remainMin);
+        if (delBar) delBar.style.width = Math.max(2, pct) + '%';
+      }
     }
   } catch(e) {}
 }
@@ -287,7 +417,7 @@ async function loadQueue() {
     });
     const tbody = document.getElementById('queue-tbody');
     if (!data.items.length) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">${search?'Aucun résultat pour "'+search+'"':'Aucun média'}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">${search?'Aucun résultat pour "'+escapeHtml(search)+'"':'Aucun média'}</td></tr>`;
       document.getElementById('chk-all').checked = false;
       return;
     }
@@ -408,7 +538,7 @@ async function bulkExclude() {
   } catch(e) { toast('Erreur lors de l\'exclusion','error'); }
 }
 async function bulkDelete() {
-  if (!confirm(`Supprimer ${selectedIds.size} média(s) ?`)) return;
+  try { await showConfirm({ title: 'Supprimer ' + selectedIds.size + ' média(s) ?', body: 'Ces médias seront supprimés de tous vos services (Emby, Radarr/Sonarr, Seerr, qBittorrent).', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
   const r = await api('/api/media/bulk','POST',{ids:[...selectedIds],action:'delete'});
   toast(`${r.affected} supprimé(s)`,'success'); selectedIds.clear(); loadQueue();
 }
@@ -420,13 +550,13 @@ function queuePage(dir) {
 }
 async function excludeMedia(id) { await api(`/api/media/${id}/remove`,'DELETE'); toast('Exclu','success'); loadQueue(); }
 async function deleteNow(id) {
-  if (!confirm('Supprimer maintenant ?')) return;
+  try { await showConfirm({ title: 'Supprimer maintenant ?', body: 'Ce média sera supprimé immédiatement de tous vos services.', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
   try { await api(`/api/media/${id}/delete-now`,'POST'); toast('Supprimé','success'); loadQueue(); }
   catch(e) { toast('Erreur suppression','error'); }
 }
 async function removeFromQueue(id) { await api(`/api/media/${id}`,'DELETE'); loadQueue(); }
 async function purgeDeleted() {
-  if (!confirm('Supprimer toutes les entrées "deleted" de la file ?')) return;
+  try { await showConfirm({ title: 'Purger l\'historique ?', body: 'Toutes les entrées "Supprimé" seront retirées de la file d\'attente.', icon: 'broom', color: '#f59e0b', okLabel: 'Purger', okClass: 'btn-primary' }); } catch(e) { return; }
   const r = await api('/api/media/purge/deleted','DELETE');
   toast(r.purged !== undefined ? `${r.purged} entrée(s) purgée(s)` : 'Purgé', 'success');
   loadQueue(); loadDashboard();
@@ -618,7 +748,7 @@ async function saveLibrary() {
     if (savedId) { const r=await api(`/api/libraries/${savedId}/reevaluate`,'POST'); if (r.removed>0) toast(`${r.removed} média(s) retiré(s) de la file`,'info'); }
   } catch(e) { toast('Erreur sauvegarde','error'); }
 }
-async function deleteLibrary(id) { if (!confirm('Supprimer ?')) return; await api(`/api/libraries/${id}`,'DELETE'); toast('Supprimée','success'); loadLibraries(); }
+async function deleteLibrary(id) { try { await showConfirm({ title: 'Supprimer cette bibliothèque ?', body: 'La bibliothèque et ses règles seront supprimées. Les médias déjà en file d\'attente ne seront pas affectés.', icon: 'layer-group', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; } await api(`/api/libraries/${id}`,'DELETE'); toast('Supprimée','success'); loadLibraries(); }
 async function cloneLibrary(id) {
   try {
     await api(`/api/libraries/${id}/clone`, 'POST');
@@ -653,12 +783,251 @@ const SETTINGS_FORM_FIELDS = [
   'seerr_url','seerr_api_key','seerr_external_url',
   'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-  'discord_webhook','scan_interval_hours','deletion_check_interval_hours',
+  'discord_webhook',
 ];
 
+
+// ─── Media Servers ────────────────────────────────────────────────────────────
+let _mediaServers = [];
+
+async function loadMediaServers() {
+  try {
+    _mediaServers = await api('/api/settings/media-servers');
+    renderMediaServers();
+    updateMediaServerIconFromServers();
+    // Show collection section if any enabled Emby server
+    const hasEmby = _mediaServers.some(s => s.enabled && (s.type === 'emby' || s.type === 'jellyfin'));
+    const col = document.getElementById('media-emby-only');
+    if (col) col.style.display = hasEmby ? 'block' : 'none';
+  } catch(e) {}
+}
+
+function renderMediaServers() {
+  const container = document.getElementById('media-servers-list');
+  if (!container) return;
+  if (!_mediaServers.length) {
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Aucun serveur configuré — cliquez "Ajouter" ci-dessous</div>';
+    return;
+  }
+  container.innerHTML = _mediaServers.map((s, i) => {
+    const type = s.type || '';
+    const EMBY_URL = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png';
+    const JF_URL = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png';
+    const iconHtml = type === 'emby'
+      ? `<img src="${EMBY_URL}" width="28" height="28" style="border-radius:6px">`
+      : type === 'jellyfin'
+      ? `<img src="${JF_URL}" width="28" height="28" style="border-radius:6px">`
+      : `<i class="fas fa-photo-film" style="font-size:18px;color:#a78bfa;width:28px;text-align:center"></i>`;
+    const typeBadge = type === 'emby'
+      ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#52b04020;color:#52b040">Emby</span>`
+      : type === 'jellyfin'
+      ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#8b5cf620;color:#a78bfa">Jellyfin</span>`
+      : type === 'unknown'
+      ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff10;color:var(--muted)">Inconnu</span>`
+      : `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff08;color:var(--muted);font-style:italic">Non testé</span>`;
+    return `<div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div style="width:36px;height:36px;border-radius:8px;background:#0f1117;display:flex;align-items:center;justify-content:center;flex-shrink:0">${iconHtml}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <input class="input" style="width:160px;font-size:13px;font-weight:600" value="${escapeHtml(s.name||'')}"
+              onchange="updateServerField('${s.id}','name',this.value)" placeholder="Nom du serveur">
+            ${typeBadge}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <label class="toggle-wrap" title="${s.enabled ? 'Activé — cliquer pour désactiver' : 'Désactivé — cliquer pour activer'}">
+            <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleMediaServer('${s.id}',this.checked)">
+            <div class="toggle-track"></div><div class="toggle-thumb"></div>
+          </label>
+          <button class="btn btn-ghost" style="padding:5px 8px;font-size:11px;color:#ef4444" onclick="removeMediaServer('${s.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">URL interne</label>
+            <input class="input" style="font-size:12px" value="${escapeHtml(s.url||'')}" placeholder="http://emby:8096"
+              onchange="updateServerField('${s.id}','url',this.value)"></div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Clé API</label>
+            <input class="input" type="password" style="font-size:12px" value="${escapeHtml(s.api_key||'')}" placeholder="••••••••"
+              onchange="updateServerField('${s.id}','api_key',this.value)"></div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">URL externe (affiches)</label>
+          <input class="input" style="font-size:12px" value="${escapeHtml(s.ext_url||'')}" placeholder="https://emby.mondomaine.fr"
+            onchange="updateServerField('${s.id}','ext_url',this.value)"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start;font-size:12px" onclick="testMediaServer('${s.id}',this)">
+          <i class="fas fa-plug"></i>Tester
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addMediaServer() {
+  try {
+    const result = await api('/api/settings/media-servers', 'POST', {name: 'Nouveau serveur', url: '', api_key: '', ext_url: '', enabled: true});
+    _mediaServers = result.servers;
+    renderMediaServers();
+  } catch(e) { toast('Erreur ajout serveur','error'); }
+}
+
+async function removeMediaServer(id) {
+  try { await showConfirm({ title: 'Supprimer ce serveur ?', body: 'Ce serveur sera retiré de la liste. Les bibliothèques associées ne seront plus scannées.', icon: 'server', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
+  try {
+    const result = await api('/api/settings/media-servers/' + id, 'DELETE');
+    _mediaServers = result.servers;
+    renderMediaServers();
+    updateMediaServerIconFromServers();
+  } catch(e) { toast('Erreur suppression','error'); }
+}
+
+let _serverUpdateTimers = {};
+function updateServerField(id, field, value) {
+  clearTimeout(_serverUpdateTimers[id + field]);
+  _serverUpdateTimers[id + field] = setTimeout(async () => {
+    try {
+      const result = await api('/api/settings/media-servers/' + id, 'PUT', {[field]: value});
+      _mediaServers = result.servers;
+    } catch(e) {}
+  }, 600);
+}
+
+async function toggleMediaServer(id, enabled) {
+  try {
+    const result = await api('/api/settings/media-servers/' + id, 'PUT', {enabled});
+    _mediaServers = result.servers;
+    updateMediaServerIconFromServers();
+    // Show/hide collection section
+    const hasEmby = _mediaServers.some(s => s.enabled && (s.type === 'emby' || s.type === 'jellyfin'));
+    const col = document.getElementById('media-emby-only');
+    if (col) col.style.display = hasEmby ? 'block' : 'none';
+  } catch(e) {}
+}
+
+async function testMediaServer(id, btn) {
+  const origHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>Test...';
+  btn.disabled = true;
+  try {
+    const r = await api('/api/settings/media-servers/' + id + '/test', 'POST');
+    toast(r.message || 'OK', r.ok ? 'success' : 'error');
+    if (r.ok) {
+      // Update local state
+      const s = _mediaServers.find(x => String(x.id) === String(id));
+      if (s) s.type = r.server_type;
+      renderMediaServers();
+      updateMediaServerIconFromServers();
+      // Show/hide collection section
+      const hasEmby = _mediaServers.some(sv => sv.enabled && sv.type === 'emby');
+      const col = document.getElementById('media-emby-only');
+      if (col) col.style.display = hasEmby ? 'block' : 'none';
+    }
+  } catch(e) { toast('Erreur connexion','error'); }
+  btn.innerHTML = origHtml;
+  btn.disabled = false;
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
-let _settingsLoaded=false, _settingsDirty=false, _settingsListenersAttached=false;
+let _settingsLoaded=false, _settingsDirty=false, _settingsListenersAttached=false, _activeSettingsTab='general';
+let _scanIntervalMin=360, _delIntervalMin=60;
 function markSettingsDirty() { _settingsDirty=true; }
+function switchSettingsTab(tab) {
+  _activeSettingsTab = tab;
+  document.querySelectorAll('.settings-tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('[id^="spanel-"]').forEach(el => el.style.display = 'none');
+  const btn = document.querySelector('[data-stab="' + tab + '"]');
+  if (btn) btn.classList.add('active');
+  const panel = document.getElementById('spanel-' + tab);
+  if (panel) panel.style.display = 'block';
+  if (tab === 'media') loadMediaServers();
+}
+function updateIntervalPreview(id) {
+  const val = parseInt(document.getElementById(id + '_interval_value')?.value) || 1;
+  const unit = document.getElementById(id + '_interval_unit')?.value || 'h';
+  const el = document.getElementById(id + '_interval_preview');
+  if (!el) return;
+  let text;
+  if (unit === 'h') {
+    text = '→ toutes les ' + val + 'h';
+  } else {
+    if (val < 60) { text = '→ toutes les ' + val + ' min'; }
+    else {
+      const h = Math.floor(val / 60), m = val % 60;
+      text = '→ toutes les ' + h + 'h' + (m > 0 ? m + 'min' : '');
+    }
+  }
+  el.textContent = text;
+}
+
+async function updateMediaServerIconFromServers() {
+  try {
+    const servers = await api('/api/settings/media-servers');
+    const enabledTypes = [...new Set(servers.filter(s => s.enabled).map(s => s.type).filter(t => t && t !== 'unknown' && t !== ''))];
+    if (enabledTypes.length === 1) {
+      updateMediaServerIcon(enabledTypes[0]);
+    } else if (enabledTypes.length > 1) {
+      updateMediaServerIcon('mixed');  // multiple different types → split icon
+    } else {
+      updateMediaServerIcon('');  // no enabled servers → generic
+    }
+  } catch(e) {}
+}
+function updateMediaServerIcon(type) {
+  const iconWrap = document.getElementById('stab-media-icon-wrap');
+  const headerLogo = document.getElementById('media-server-logo');
+  const pill = document.getElementById('stab-media-pill');
+  const detected = document.getElementById('media-server-detected');
+  const embyOnly = document.getElementById('media-emby-only');
+  const nonEmbyNotice = document.getElementById('media-non-emby-notice');
+  const nonEmbyMsg = document.getElementById('media-non-emby-msg');
+  if (!iconWrap) return;
+  const EMBY_ICON = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png';
+  const JF_ICON = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png';
+  const EMBY_URL = EMBY_ICON; const JF_URL = JF_ICON;  // aliases used in template literals
+  const GENERIC = '<i class="fas fa-photo-film" style="font-size:13px;color:#a78bfa"></i>';
+  const GENERIC_HEADER = '<i class="fas fa-photo-film" style="font-size:20px;background:linear-gradient(135deg,#6366f1,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent"></i>';
+  if (type === 'emby') {
+    if (iconWrap) iconWrap.innerHTML = '<img src="' + EMBY_ICON + '" width="16" height="16" style="border-radius:3px">';
+    if (headerLogo) headerLogo.innerHTML = '<img src="' + EMBY_ICON + '" style="width:38px;height:38px;object-fit:contain;border-radius:8px">';
+    if (pill) { pill.textContent = 'Emby'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#52b04025;color:#52b040'; }
+    if (detected) { detected.textContent = '✓ Emby détecté'; detected.style.color = '#52b040'; detected.style.fontStyle = 'normal'; }
+    if (embyOnly) embyOnly.style.display = 'block';
+    if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
+  } else if (type === 'jellyfin') {
+    if (iconWrap) iconWrap.innerHTML = '<img src="' + JF_ICON + '" width="16" height="16" style="border-radius:3px">';
+    if (headerLogo) headerLogo.innerHTML = '<img src="' + JF_ICON + '" style="width:38px;height:38px;object-fit:contain;border-radius:8px">';
+    if (pill) { pill.textContent = 'Jellyfin'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#8b5cf625;color:#a78bfa'; }
+    if (detected) { detected.textContent = '✓ Jellyfin détecté'; detected.style.color = '#a78bfa'; detected.style.fontStyle = 'normal'; }
+    if (embyOnly) embyOnly.style.display = 'block';  // Collections/overlay work with Jellyfin too!
+    if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
+  } else if (type === 'unknown') {
+    if (iconWrap) iconWrap.innerHTML = GENERIC;
+    if (headerLogo) headerLogo.innerHTML = GENERIC_HEADER;
+    if (pill) pill.style.display = 'none';
+    if (detected) { detected.textContent = 'Serveur non reconnu — fonctionnalités Collection/Overlay disponibles avec Emby uniquement'; detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
+    if (embyOnly) embyOnly.style.display = 'none';
+    if (nonEmbyNotice) { nonEmbyNotice.style.display = 'block'; if (nonEmbyMsg) nonEmbyMsg.innerHTML = '⚠️ <strong>Serveur non reconnu</strong> — Les fonctionnalités Collection et Overlay d\'affiches sont disponibles uniquement avec Emby.'; nonEmbyNotice.style.color = '#94a3b8'; }
+  } else if (type === 'mixed') {
+    // Emby + Jellyfin — option D : vertical split
+    const SPLIT_TAB = `<div style="width:18px;height:18px;border-radius:4px;position:relative;overflow:hidden;flex-shrink:0"><img src="${EMBY_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 50% 0 0)"><img src="${JF_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 0 0 50%)"></div>`;
+    const SPLIT_HDR = `<div style="width:44px;height:44px;border-radius:10px;position:relative;overflow:hidden"><img src="${EMBY_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 50% 0 0)"><img src="${JF_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 0 0 50%)"></div>`;
+    if (iconWrap) iconWrap.innerHTML = SPLIT_TAB;
+    if (headerLogo) headerLogo.innerHTML = SPLIT_HDR;
+    if (pill) { pill.textContent = 'Multi'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#6366f125;color:#818cf8'; }
+    if (detected) { detected.textContent = 'Emby + Jellyfin — plusieurs serveurs actifs'; detected.style.color = '#818cf8'; detected.style.fontStyle = 'normal'; }
+    if (embyOnly) embyOnly.style.display = 'block'; // Show collection (at least one Emby)
+    if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
+  } else {
+    // '' — not tested
+    if (iconWrap) iconWrap.innerHTML = GENERIC;
+    if (headerLogo) headerLogo.innerHTML = GENERIC_HEADER;
+    if (pill) pill.style.display = 'none';
+    if (detected) { detected.textContent = 'Non encore testé — cliquez Tester pour détecter'; detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
+    if (embyOnly) embyOnly.style.display = 'block';
+    if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
+  }
+}
+
 
 async function loadSettings(force=false) {
   if (_settingsLoaded && _settingsDirty && !force) return;
@@ -668,6 +1037,32 @@ async function loadSettings(force=false) {
       const el=document.getElementById(f); if(el) el.value=s[f]||'';
     });
     document.getElementById('dry-run-toggle').checked = s.dry_run==='true';
+    // Sync sidebar toggle
+    const _sdr = document.getElementById('sidebar-dry-run');
+    if (_sdr) _sdr.checked = s.dry_run==='true';
+    _updateSidebarDryRunStyle(s.dry_run==='true');
+    // Intervals — convert minutes → value + unit selector
+    const scanMin = parseInt(s.scan_interval_minutes || '360');
+    _scanIntervalMin = scanMin;  // cache for progress bars
+    _delIntervalMin  = parseInt(s.deletion_check_interval_minutes || '60');
+    const scanInH = scanMin % 60 === 0;
+    const svEl = document.getElementById('scan_interval_value');
+    const suEl = document.getElementById('scan_interval_unit');
+    if (svEl) svEl.value = scanInH ? scanMin / 60 : scanMin;
+    if (suEl) suEl.value = scanInH ? 'h' : 'm';
+    updateIntervalPreview('scan');
+    const delMin = parseInt(s.deletion_check_interval_minutes || '60');
+    const delInH = delMin % 60 === 0;
+    const dvEl = document.getElementById('deletion_check_interval_value');
+    const duEl = document.getElementById('deletion_check_interval_unit');
+    if (dvEl) dvEl.value = delInH ? delMin / 60 : delMin;
+    if (duEl) duEl.value = delInH ? 'h' : 'm';
+    updateIntervalPreview('deletion_check');
+    // Media server icon — read all servers to handle multi-server correctly
+    updateMediaServerIconFromServers();
+    // Restore active tab
+    switchSettingsTab(_activeSettingsTab);
+    if (_activeSettingsTab === 'media') loadMediaServers();
     if(document.getElementById('deleted_retention_days')) document.getElementById('deleted_retention_days').value = s.deleted_retention_days||'90';
     const qa = document.getElementById('qbit_action'); if(qa) qa.value = s.qbit_action||'tag_only';
     const ov = document.getElementById('emby_leaving_soon_overlay'); if(ov) ov.checked = s.emby_leaving_soon_overlay==='true';
@@ -684,11 +1079,20 @@ async function loadSettings(force=false) {
 }
 async function saveSettings() {
   const fields = SETTINGS_FORM_FIELDS;
-  const body={ dry_run:document.getElementById('dry-run-toggle').checked?'true':'false',
-    deleted_retention_days:document.getElementById('deleted_retention_days')?.value||'90',
-    log_level:document.getElementById('log_level')?.value||'INFO',
-    qbit_action:document.getElementById('qbit_action')?.value||'tag_only',
-    emby_leaving_soon_overlay:document.getElementById('emby_leaving_soon_overlay')?.checked?'true':'false' };
+  const body = {
+    dry_run: document.getElementById('dry-run-toggle').checked ? 'true' : 'false',
+    deleted_retention_days: document.getElementById('deleted_retention_days')?.value || '90',
+    log_level: document.getElementById('log_level')?.value || 'INFO',
+    qbit_action: document.getElementById('qbit_action')?.value || 'tag_only',
+    emby_leaving_soon_overlay: document.getElementById('emby_leaving_soon_overlay')?.checked ? 'true' : 'false',
+  };
+  // Intervals — convert to minutes before saving
+  const scanV = parseInt(document.getElementById('scan_interval_value')?.value) || 6;
+  const scanU = document.getElementById('scan_interval_unit')?.value || 'h';
+  body.scan_interval_minutes = String(scanU === 'h' ? scanV * 60 : scanV);
+  const delV = parseInt(document.getElementById('deletion_check_interval_value')?.value) || 1;
+  const delU = document.getElementById('deletion_check_interval_unit')?.value || 'h';
+  body.deletion_check_interval_minutes = String(delU === 'h' ? delV * 60 : delV);
   fields.forEach(f=>{ const el=document.getElementById(f); if(el) body[f]=el.value; });
   try { await api('/api/settings/','POST',body); _settingsDirty=false; toast('Paramètres enregistrés','success'); }
   catch(e) { toast('Erreur sauvegarde','error'); }
@@ -715,7 +1119,7 @@ async function loadLogs() {
     if (!logs.length) { box.innerHTML='<div style="color:var(--muted)">Aucun log</div>'; return; }
     box.innerHTML=logs.map(l=>{
       const ts=l.ts?new Date(l.ts).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'medium'}):'—';
-      return `<div class="log-row log-${l.level}"><span class="log-ts">${ts}</span><span class="log-level">${l.level}</span><span class="log-cat">${l.source||''}</span><span style="color:var(--text)">${l.message}</span></div>`;
+      return `<div class="log-row log-${escapeHtml(l.level||'')}"><span class="log-ts">${ts}</span><span class="log-level">${escapeHtml(l.level||'')}</span><span class="log-cat">${escapeHtml(l.source||'')}</span><span style="color:var(--text)">${escapeHtml(l.message||'')}</span></div>`;
     }).join('');
   } catch(e) { toast('Erreur logs','error'); }
 }
@@ -738,7 +1142,7 @@ async function loadJobs() {
         </div>
         <div style="flex:1">
           <div style="font-weight:600;color:#e2e8f0;font-size:13px">${label}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${nxt?`Prochain : ${nxt.toLocaleString('fr-FR')} (dans ${diff<60?diff+'min':Math.round(diff/60)+'h'})`:'Non planifié'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${nxt ? `${nxt.toLocaleString('fr-FR', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} — ${_fmtCountdown(diff)}` : 'Non planifié'}</div>
         </div>
         <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="${j.id==='scan_job'?'triggerScan':'triggerDeletion'}()"><i class="fas fa-play"></i>Lancer</button>
       </div>`;
@@ -795,7 +1199,7 @@ setInterval(()=>{
   if (document.visibilityState !== 'visible') return;
   if(currentPage==='logs') loadLogs();
   if(currentPage==='jobs') loadJobs();
-  if(currentPage==='dashboard') loadSchedulerInfo();
+  loadSchedulerInfo();  // sidebar bars always visible
 },15000);
 
 // ─── Ignored ──────────────────────────────────────────────────────────────────
@@ -853,7 +1257,7 @@ function unignoreMediaFromEl(el) {
   unignoreMedia(parseInt(el.dataset.id), el.dataset.title);
 }
 async function unignoreMedia(id, title) {
-  if (!confirm(`Remettre "${title}" dans la file d'attente maintenant ?`)) return;
+  try { await showConfirm({ title: 'Remettre en file d\'attente ?', body: escapeHtml(title), icon: 'rotate-left', color: '#10b981', okLabel: 'Remettre', okClass: 'btn-primary' }); } catch(e) { return; }
   try {
     await api(`/api/ignored/${id}/requeue`, 'POST');
     toast(`"${title}" remis en file d'attente`, 'success');
@@ -879,8 +1283,8 @@ function openIgnoreModal(id, title, mediaType, posterUrl, libraryName) {
   document.getElementById('ignore-media-info').innerHTML = `
     ${poster}
     <div>
-      <div style="font-weight:600;color:#e2e8f0">${title}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${libraryName}</div>
+      <div style="font-weight:600;color:#e2e8f0">${escapeHtml(title)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${escapeHtml(libraryName)}</div>
     </div>`;
   document.getElementById('modal-ignore').style.display = 'flex';
   setTimeout(() => document.getElementById('ignore-reason').focus(), 100);
@@ -899,7 +1303,7 @@ async function confirmIgnore() {
     let url = `/api/media/${_ignoreMediaId}/ignore?reason=${encodeURIComponent(reason)}`;
     if (expireDays > 0) url += `&expire_days=${expireDays}`;
     await api(url, 'POST');
-    toast(expireDays > 0 ? `Ignoré pour ${expireDays} jours` : ''+'Ignoré définitivement'+'', 'success');
+    toast(expireDays > 0 ? `Ignoré pour ${expireDays} jours` : 'Ignoré définitivement', 'success');
     closeIgnoreModal();
     loadQueue();
     loadDashboard();
@@ -1365,11 +1769,11 @@ function renderUnmonitored(items) {
       ? (m.studio || '')
       : `${m.seasons || 0} saison(s) · ${m.episode_count || 0} ép.`;
     const monitorBtn = isMovie
-      ? `<button class="btn btn-primary" style="flex:1;justify-content:center;font-size:11px;padding:5px 8px" onclick="monitorMovie(${m.id},'${m.title.replace(/'/g,"\\'")}')"><i class="fas fa-eye"></i>Surveiller</button>`
-      : `<button class="btn btn-primary" style="flex:1;justify-content:center;font-size:11px;padding:5px 8px" onclick="monitorSeries(${m.id},'${m.title.replace(/'/g,"\\'")}')"><i class="fas fa-eye"></i>Surveiller</button>`;
+      ? `<button class="btn btn-primary" style="flex:1;justify-content:center;font-size:11px;padding:5px 8px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="movie" onclick="monitorFromEl(this)"><i class="fas fa-eye"></i>Surveiller</button>`
+      : `<button class="btn btn-primary" style="flex:1;justify-content:center;font-size:11px;padding:5px 8px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="series" onclick="monitorFromEl(this)"><i class="fas fa-eye"></i>Surveiller</button>`;
     const deleteBtn = isMovie
-      ? `<button class="btn btn-ghost" style="padding:5px 8px;font-size:11px" onclick="deleteUnmonitored('movie',${m.id},'${m.title.replace(/'/g,"\\'")}',${m.has_file})" title="Supprimer"><i class="fas fa-trash"></i></button>`
-      : `<button class="btn btn-ghost" style="padding:5px 8px;font-size:11px" onclick="deleteUnmonitored('series',${m.id},'${m.title.replace(/'/g,"\\'")}',${m.has_file})" title="Supprimer"><i class="fas fa-trash"></i></button>`;
+      ? `<button class="btn btn-ghost" style="padding:5px 8px;font-size:11px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="movie" data-hasfile="${m.has_file}" onclick="deleteUnmonitoredFromEl(this)" title="Supprimer"><i class="fas fa-trash"></i></button>`
+      : `<button class="btn btn-ghost" style="padding:5px 8px;font-size:11px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="series" data-hasfile="${m.has_file}" onclick="deleteUnmonitoredFromEl(this)" title="Supprimer"><i class="fas fa-trash"></i></button>`;
 
     return `<div class="card" style="overflow:hidden;display:flex;flex-direction:column" id="unmon-${m.source}-${m.id}">
       <div style="position:relative">${poster}
@@ -1377,13 +1781,13 @@ function renderUnmonitored(items) {
         ${m.year ? `<span style="position:absolute;top:6px;right:6px;background:#00000099;color:#e2e8f0;font-size:10px;border-radius:4px;padding:2px 6px">${m.year}</span>` : ''}
       </div>
       <div style="padding:10px;flex:1;display:flex;flex-direction:column;gap:6px">
-        <div style="font-weight:600;font-size:13px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.title}">${m.title}</div>
+        <div style="font-weight:600;font-size:13px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</div>
         <div style="display:flex;align-items:center;justify-content:space-between">
           ${hasFileTag}
           ${size}
         </div>
         ${subInfo ? `<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subInfo}</div>` : ''}
-        ${m.genres?.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap">${m.genres.map(g=>`<span style="font-size:10px;background:#ffffff0a;color:var(--muted);border-radius:3px;padding:1px 5px">${g}</span>`).join('')}</div>` : ''}
+        ${m.genres?.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap">${m.genres.map(g=>`<span style="font-size:10px;background:#ffffff0a;color:var(--muted);border-radius:3px;padding:1px 5px">${escapeHtml(g)}</span>`).join('')}</div>` : ''}
         <div style="display:flex;gap:4px;margin-top:auto;padding-top:6px">
           ${monitorBtn}${deleteBtn}
         </div>
@@ -1392,6 +1796,14 @@ function renderUnmonitored(items) {
   }).join('');
 }
 
+
+function monitorFromEl(el) {
+  if (el.dataset.type === 'series') monitorSeries(parseInt(el.dataset.mid), el.dataset.title);
+  else monitorMovie(parseInt(el.dataset.mid), el.dataset.title);
+}
+function deleteUnmonitoredFromEl(el) {
+  deleteUnmonitored(el.dataset.type, parseInt(el.dataset.mid), el.dataset.title, el.dataset.hasfile === 'true');
+}
 async function monitorMovie(id, title) {
   try {
     await api(`/api/unmonitored/monitor/movie/${id}`, 'POST');
@@ -1417,8 +1829,9 @@ async function deleteUnmonitored(type, id, title, hasFile) {
   const msg = hasFile
     ? `Supprimer "${title}" ?\n\n⚠️ Ce média a des fichiers sur disque.\n\nCochez pour supprimer aussi les fichiers.`
     : `Supprimer "${title}" de ${type === 'movie' ? 'Radarr' : 'Sonarr'} ?`;
-  if (!confirm(msg)) return;
-  const deleteFiles = hasFile && confirm(`Supprimer aussi les fichiers de "${title}" du disque ?`);
+  try { await showConfirm({ title: hasFile ? 'Supprimer "' + title + '" ?' : 'Supprimer de ' + (type === 'movie' ? 'Radarr' : 'Sonarr') + ' ?', body: hasFile ? '⚠️ Ce média a des fichiers sur disque.' : 'Le média sera retiré du gestionnaire.', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
+  let deleteFiles = false;
+  if (hasFile) { try { await showConfirm({ title: 'Supprimer aussi les fichiers ?', body: 'Les fichiers de <strong>' + escapeHtml(title) + '</strong> seront effacés du disque.', detail: '⚠️ Cette action est irréversible — les fichiers seront définitivement supprimés.', icon: 'hard-drive', color: '#f59e0b', okLabel: 'Supprimer les fichiers', okClass: 'btn-danger' }); deleteFiles = true; } catch(e) { deleteFiles = false; } }
   try {
     await api(`/api/unmonitored/${type}/${id}?delete_files=${deleteFiles}`, 'DELETE');
     toast(`🗑️ "${title}" supprimé`, 'success');

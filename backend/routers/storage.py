@@ -1,4 +1,5 @@
 """Storage — disk metrics from Radarr/Sonarr, matching frontend data shape exactly."""
+import asyncio
 import logging
 
 import aiosqlite
@@ -33,87 +34,83 @@ async def get_storage(user: str = Depends(require_auth)):
     movies: dict = {}
     series: dict = {}
     total_media_size: int = 0
-    radarr_movies_by_id: dict = {}  # id -> movie (for reclaimable calc)
+    radarr_movies_by_id: dict = {}
 
     async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-        # ── Radarr ────────────────────────────────────────────────────────
-        if radarr_url and radarr_key:
+
+        async def _get(url: str, params: dict):
+            """Safe GET — returns None on any error."""
             try:
-                rd = await c.get(f"{radarr_url}/api/v3/diskspace",
-                                 params={"apikey": radarr_key})
-                if rd.status_code == 200:
-                    for disk in rd.json():
-                        disks.append({
-                            "path": disk.get("path", "?"),
-                            "label": disk.get("label", ""),
-                            "source": "Radarr",
-                            "total": disk.get("totalSpace", 0),
-                            "free": disk.get("freeSpace", 0),
-                            "accessible": disk.get("accessible", True),
-                        })
+                r = await c.get(url, params=params)
+                return r if r.status_code == 200 else None
+            except Exception:
+                return None
 
-                rm = await c.get(f"{radarr_url}/api/v3/movie",
-                                 params={"apikey": radarr_key})
-                if rm.status_code == 200:
-                    all_movies = rm.json()
-                    radarr_movies_by_id = {m["id"]: m for m in all_movies}
-                    total_in_lib = len(all_movies)
-                    with_file = sum(1 for m in all_movies if m.get("hasFile"))
-                    mon = sum(1 for m in all_movies if m.get("monitored"))
-                    size = sum(m.get("sizeOnDisk", 0) or 0 for m in all_movies)
-                    movies = {
-                        "total_in_library": total_in_lib,
-                        "count": with_file,
-                        "monitored": mon,
-                        "unmonitored": total_in_lib - mon,
-                        "size": size,
-                    }
-                    total_media_size += size
-            except Exception as e:
-                logger.warning(f"Radarr storage: {e}")
+        async def _noop() -> None:
+            return None
 
-        # ── Sonarr ────────────────────────────────────────────────────────
-        if sonarr_url and sonarr_key:
-            try:
-                sd = await c.get(f"{sonarr_url}/api/v3/diskspace",
-                                 params={"apikey": sonarr_key})
-                if sd.status_code == 200:
-                    existing_paths = {d["path"] for d in disks}
-                    for disk in sd.json():
-                        if disk.get("path", "?") not in existing_paths:
-                            disks.append({
-                                "path": disk.get("path", "?"),
-                                "label": disk.get("label", ""),
-                                "source": "Sonarr",
-                                "total": disk.get("totalSpace", 0),
-                                "free": disk.get("freeSpace", 0),
-                                "accessible": disk.get("accessible", True),
-                            })
+        # ── All 4 requests in parallel ────────────────────────────────────
+        r_disk_task   = _get(f"{radarr_url}/api/v3/diskspace", {"apikey": radarr_key}) if radarr_url and radarr_key else _noop()
+        r_movie_task  = _get(f"{radarr_url}/api/v3/movie",     {"apikey": radarr_key}) if radarr_url and radarr_key else _noop()
+        s_disk_task   = _get(f"{sonarr_url}/api/v3/diskspace", {"apikey": sonarr_key}) if sonarr_url and sonarr_key else _noop()
+        s_series_task = _get(f"{sonarr_url}/api/v3/series",    {"apikey": sonarr_key}) if sonarr_url and sonarr_key else _noop()
 
-                rs = await c.get(f"{sonarr_url}/api/v3/series",
-                                 params={"apikey": sonarr_key})
-                if rs.status_code == 200:
-                    all_series = rs.json()
-                    count = len(all_series)
-                    mon = sum(1 for s in all_series if s.get("monitored"))
-                    eps = sum(
-                        s.get("statistics", {}).get("episodeFileCount", 0) or 0
-                        for s in all_series
-                    )
-                    size = sum(
-                        s.get("statistics", {}).get("sizeOnDisk", 0) or 0
-                        for s in all_series
-                    )
-                    series = {
-                        "count": count,
-                        "monitored": mon,
-                        "unmonitored": count - mon,
-                        "episodes": eps,
-                        "size": size,
-                    }
-                    total_media_size += size
-            except Exception as e:
-                logger.warning(f"Sonarr storage: {e}")
+        rd, rm, sd, rs = await asyncio.gather(r_disk_task, r_movie_task, s_disk_task, s_series_task)
+
+        # ── Process Radarr ────────────────────────────────────────────────
+        if rd:
+            for disk in rd.json():
+                disks.append({
+                    "path": disk.get("path", "?"),
+                    "label": disk.get("label", ""),
+                    "source": "Radarr",
+                    "total": disk.get("totalSpace", 0),
+                    "free": disk.get("freeSpace", 0),
+                    "accessible": disk.get("accessible", True),
+                })
+        if rm:
+            all_movies = rm.json()
+            radarr_movies_by_id = {m["id"]: m for m in all_movies}
+            total_in_lib = len(all_movies)
+            with_file = sum(1 for m in all_movies if m.get("hasFile"))
+            mon = sum(1 for m in all_movies if m.get("monitored"))
+            size = sum(m.get("sizeOnDisk", 0) or 0 for m in all_movies)
+            movies = {
+                "total_in_library": total_in_lib,
+                "count": with_file,
+                "monitored": mon,
+                "unmonitored": total_in_lib - mon,
+                "size": size,
+            }
+            total_media_size += size
+
+        # ── Process Sonarr ────────────────────────────────────────────────
+        if sd:
+            existing_paths = {d["path"] for d in disks}
+            for disk in sd.json():
+                if disk.get("path", "?") not in existing_paths:
+                    disks.append({
+                        "path": disk.get("path", "?"),
+                        "label": disk.get("label", ""),
+                        "source": "Sonarr",
+                        "total": disk.get("totalSpace", 0),
+                        "free": disk.get("freeSpace", 0),
+                        "accessible": disk.get("accessible", True),
+                    })
+        if rs:
+            all_series = rs.json()
+            count = len(all_series)
+            mon = sum(1 for s in all_series if s.get("monitored"))
+            eps = sum(s.get("statistics", {}).get("episodeFileCount", 0) or 0 for s in all_series)
+            size = sum(s.get("statistics", {}).get("sizeOnDisk", 0) or 0 for s in all_series)
+            series = {
+                "count": count,
+                "monitored": mon,
+                "unmonitored": count - mon,
+                "episodes": eps,
+                "size": size,
+            }
+            total_media_size += size
 
     # ── Queue stats ────────────────────────────────────────────────────────
     queue: dict = {

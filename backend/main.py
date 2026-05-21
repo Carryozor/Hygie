@@ -97,16 +97,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
-    # Schedule jobs
+    # Schedule jobs — intervals stored in minutes
     try:
-        scan_h = int(await get_setting("scan_interval_hours") or "6")
-        del_h = int(await get_setting("deletion_check_interval_hours") or "1")
+        scan_min = int(await get_setting("scan_interval_minutes") or "360")
+        del_min = int(await get_setting("deletion_check_interval_minutes") or "60")
     except ValueError:
-        scan_h, del_h = 6, 1
+        scan_min, del_min = 360, 60
 
-    scheduler.add_job(run_scan, "interval", hours=scan_h, id="scan_job", replace_existing=True)
+    scheduler.add_job(run_scan, "interval", minutes=scan_min, id="scan_job", replace_existing=True)
     scheduler.add_job(
-        run_deletion, "interval", hours=del_h, id="deletion_job", replace_existing=True
+        run_deletion, "interval", minutes=del_min, id="deletion_job", replace_existing=True
     )
     # ignored_cleanup and overlay_daily are internal — they run silently without job_history entries
     scheduler.add_job(
@@ -118,7 +118,7 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.scheduler = scheduler
 
-    logger.info(f"Hygie {VERSION} started — scan={scan_h}h, deletion={del_h}h")
+    logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
     await add_log("INFO", f"Hygie {VERSION} démarré", "system")
 
     yield

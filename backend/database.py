@@ -57,6 +57,7 @@ SENSITIVE_KEYS = frozenset({
     "qbit_password",
     "qbit_proxy_url",
     "discord_webhook",
+    "media_servers",   # JSON array contains API keys — encrypt the whole blob
 })
 
 _fernet_instance = None
@@ -134,6 +135,8 @@ DEFAULT_SETTINGS = {
     "emby_leaving_soon_collection": "",
     "emby_leaving_soon_days": "30",
     "emby_leaving_soon_overlay": "false",
+    "media_server_type": "",           # "" | "emby" | "jellyfin" | "unknown"
+    "media_servers": "[]",             # JSON array of server configs (encrypted)
     "radarr_url": "",
     "radarr_api_key": "",
     "sonarr_url": "",
@@ -151,6 +154,8 @@ DEFAULT_SETTINGS = {
     "dry_run": "false",
     "scan_interval_hours": "6",
     "deletion_check_interval_hours": "1",
+    "scan_interval_minutes": "360",            # 6h par défaut
+    "deletion_check_interval_minutes": "60",   # 1h par défaut
     "log_level": "INFO",
     "deleted_retention_days": "90",
     "log_retention_days": "14",
@@ -213,12 +218,14 @@ _TABLES = [
             grace_days INTEGER NOT NULL DEFAULT 7,
             seerr_conditions TEXT NOT NULL DEFAULT '[]',
             enabled INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT
+            created_at TEXT,
+            server_id TEXT DEFAULT '0'
         )""",
         [
             ("seerr_conditions", "TEXT NOT NULL DEFAULT '[]'"),
             ("enabled", "INTEGER NOT NULL DEFAULT 1"),
             ("created_at", "TEXT"),
+            ("server_id", "TEXT DEFAULT '0'"),
         ],
     ),
     (
@@ -518,7 +525,92 @@ async def init_db():
         # 6. Encrypt any plaintext sensitive settings (no-op if key not configured)
         await _migrate_encrypt_settings(db)
 
+        # 7. Migrate legacy emby_url/key to media_servers[0] (idempotent)
+        async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
+            ms_row = await cur.fetchone()
+        current_ms_raw = ms_row[0] if ms_row else "[]"
+        current_ms = _decrypt_value(current_ms_raw) if current_ms_raw else "[]"
+        if current_ms in ("[]", "", None, "null"):
+            async with db.execute("SELECT value FROM settings WHERE key='emby_url'") as cur:
+                url_row = await cur.fetchone()
+            emby_url = url_row[0] if url_row else ""
+            if emby_url and not emby_url.startswith("enc:"):
+                # Use _decrypt_value so encrypted keys are read as plaintext
+                async with db.execute("SELECT value FROM settings WHERE key='emby_api_key'") as cur:
+                    key_row = await cur.fetchone()
+                async with db.execute("SELECT value FROM settings WHERE key='emby_external_url'") as cur:
+                    ext_row = await cur.fetchone()
+                async with db.execute("SELECT value FROM settings WHERE key='media_server_type'") as cur:
+                    type_row = await cur.fetchone()
+                raw_key = (key_row[0] if key_row else "") or ""
+                raw_ext = (ext_row[0] if ext_row else "") or ""
+                server0 = {
+                    "id": "0", "name": "Serveur Principal",
+                    "url": emby_url,
+                    "api_key": _decrypt_value(raw_key),   # decrypt if stored encrypted
+                    "ext_url": _decrypt_value(raw_ext),
+                    "type": (type_row[0] if type_row else "") or "",
+                    "enabled": True,
+                }
+                # Encrypt immediately so API keys never rest in plaintext in DB
+                await db.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    ("media_servers", _encrypt_value(json.dumps([server0])))
+                )
+                await db.commit()
+
+        # 8. Migrate interval settings: hours → minutes (idempotent)
+        async with db.execute("SELECT value FROM settings WHERE key='scan_interval_hours'") as cur:
+            row = await cur.fetchone()
+        if row and row[0] and row[0].strip().isdigit():
+            async with db.execute("SELECT value FROM settings WHERE key='scan_interval_minutes'") as cur2:
+                existing = await cur2.fetchone()
+            if not existing or existing[0] == "360":
+                await db.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    ("scan_interval_minutes", str(int(row[0]) * 60))
+                )
+        async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_hours'") as cur:
+            row = await cur.fetchone()
+        if row and row[0] and row[0].strip().isdigit():
+            async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_minutes'") as cur2:
+                existing = await cur2.fetchone()
+            if not existing or existing[0] == "60":
+                await db.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    ("deletion_check_interval_minutes", str(int(row[0]) * 60))
+                )
+        await db.commit()
+
     logger.info(f"Database initialized: {DB_PATH}")
+
+
+# ─── Media servers helpers ────────────────────────────────────────────────────
+async def get_media_servers() -> list:
+    """Return the parsed (decrypted) media_servers list. Never raises."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
+                row = await cur.fetchone()
+                if not row or not row[0]:
+                    return []
+                raw = _decrypt_value(row[0])
+                return json.loads(raw) if raw else []
+    except Exception:
+        return []
+
+
+async def save_media_servers(servers: list) -> None:
+    """Persist the media_servers list (encrypts if key configured)."""
+    import json as _json
+    raw = _json.dumps(servers)
+    stored = _encrypt_value(raw)  # encrypts if Fernet key is set
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("media_servers", stored)
+        )
+        await db.commit()
 
 
 # ─── Settings ─────────────────────────────────────────────────────────────────

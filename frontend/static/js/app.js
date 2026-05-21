@@ -276,6 +276,9 @@ async function loadDashboard() {
     const _sdrt = document.getElementById('sidebar-dry-run');
     if (_sdrt) _sdrt.checked = _drEnabled;
     _updateSidebarDryRunStyle(_drEnabled);
+    // Cache interval values so progress bars are accurate even before settings page is opened
+    _scanIntervalMin = parseInt(s.scan_interval_minutes || '360');
+    _delIntervalMin  = parseInt(s.deletion_check_interval_minutes || '60');
     loadSchedulerInfo();
   } catch(e) {}
 }

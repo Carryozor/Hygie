@@ -14,34 +14,45 @@ Ajouter la compatibilité Jellyfin par auto-détection, refondre l'interface Par
 
 ### Auto-détection
 
-Lors du test de connexion Emby/Jellyfin, Hygie appelle `GET /System/Info` et lit le champ `ProductName` de la réponse :
+Lors du test de connexion, Hygie appelle `GET /System/Info` et lit le champ `ProductName` de la réponse :
 - `"Emby Server"` → stocke `media_server_type = "emby"`
 - `"Jellyfin Server"` → stocke `media_server_type = "jellyfin"`
-- Autre / erreur → `media_server_type = ""`
+- Connexion réussie mais `ProductName` non reconnu (Plex, autre) → stocke `media_server_type = "unknown"`
+- Connexion échouée → `media_server_type` inchangé (on ne l'écrase pas sur erreur)
+- Jamais testé → `media_server_type = ""` (valeur par défaut en DB)
 
 Ce champ est stocké en DB (`settings` table, clé `media_server_type`). Il est **non sensible** (pas dans `SENSITIVE_KEYS`), mis à jour automatiquement à chaque test de connexion réussi.
 
 ### Fonctionnalités conditionnelles
 
-Quand `media_server_type == "jellyfin"` :
-- Les champs **Collection "Bientôt supprimé"** et **Overlay d'affiches** sont masqués dans l'UI et leurs jobs sont désactivés côté backend
-- Un message explicatif s'affiche dans l'onglet Serveur Multimédia
+Les fonctionnalités **Collection "Bientôt supprimé"** et **Overlay d'affiches** ne sont activées que si `media_server_type == "emby"` — de façon **strictement positive**, jamais par exclusion.
 
-Le reste de la logique (scan, suppression, notifications) est identique — l'API REST est compatible.
+| `media_server_type` | Collection/Overlay | Affichage UI |
+|---|---|---|
+| `"emby"` | ✅ Activés | Badge vert + logo Emby |
+| `"jellyfin"` | ❌ Masqués | Message violet "non disponible avec Jellyfin" |
+| `"unknown"` | ❌ Masqués | Message neutre "serveur non reconnu — fonctionnalités Emby uniquement" |
+| `""` *(jamais testé)* | Champs visibles mais grisés | "Non testé — cliquez Tester pour détecter" |
+
+Le reste de la logique (scan, suppression, notifications Discord) est identique pour tous les types — l'API REST est compatible.
 
 ### Adaptation backend (`emby_client.py`)
 
 La fonction `test_connection()` est modifiée pour retourner aussi le type détecté :
 ```python
 async def test_connection() -> tuple[bool, str, str]:
-    # retourne (ok, message, server_type)  ex: (True, "Emby 4.8.12", "emby")
+    # retourne (ok, message, server_type)
+    # ex: (True, "Emby 4.8.12", "emby")
+    #     (True, "Jellyfin 10.9.7", "jellyfin")
+    #     (True, "Plex Media Server", "unknown")
+    #     (False, "HTTP 401", "")  ← erreur : ne pas écraser le type
 ```
 
-Elle sauvegarde `media_server_type` en DB via `set_setting()`.
+Elle sauvegarde `media_server_type` en DB via `set_setting()` **uniquement si la connexion réussit**.
 
 ### Adaptation scheduler
 
-Dans `sync_emby_collection()` et `_overlay_poster()` : vérifier `await get_setting("media_server_type") == "jellyfin"` en début de fonction → retourner immédiatement si Jellyfin.
+Dans `sync_emby_collection()` et `_overlay_poster()` : vérifier **`await get_setting("media_server_type") == "emby"`** en début de fonction → retourner immédiatement si ce n'est pas explicitement Emby. Cette condition couvre Jellyfin, Plex, unknown, et non-testé en une seule vérification défensive.
 
 ---
 
@@ -161,5 +172,6 @@ Profiter du refactoring de l'UI settings pour corriger les XSS encore présents 
 - [x] Migration DB sans perte de données (conversion h→min au démarrage)
 - [x] Compatibilité ascendante : utilisateurs existants gardent leurs settings convertis
 - [x] Aucun push avant validation utilisateur
-- [x] Jellyfin skip est défensif (si `media_server_type != "emby"` plutôt que `== "jellyfin"` pour couvrir les cas inconnus)
+- [x] Collection/overlay activés **uniquement si `== "emby"`** — Plex, unknown, non-testé sont tous exclus par la même condition
+- [x] Un serveur non reconnu (Plex, Infuse, autre) stocke `"unknown"` et reçoit un message neutre — pas le message Jellyfin
 - [x] Icône générique via Font Awesome (déjà disponible, pas de dépendance supplémentaire)

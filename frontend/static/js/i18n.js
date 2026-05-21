@@ -247,6 +247,23 @@ const TRANSLATIONS = {
     'auto-détecté': 'auto-detected',
     'Mise à jour': 'Updated',
 
+
+    // ── Settings tabs (v2.1) ────────────────────────────────────────────────
+    'Serveur Multimédia': 'Media Server',
+    'Planification': 'Scheduling',
+    'Scan toutes les': 'Scan every',
+    'Vérification suppressions': 'Deletion check',
+    'heures': 'hours',
+    'minutes': 'minutes',
+    'Non encore testé — cliquez Tester pour détecter': 'Not tested yet — click Test to detect',
+    '✓ Emby détecté': '✓ Emby detected',
+    '✓ Jellyfin détecté': '✓ Jellyfin detected',
+    'Serveur non reconnu — fonctionnalités Collection/Overlay disponibles avec Emby uniquement': 'Unrecognized server — Collection/Overlay features available with Emby only',
+    'Gestion des films': 'Movie management',
+    'Gestion des séries': 'Series management',
+    'Compatible Gluetun / QUI': 'Gluetun / QUI compatible',
+    'Notifications webhook': 'Webhook notifications',
+    'Doit être accessible depuis ton navigateur pour les affiches Discord.': 'Must be accessible from your browser for Discord posters.',
     // ── Settings labels (seen in screenshots) ─────────────────────────────
     'URL interne (Docker)': 'Internal URL (Docker)',
     'URL externe (pour les affiches dans le navigateur)': 'External URL (for posters in browser)',

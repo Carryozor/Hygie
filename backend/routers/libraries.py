@@ -250,5 +250,6 @@ async def test_service_alias(service: str, user: str = Depends(require_auth)):
     tester = testers.get(service)
     if not tester:
         raise HTTPException(404, "Service inconnu")
-    ok, message = await tester()
+    result = await tester()
+    ok, message = result[0], result[1]
     return {"ok": ok, "message": message}

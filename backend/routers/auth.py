@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
 
 
 class SetupRequest(BaseModel):
@@ -42,10 +42,13 @@ async def auth_status():
 
 
 @router.post("/setup")
-async def setup(body: SetupRequest):
+async def setup(body: SetupRequest, request: Request):
     """Create the first (admin) user. Only allowed if no user exists."""
     if await user_exists():
         raise HTTPException(409, "Un utilisateur existe déjà")
+    ip = get_client_ip(request)
+    if rate_limit(f"setup:{ip}"):
+        raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     await create_user(body.username, body.password)
     token = create_token(body.username)
     return {"token": token, "username": body.username}

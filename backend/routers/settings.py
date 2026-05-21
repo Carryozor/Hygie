@@ -86,6 +86,15 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
             except Exception as e:
                 pass
 
+    # Invalidate image proxy whitelist when service URLs change
+    _url_keys = {"emby_url", "emby_external_url", "radarr_url", "sonarr_url"}
+    if _url_keys & set(updated):
+        try:
+            from ..main import invalidate_proxy_whitelist
+            invalidate_proxy_whitelist()
+        except Exception:
+            pass
+
     return {"updated": updated}
 
 

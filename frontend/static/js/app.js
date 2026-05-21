@@ -1,3 +1,14 @@
+// ─── Security utilities ───────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 let _token = localStorage.getItem('hygie_token') || '';
@@ -150,14 +161,15 @@ async function loadDashboard() {
       const days = Math.ceil((new Date(m.delete_at) - Date.now()) / 86400000);
       const col = days<=1?'#ef4444':days<=7?'#f59e0b':'#94a3b8';
       const icon = m.media_type==='Movie'?'🎬':'📺';
-      const poster = m.poster_url ? `<img src="${m.poster_url}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">` : '';
-      const lib = m.library_name || m.library_id;
-      const req = m.seerr_username ? `<span style="font-size:11px;color:var(--muted)">👤 ${m.seerr_username}</span>` : '';
+      const _title = escapeHtml(m.title);
+      const _lib = escapeHtml(m.library_name || m.library_id);
+      const poster = m.poster_url ? `<img src="${escapeHtml(m.poster_url)}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">` : '';
+      const req = m.seerr_username ? `<span style="font-size:11px;color:var(--muted)">👤 ${escapeHtml(m.seerr_username)}</span>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
         ${poster}
         <div style="flex:1;min-width:0">
-          <div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${m.title}</div>
-          <div style="display:flex;gap:8px;margin-top:2px">${req}<span style="font-size:11px;color:var(--muted)">📚 ${lib}</span></div>
+          <div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${_title}</div>
+          <div style="display:flex;gap:8px;margin-top:2px">${req}<span style="font-size:11px;color:var(--muted)">📚 ${_lib}</span></div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="color:${col};font-weight:600;font-size:12px">${days<=0?'Imminent':`dans ${days}j`}</div>
@@ -298,9 +310,9 @@ async function loadQueue() {
           ? `<img src="${m.poster_url}" style="width:100%;height:220px;object-fit:cover;border-radius:8px 8px 0 0" onerror="this.style.display='none'">`
           : `<div style="width:100%;height:220px;background:#ffffff08;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:center;font-size:40px">${icon}</div>`;
         const titleEl = m.seerr_request_url
-          ? `<a href="${m.seerr_request_url}" target="_blank" style="color:#e2e8f0;font-weight:600;font-size:12px;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.title}">${m.title}</a>`
-          : `<div style="color:#e2e8f0;font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${m.title}">${m.title}</div>`;
-        const req = m.seerr_username ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">👤 ${m.seerr_username}</div>` : '';
+          ? `<a href="${escapeHtml(m.seerr_request_url)}" target="_blank" style="color:#e2e8f0;font-weight:600;font-size:12px;text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</a>`
+          : `<div style="color:#e2e8f0;font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</div>`;
+        const req = m.seerr_username ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">👤 ${escapeHtml(m.seerr_username)}</div>` : '';
         return `<div class="card" style="overflow:hidden;cursor:pointer;border:${selectedIds.has(m.id)?'1px solid var(--accent)':'1px solid var(--border)'}" onclick="toggleSelect(${m.id})" id="row-${m.id}">
           ${poster}
           <div style="padding:8px">
@@ -310,7 +322,7 @@ async function loadQueue() {
               <span style="font-size:10px;color:${delCol};font-weight:600">${days<=0?'Imminent':days+'j'}</span>
             </div>
             ${m.status==='pending'?`<div style="display:flex;gap:4px;margin-top:6px">
-              <button class="btn btn-ghost" style="flex:1;padding:3px;font-size:10px;justify-content:center" onclick="event.stopPropagation();excludeMedia(${m.id})"><i class="fas fa-ban"></i></button>
+              <button class="btn btn-ghost" style="flex:1;padding:3px;font-size:10px;justify-content:center" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="${escapeHtml(m.media_type)}" data-poster="${escapeHtml(m.poster_url||'')}" data-lib="${escapeHtml(m.library_name||'')}" onclick="event.stopPropagation();openIgnoreModalFromEl(this)"><i class="fas fa-ban"></i></button>
               <button class="btn btn-danger" style="flex:1;padding:3px;font-size:10px;justify-content:center" onclick="event.stopPropagation();deleteNow(${m.id})"><i class="fas fa-trash"></i></button>
             </div>`:''}
           </div>
@@ -333,15 +345,15 @@ async function loadQueue() {
           ? `<img src="${m.poster_url}" style="width:32px;height:48px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`
           : `<div style="width:32px;height:48px;background:#ffffff08;border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px">${icon}</div>`;
         const titleLink = m.seerr_request_url
-          ? `<a href="${m.seerr_request_url}" target="_blank" class="media-title-link">${m.title}</a>`
-          : `<span style="color:#e2e8f0;font-weight:500">${m.title}</span>`;
+          ? `<a href="${escapeHtml(m.seerr_request_url)}" target="_blank" class="media-title-link">${escapeHtml(m.title)}</a>`
+          : `<span style="color:#e2e8f0;font-weight:500">${escapeHtml(m.title)}</span>`;
         const reqCell = m.seerr_username
-          ? `<div style="display:flex;align-items:center;gap:5px"><div style="width:20px;height:20px;border-radius:50%;background:#6366f120;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-user" style="font-size:9px;color:var(--accent2)"></i></div><span style="font-size:12px;color:#e2e8f0">${m.seerr_username}</span></div>`
+          ? `<div style="display:flex;align-items:center;gap:5px"><div style="width:20px;height:20px;border-radius:50%;background:#6366f120;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-user" style="font-size:9px;color:var(--accent2)"></i></div><span style="font-size:12px;color:#e2e8f0">${escapeHtml(m.seerr_username)}</span></div>`
           : `<span style="color:var(--muted);font-size:12px;font-style:italic">—</span>`;
         const badge = `<span class="badge badge-${m.status}">${m.status}</span>`;
         const actions = m.status==='pending'
           ? `<div style="display:flex;gap:3px">
-              <button class="btn btn-ghost" style="padding:4px 7px;font-size:11px" onclick="openIgnoreModal(${m.id},'${m.title.replace(/'/g,"\\'")}','${m.media_type}','${m.poster_url||''}','${m.library_name||''}')" title="Ignorer définitivement"><i class="fas fa-ban"></i></button>
+              <button class="btn btn-ghost" style="padding:4px 7px;font-size:11px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="${escapeHtml(m.media_type)}" data-poster="${escapeHtml(m.poster_url||'')}" data-lib="${escapeHtml(m.library_name||'')}" onclick="openIgnoreModalFromEl(this)" title="Ignorer définitivement"><i class="fas fa-ban"></i></button>
               <button class="btn btn-danger" style="padding:4px 7px;font-size:11px" onclick="deleteNow(${m.id})" title="Supprimer maintenant"><i class="fas fa-trash"></i></button>
              </div>`
           : `<button class="btn btn-ghost" style="padding:4px 7px;font-size:11px" onclick="removeFromQueue(${m.id})"><i class="fas fa-times"></i></button>`;
@@ -390,8 +402,10 @@ function updateBulkBar() {
   document.getElementById('bulk-count').textContent = `${selectedIds.size} sélectionné${selectedIds.size>1?'s':''}`;
 }
 async function bulkExclude() {
-  await api('/api/media/bulk','POST',{ids:[...selectedIds],action:'exclude'});
-  toast(`${selectedIds.size} exclu(s)`,'success'); selectedIds.clear(); loadQueue();
+  try {
+    await api('/api/media/bulk','POST',{ids:[...selectedIds],action:'ignore'});
+    toast(`${selectedIds.size} exclu(s)`,'success'); selectedIds.clear(); loadQueue();
+  } catch(e) { toast('Erreur lors de l\'exclusion','error'); }
 }
 async function bulkDelete() {
   if (!confirm(`Supprimer ${selectedIds.size} média(s) ?`)) return;
@@ -433,6 +447,19 @@ async function enrichSeerr() {
   setTimeout(()=>loadQueue(), 4000);
 }
 
+// ─── Seerr users cache (10 min TTL to avoid N requests per modal open) ──────
+let _seerrUsersCache = null;
+let _seerrUsersCacheTs = 0;
+const _SEERR_USERS_TTL = 600000;
+async function getSeerrUsers() {
+  if (_seerrUsersCache && Date.now() - _seerrUsersCacheTs < _SEERR_USERS_TTL) {
+    return _seerrUsersCache;
+  }
+  _seerrUsersCache = await api('/api/seerr-rules/users').catch(() => []);
+  _seerrUsersCacheTs = Date.now();
+  return _seerrUsersCache;
+}
+
 // ─── Libraries ────────────────────────────────────────────────────────────────
 const FIELD_LABELS_FR = { days_since_added:'Ajouté depuis',days_not_watched:'Non vu depuis',play_count:'Nb lectures',never_watched:'Jamais regardé' };
 const FIELD_LABELS_EN = { days_since_added:'Added since',days_not_watched:'Not watched since',play_count:'Play count',never_watched:'Never watched' };
@@ -463,7 +490,7 @@ async function loadLibraries() {
             <i class="fas fa-layer-group" style="color:${l.enabled?'var(--accent2)':'var(--muted)'}"></i>
           </div>
           <div style="min-width:0">
-            <div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">${l.name}</div>
+            <div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">${escapeHtml(l.name)}</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">${condText||'<span style="font-size:11px;color:var(--muted);font-style:italic">Aucune condition</span>'}${seerrText}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:4px">${_('Délai de grâce','Grace period')} : ${l.grace_days}${_('j','d')}${!l.enabled?(' · '+_('Désactivé','Disabled')):''}</div>
           </div>
@@ -550,7 +577,7 @@ async function openAddLibrary() {
   document.getElementById('lib-name').value=''; document.getElementById('lib-grace').value=7; document.getElementById('lib-logic').value='AND';
   renderConditions(); renderSeerrConditions();
   await loadEmbyLibOptions();
-  availableSeerrUsers = await api('/api/seerr-rules/users').catch(()=>[]);
+  availableSeerrUsers = await getSeerrUsers();
   renderSeerrConditions();
   document.getElementById('modal-library').style.display='flex';
 }
@@ -566,7 +593,7 @@ async function editLibrary(id) {
   document.getElementById('lib-logic').value=lib.logic||'AND';
   renderConditions();
   await loadEmbyLibOptions(lib.emby_library_id);
-  availableSeerrUsers = await api('/api/seerr-rules/users').catch(()=>[]);
+  availableSeerrUsers = await getSeerrUsers();
   renderSeerrConditions();
   document.getElementById('modal-library').style.display='flex';
 }
@@ -604,19 +631,40 @@ async function toggleLibrary(id, newEnabled) {
   toast(newEnabled ? 'Bibliothèque activée' : 'Bibliothèque désactivée', 'success');
   loadLibraries();
 }
+
+function openIgnoreModalFromEl(el) {
+  openIgnoreModal(
+    parseInt(el.dataset.mid),
+    el.dataset.title,
+    el.dataset.type,
+    el.dataset.poster,
+    el.dataset.lib
+  );
+}
+
 function closeModal() { document.getElementById('modal-library').style.display='none'; editingLibId=null; conditions=[]; seerrConditions=[]; }
 
+
+// ─── Settings field lists ─────────────────────────────────────────────────────
+const SETTINGS_FORM_FIELDS = [
+  'emby_url','emby_api_key','emby_external_url',
+  'radarr_url','radarr_api_key',
+  'sonarr_url','sonarr_api_key',
+  'seerr_url','seerr_api_key','seerr_external_url',
+  'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
+  'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
+  'discord_webhook','scan_interval_hours','deletion_check_interval_hours',
+];
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
-let _settingsLoaded=false, _settingsDirty=false;
+let _settingsLoaded=false, _settingsDirty=false, _settingsListenersAttached=false;
 function markSettingsDirty() { _settingsDirty=true; }
 
 async function loadSettings(force=false) {
   if (_settingsLoaded && _settingsDirty && !force) return;
   try {
     const s = await api('/api/settings/');
-    ['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-     'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_proxy_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-     'discord_webhook','scan_interval_hours','deletion_check_interval_hours'].forEach(f => {
+    SETTINGS_FORM_FIELDS.forEach(f => {
       const el=document.getElementById(f); if(el) el.value=s[f]||'';
     });
     document.getElementById('dry-run-toggle').checked = s.dry_run==='true';
@@ -625,29 +673,29 @@ async function loadSettings(force=false) {
     const ov = document.getElementById('emby_leaving_soon_overlay'); if(ov) ov.checked = s.emby_leaving_soon_overlay==='true';
     const ls=document.getElementById('log_level'); if(ls) ls.value=s.log_level||'INFO';
     _settingsLoaded=true; _settingsDirty=false;
-    document.querySelectorAll('#page-settings input, #page-settings select').forEach(el => {
-      el.addEventListener('input', markSettingsDirty);
-      el.addEventListener('change', markSettingsDirty);
-    });
+    if (!_settingsListenersAttached) {
+      document.querySelectorAll('#page-settings input, #page-settings select').forEach(el => {
+        el.addEventListener('input', markSettingsDirty);
+        el.addEventListener('change', markSettingsDirty);
+      });
+      _settingsListenersAttached = true;
+    }
   } catch(e) { toast('Erreur paramètres','error'); }
 }
 async function saveSettings() {
-  const fields=['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-    'seerr_url','seerr_api_key','seerr_external_url','qbit_url','qbit_proxy_url','qbit_user','qbit_password','emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-    'discord_webhook','scan_interval_hours','deletion_check_interval_hours'];
+  const fields = SETTINGS_FORM_FIELDS;
   const body={ dry_run:document.getElementById('dry-run-toggle').checked?'true':'false',
     deleted_retention_days:document.getElementById('deleted_retention_days')?.value||'90',
     log_level:document.getElementById('log_level')?.value||'INFO',
     qbit_action:document.getElementById('qbit_action')?.value||'tag_only',
     emby_leaving_soon_overlay:document.getElementById('emby_leaving_soon_overlay')?.checked?'true':'false' };
   fields.forEach(f=>{ const el=document.getElementById(f); if(el) body[f]=el.value; });
-  try { await api('/api/settings/','POST',body); _settingsDirty=false; toast('Paramètres enregistrés','success'); loadDashboard(); }
+  try { await api('/api/settings/','POST',body); _settingsDirty=false; toast('Paramètres enregistrés','success'); }
   catch(e) { toast('Erreur sauvegarde','error'); }
 }
 function collectFormValues() {
-  const fields=['emby_url','emby_api_key','emby_external_url','radarr_url','radarr_api_key','sonarr_url','sonarr_api_key',
-    'seerr_url','seerr_api_key','qbit_url','qbit_proxy_url','qbit_user','qbit_password','discord_webhook'];
-  const out={}; fields.forEach(f=>{ const el=document.getElementById(f); if(el) out[f]=el.value||''; });
+  const out={};
+  SETTINGS_FORM_FIELDS.forEach(f=>{ const el=document.getElementById(f); if(el) out[f]=el.value||''; });
   return out;
 }
 async function testConn(service) {
@@ -662,7 +710,7 @@ async function loadLogs() {
   const level=document.getElementById('log-level-filter')?.value||'';
   const cat=document.getElementById('log-cat-filter')?.value||'';
   try {
-    const logs=await api(`/api/logs/?limit=300${level?'&level='+level:''}${cat?'&category='+cat:''}`);
+    const logs=await api(`/api/logs/?limit=300${level?'&level='+level:''}${cat?'&source='+cat:''}`);
     const box=document.getElementById('logs-container');
     if (!logs.length) { box.innerHTML='<div style="color:var(--muted)">Aucun log</div>'; return; }
     box.innerHTML=logs.map(l=>{
@@ -744,6 +792,7 @@ async function syncEmbyCollection() {
 
 // ─── Auto-refresh ─────────────────────────────────────────────────────────────
 setInterval(()=>{
+  if (document.visibilityState !== 'visible') return;
   if(currentPage==='logs') loadLogs();
   if(currentPage==='jobs') loadJobs();
   if(currentPage==='dashboard') loadSchedulerInfo();
@@ -780,19 +829,19 @@ async function loadIgnored() {
         const daysLeft = Math.ceil((expDt - Date.now()) / 86400000);
         const expStr = expDt.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
         const col = daysLeft <= 7 ? '#ef4444' : daysLeft <= 30 ? '#f59e0b' : '#10b981';
-        expireBadge = `<div style="font-size:12px;color:${col};margin-top:3px"><i class="fas fa-clock" style="font-size:10px;margin-right:4px"></i>'+'Expire le'+' ${expStr} (${daysLeft > 0 ? 'dans '+daysLeft+'j' : 'aujourd\'hui'})</div>`;
+        expireBadge = `<div style="font-size:12px;color:${col};margin-top:3px"><i class="fas fa-clock" style="font-size:10px;margin-right:4px"></i>${_('Expire le','Expires on')} ${expStr} (${daysLeft > 0 ? _('dans','in')+' '+daysLeft+'j' : _("aujourd'hui",'today')})</div>`;
       } else {
-        expireBadge = `<div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="fas fa-infinity" style="font-size:10px;margin-right:4px"></i>'+'Ignoré définitivement'+'</div>`;
+        expireBadge = `<div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="fas fa-infinity" style="font-size:10px;margin-right:4px"></i>${_('Ignoré définitivement','Permanently ignored')}</div>`;
       }
       return `<div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
         ${poster}
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.title}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${lib} · '+'Ignoré le'+' ${dt}</div>
+          <div style="font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.title)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${lib} · ${_('Ignoré le','Ignored on')} ${dt}</div>
           ${expireBadge}
-          ${item.reason ? `<div style="font-size:12px;color:#f59e0b;margin-top:3px;display:flex;align-items:center;gap:4px"><i class="fas fa-comment-dots" style="font-size:10px"></i>${item.reason}</div>` : ''}
+          ${item.reason ? `<div style="font-size:12px;color:#f59e0b;margin-top:3px;display:flex;align-items:center;gap:4px"><i class="fas fa-comment-dots" style="font-size:10px"></i>${escapeHtml(item.reason)}</div>` : ''}
         </div>
-        <button class="btn btn-ghost" style="padding:7px 12px;flex-shrink:0;color:#10b981" onclick="unignoreMedia(${item.id},'${item.title.replace(/'/g,"\\'")}')">
+        <button class="btn btn-ghost" style="padding:7px 12px;flex-shrink:0;color:#10b981" data-id="${item.id}" data-title="${escapeHtml(item.title)}" onclick="unignoreMediaFromEl(this)">
           <i class="fas fa-rotate-left"></i>Remettre
         </button>
       </div>`;
@@ -800,6 +849,9 @@ async function loadIgnored() {
   } catch(e) { toast('Erreur chargement ignorés','error'); }
 }
 
+function unignoreMediaFromEl(el) {
+  unignoreMedia(parseInt(el.dataset.id), el.dataset.title);
+}
 async function unignoreMedia(id, title) {
   if (!confirm(`Remettre "${title}" dans la file d'attente maintenant ?`)) return;
   try {
@@ -891,8 +943,9 @@ async function loadDiscordMappings() {
           <div style="font-size:10px;color:var(--muted)">ID Seerr: ${u.id}${autoTag}</div>
         </div>
         <input class="input" style="width:160px;font-size:12px" placeholder="ID Discord (ex: 1234567890)" 
-               value="${savedId}" id="discord-map-${u.id}" 
-               oninput="saveDiscordMapping(${u.id},'${u.username.replace(/'/g,"\\'")}',this.value)">
+               value="${escapeHtml(savedId)}" id="discord-map-${u.id}"
+               data-uid="${u.id}" data-uname="${escapeHtml(u.username)}"
+               oninput="saveDiscordMappingFromEl(this)">
       </div>`;
     }).join('');
 
@@ -902,6 +955,9 @@ async function loadDiscordMappings() {
 }
 
 let _discordSaveTimers = {};
+function saveDiscordMappingFromEl(el) {
+  saveDiscordMapping(parseInt(el.dataset.uid), el.dataset.uname, el.value);
+}
 function saveDiscordMapping(userId, username, discordId) {
   // Debounce saves
   clearTimeout(_discordSaveTimers[userId]);
@@ -955,10 +1011,14 @@ function initWebSocket() {
     }
   };
 
-  _ws.onclose = () => {
+  _ws.onclose = (event) => {
     document.getElementById('ws-indicator').style.background = '#ef4444';
     document.getElementById('ws-indicator').title = 'Temps réel déconnecté';
-    // Reconnect after 3s
+    // 1008 = Policy Violation (auth rejected) — don't retry, session likely expired
+    if (event.code === 1008) {
+      document.getElementById('ws-indicator').title = 'Session expirée — reconnectez-vous';
+      return;
+    }
     clearTimeout(_wsReconnectTimer);
     _wsReconnectTimer = setTimeout(initWebSocket, 3000);
   };
@@ -973,12 +1033,20 @@ function _prependLog(log) {
   if (!box) return;
   const ts = log.ts?new Date(log.ts).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'medium'}):'—';
   const row = document.createElement('div');
-  row.className = `log-row log-${log.level}`;
-  row.innerHTML = `<span class="log-ts">${ts}</span><span class="log-level">${log.level}</span><span class="log-cat">${log.source||''}</span><span style="color:var(--text)">${log.message}</span>`;
+  // escapeHtml for class to prevent class injection
+  row.className = `log-row log-${escapeHtml(log.level||'')}`;
   row.style.background = '#6366f118';
+  const tsSpan = document.createElement('span');
+  tsSpan.className = 'log-ts'; tsSpan.textContent = ts;
+  const levelSpan = document.createElement('span');
+  levelSpan.className = 'log-level'; levelSpan.textContent = log.level||'';
+  const catSpan = document.createElement('span');
+  catSpan.className = 'log-cat'; catSpan.textContent = log.source||'';
+  const msgSpan = document.createElement('span');
+  msgSpan.style.color = 'var(--text)'; msgSpan.textContent = log.message||'';
+  row.append(tsSpan, levelSpan, catSpan, msgSpan);
   box.prepend(row);
   setTimeout(() => { row.style.background = ''; row.style.transition = 'background 1s'; }, 100);
-  // Remove old logs beyond 300
   const rows = box.querySelectorAll('.log-row');
   if (rows.length > 300) rows[rows.length-1].remove();
 }
@@ -1065,10 +1133,10 @@ function renderCalDetail(dateStr) {
         ${events.map(e => {
           const poster = e.poster_url ? `<img src="${e.poster_url}" style="width:50px;height:75px;object-fit:cover;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'">` : `<div style="width:50px;height:75px;background:#ffffff08;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px">${e.media_type==='Movie'?'🎬':'📺'}</div>`;
           const title = e.seerr_request_url
-            ? `<a href="${e.seerr_request_url}" target="_blank" style="color:#e2e8f0;font-weight:500;font-size:12px;text-decoration:none">${e.title}</a>`
-            : `<span style="color:#e2e8f0;font-weight:500;font-size:12px">${e.title}</span>`;
-          const lib = e.library_name || '';
-          const req = e.seerr_username ? `<div style="font-size:11px;color:var(--muted)">👤 ${e.seerr_username}</div>` : '';
+            ? `<a href="${escapeHtml(e.seerr_request_url)}" target="_blank" style="color:#e2e8f0;font-weight:500;font-size:12px;text-decoration:none">${escapeHtml(e.title)}</a>`
+            : `<span style="color:#e2e8f0;font-weight:500;font-size:12px">${escapeHtml(e.title)}</span>`;
+          const lib = escapeHtml(e.library_name || '');
+          const req = e.seerr_username ? `<div style="font-size:11px;color:var(--muted)">👤 ${escapeHtml(e.seerr_username)}</div>` : '';
           return `<div style="display:flex;gap:10px;padding:10px;background:#ffffff05;border-radius:8px;border:1px solid var(--border)">
             ${poster}
             <div style="min-width:0;flex:1">

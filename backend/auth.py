@@ -21,7 +21,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from jose import jwt, JWTError
+import jwt as _pyjwt
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from .database import DB_PATH
 
@@ -89,12 +90,12 @@ def create_token(username: str) -> str:
         "exp": datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRE_DAYS),
         "iat": datetime.now(timezone.utc),
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return _pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def verify_token(token: str) -> Optional[str]:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = _pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get("sub")
     except JWTError:
         return None

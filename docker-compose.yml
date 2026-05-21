@@ -1,11 +1,11 @@
 services:
   hygie:
-    image: ghcr.io/votre-user/hygie:latest
-    # or for local build:
+    image: ghcr.io/carryozor/hygie:latest
+    # Local build alternative:
     # build:
     #   context: .
     #   args:
-    #     VERSION: 1.5.0
+    #     VERSION: 2.0
     container_name: hygie
     restart: unless-stopped
     ports:
@@ -14,6 +14,11 @@ services:
       - ./data:/app/data
     environment:
       - TZ=Europe/Paris
+      # Optional: encrypt API keys at rest.
+      # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      # - HYGIE_ENCRYPTION_KEY=your-generated-key-here
+    mem_limit: 512m
+    cpus: '1.0'
     healthcheck:
       test: ["CMD", "python3", "/app/backend/healthcheck.py"]
       interval: 30s

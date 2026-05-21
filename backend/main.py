@@ -124,39 +124,53 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    scheduler.shutdown(wait=False)
+    try:
+        scheduler.shutdown(wait=True)
+    except Exception:
+        scheduler.shutdown(wait=False)
     logger.info("Hygie shutdown")
 
 
 # ─── Image proxy whitelist cache (TTL: 5 min) ────────────────────────────────
 _proxy_whitelist: set = set()
 _proxy_whitelist_ts: float = 0.0
+_proxy_whitelist_lock = asyncio.Lock()
 _PROXY_WHITELIST_TTL = 300
+
+
+def invalidate_proxy_whitelist() -> None:
+    """Force whitelist rebuild on next request (call after service URL changes)."""
+    global _proxy_whitelist_ts
+    _proxy_whitelist_ts = 0.0
 
 
 async def _get_proxy_whitelist() -> set:
     global _proxy_whitelist, _proxy_whitelist_ts
     if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
         return _proxy_whitelist
-    allowed = {
-        "image.tmdb.org",
-        "artworks.thetvdb.com",
-        "thetvdb.com",
-        "fanart.tv",
-        "assets.fanart.tv",
-    }
-    for setting_key in ("emby_url", "emby_external_url", "radarr_url", "sonarr_url"):
-        s = await get_setting(setting_key)
-        if s:
-            try:
-                h = (urlparse(s).hostname or "").lower()
-                if h:
-                    allowed.add(h)
-            except Exception:
-                pass
-    _proxy_whitelist = allowed
-    _proxy_whitelist_ts = time.time()
-    return allowed
+    async with _proxy_whitelist_lock:
+        # Double-check inside lock to avoid thundering herd
+        if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
+            return _proxy_whitelist
+        allowed = {
+            "image.tmdb.org",
+            "artworks.thetvdb.com",
+            "thetvdb.com",
+            "fanart.tv",
+            "assets.fanart.tv",
+        }
+        for setting_key in ("emby_url", "emby_external_url", "radarr_url", "sonarr_url"):
+            s = await get_setting(setting_key)
+            if s:
+                try:
+                    h = (urlparse(s).hostname or "").lower()
+                    if h:
+                        allowed.add(h)
+                except Exception:
+                    pass
+        _proxy_whitelist = allowed
+        _proxy_whitelist_ts = time.time()
+        return allowed
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -371,6 +385,8 @@ async def websocket_endpoint(ws: WebSocket):
         # First message must carry the auth token (sent by frontend onopen).
         # 10-second window — reject if auth is missing or invalid.
         raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
+        if len(raw) > 8192:
+            raise ValueError("message too large")
         data = json.loads(raw)
         if not verify_token(data.get("token", "")):
             raise ValueError("invalid token")

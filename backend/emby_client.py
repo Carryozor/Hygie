@@ -19,6 +19,11 @@ from .database import get_setting, set_setting, get_media_servers, save_media_se
 logger = logging.getLogger(__name__)
 
 
+def _auth(key: str) -> dict:
+    """Return the X-Emby-Token header dict for a given API key."""
+    return {"X-Emby-Token": key}
+
+
 async def get_client(server_id: str = "0") -> Tuple[str, str]:
     """Return (url, api_key) for the given server_id.
     Falls back to legacy emby_url/emby_api_key if media_servers is empty.
@@ -29,7 +34,6 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
         if str(s.get("id", "")) == str(server_id):
             url = (s.get("url") or "").rstrip("/")
             key = s.get("api_key") or ""
-            # Defensive: decrypt if value was accidentally stored encrypted
             if key.startswith("enc:"):
                 key = _decrypt_value(key)
             return url, key
@@ -61,16 +65,13 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
         return False, "URL ou clé API manquante", ""
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await client.get(f"{url}/System/Info", params={"api_key": key})
+            r = await client.get(f"{url}/System/Info", headers=_auth(key))
             if r.status_code == 200:
                 info = r.json()
                 version = info.get("Version", "?")
                 product = (info.get("ProductName") or "").lower()
                 v_parts = version.split(".")
                 v_major = v_parts[0] if v_parts else ""
-                # Detection logic (priority order):
-                # 1. ProductName explicit → most reliable
-                # 2. Version major: Emby = 4.x.x.x, Jellyfin = 10.x.x
                 if "jellyfin" in product or (not product and v_major == "10"):
                     server_type, label = "jellyfin", f"Jellyfin {version}"
                 elif "emby" in product or (not product and (v_major == "4" or len(v_parts) >= 4)):
@@ -81,7 +82,6 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
                 else:
                     server_type = "unknown"
                     label = f"Unknown {version}"
-                # Update type in media_servers for this server_id
                 servers = await get_media_servers()
                 updated = False
                 for s in servers:
@@ -90,7 +90,6 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
                         updated = True
                 if updated:
                     await save_media_servers(servers)
-                # Keep legacy field in sync
                 await set_setting("media_server_type", server_type)
                 return True, label, server_type
             return False, f"HTTP {r.status_code}", ""
@@ -99,15 +98,13 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
 
 
 async def get_libraries() -> List[dict]:
-    """Return all Emby libraries (folders + collection folders)."""
+    """Return all Emby libraries."""
     url, key = await get_client()
     if not url or not key:
         return []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
-            r = await client.get(
-                f"{url}/Library/MediaFolders", params={"api_key": key}
-            )
+            r = await client.get(f"{url}/Library/MediaFolders", headers=_auth(key))
             if r.status_code == 200:
                 return r.json().get("Items", [])
     except Exception as e:
@@ -121,7 +118,7 @@ async def get_users(server_id: str = "0") -> List[dict]:
         return []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await client.get(f"{url}/Users", params={"api_key": key})
+            r = await client.get(f"{url}/Users", headers=_auth(key))
             if r.status_code == 200:
                 return r.json()
     except Exception as e:
@@ -140,8 +137,8 @@ async def get_items_in_library(
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
             r = await client.get(
                 f"{url}/Items",
+                headers=_auth(key),
                 params={
-                    "api_key": key,
                     "ParentId": library_id,
                     "Recursive": "true",
                     "IncludeItemTypes": "Movie,Episode",
@@ -161,8 +158,7 @@ async def get_items_in_library(
 async def get_library_user_data(user_id: str, library_id: str, server_id: str = "0") -> dict:
     """Return {emby_item_id: UserData} for all items in a library for one user.
 
-    Replaces per-item get_user_data calls during scans: one HTTP request per
-    user per library instead of one per user per item.
+    One HTTP request per user per library, replacing per-item get_user_data calls.
     """
     url, key = await get_client(server_id)
     if not url or not key:
@@ -171,8 +167,8 @@ async def get_library_user_data(user_id: str, library_id: str, server_id: str = 
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
             r = await client.get(
                 f"{url}/Users/{user_id}/Items",
+                headers=_auth(key),
                 params={
-                    "api_key": key,
                     "ParentId": library_id,
                     "Fields": "UserData",
                     "Recursive": "true",
@@ -199,7 +195,8 @@ async def get_user_data(user_id: str, item_id: str, server_id: str = "0") -> Opt
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(
                 f"{url}/Users/{user_id}/Items/{item_id}",
-                params={"api_key": key, "Fields": "UserData"},
+                headers=_auth(key),
+                params={"Fields": "UserData"},
             )
             if r.status_code == 200:
                 return r.json().get("UserData", {})
@@ -215,9 +212,7 @@ async def delete_item(item_id: str, server_id: str = "0") -> bool:
         return False
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await client.delete(
-                f"{url}/Items/{item_id}", params={"api_key": key}
-            )
+            r = await client.delete(f"{url}/Items/{item_id}", headers=_auth(key))
             return r.status_code in (200, 204)
     except Exception as e:
         logger.warning(f"delete_item error: {e}")

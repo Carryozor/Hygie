@@ -1,3 +1,8 @@
+# Environment — never commit
+.env
+*.env
+!.env.example
+
 # Hygie data
 data/
 *.db

@@ -12,6 +12,8 @@ async def fresh_db(monkeypatch, tmp_path):
     # Clear all module-level caches
     dbmod._ms_cache = None
     dbmod._ms_cache_ts = 0.0
+    dbmod._settings_cache.clear()
+    dbmod._settings_cache_ts = 0.0
     await dbmod.init_db()
     yield db_path
 

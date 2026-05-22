@@ -10,7 +10,8 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-2.1-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-2.3-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Tests](https://img.shields.io/badge/tests-139%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -161,16 +162,24 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 # → qqUH3Oa9xK2mP8...  (copy this value)
 ```
 
-**2. Add it to your `docker-compose.yml`:**
+**2. Store it in a `.env` file** (never commit this file):
+
+```bash
+# .env
+HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
+```
+
+Reference it in `docker-compose.yml`:
 
 ```yaml
     environment:
-      - HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
+      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
 ```
 
 **3. Restart Hygie.** Existing credentials are automatically encrypted on first startup. No manual migration needed.
 
 > **Important:** Back up your key. If lost, stored API keys cannot be decrypted and must be re-entered.
+> A `.env.example` file is provided with generation instructions.
 
 **Behavior without the key:** Hygie runs normally with plaintext storage — fully backward-compatible.
 
@@ -212,6 +221,7 @@ Added to queue (delete_at = now + grace_period)
 | Container | **Non-root** user (UID 1000), **tini** as PID 1 |
 | Database | **WAL mode**, integrity check in healthcheck |
 | API keys at rest | Optional **Fernet AES-128** encryption via `HYGIE_ENCRYPTION_KEY` |
+| Emby/Jellyfin auth | `X-Emby-Token` **header** — API key never in URL query string |
 | WebSocket | Auth token required on first message (8KB size limit) |
 
 > ⚠️ HTTPS strongly recommended via reverse proxy (Caddy, Traefik, Nginx)
@@ -223,10 +233,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.1 \
+  --build-arg VERSION=2.3 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.1 \
+  -t ghcr.io/carryozor/hygie:2.3 \
   --push .
 ```
 
@@ -252,6 +262,15 @@ hygie/
 ```
 
 **Stack:** FastAPI · APScheduler · SQLite (aiosqlite) · httpx · Pillow · PyJWT · cryptography · Python 3.12
+
+### 🧪 Tests
+
+```bash
+pip install pytest pytest-asyncio pytest-httpx
+pytest tests/ -v
+```
+
+139 tests covering: database encryption, settings cache, auth (JWT/Argon2id/rate limiting), condition evaluation, overlay rendering, Emby client (header auth), and FastAPI routes (auth, proxy security, scheduler).
 
 ### 📋 Automatic Migrations
 
@@ -398,16 +417,24 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 # → qqUH3Oa9xK2mP8...  (copier cette valeur)
 ```
 
-**2. L'ajouter dans `docker-compose.yml` :**
+**2. La stocker dans un fichier `.env`** (ne jamais committer ce fichier) :
+
+```bash
+# .env
+HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
+```
+
+La référencer dans `docker-compose.yml` :
 
 ```yaml
     environment:
-      - HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
+      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
 ```
 
 **3. Redémarrer Hygie.** Les credentials existants sont automatiquement chiffrés au premier démarrage.
 
 > **Important :** Sauvegardez votre clé. En cas de perte, les clés API devront être re-saisies.
+> Un fichier `.env.example` est fourni avec les instructions de génération.
 
 **Comportement sans la clé :** Hygie fonctionne normalement avec le stockage en clair.
 
@@ -449,6 +476,7 @@ Ajouté à la file (delete_at = maintenant + délai_de_grâce)
 | Conteneur | Utilisateur **non-root** (UID 1000), **tini** comme PID 1 |
 | Base de données | **Mode WAL**, vérification d'intégrité dans le healthcheck |
 | Clés API au repos | Chiffrement **Fernet AES-128** optionnel via `HYGIE_ENCRYPTION_KEY` |
+| Auth Emby/Jellyfin | Header `X-Emby-Token` — clé API jamais dans l'URL |
 | WebSocket | Token auth sur le premier message (limite 8 Ko) |
 
 > ⚠️ HTTPS fortement recommandé via reverse proxy (Caddy, Traefik, Nginx)
@@ -460,12 +488,21 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.1 \
+  --build-arg VERSION=2.3 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.1 \
+  -t ghcr.io/carryozor/hygie:2.3 \
   --push .
 ```
+
+### 🧪 Tests
+
+```bash
+pip install pytest pytest-asyncio pytest-httpx
+pytest tests/ -v
+```
+
+139 tests couvrant : chiffrement de la base, cache des settings, authentification (JWT/Argon2id/rate limiting), évaluation des conditions, rendu des overlays, client Emby (auth par header) et routes FastAPI (auth, proxy SSRF, scheduler).
 
 ### 📋 Migrations automatiques
 

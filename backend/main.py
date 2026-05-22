@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote, urlparse
 
 import aiosqlite
@@ -86,6 +86,35 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 scheduler = AsyncIOScheduler()
 
 
+async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
+    """Return next_run_time for a job, preserving the countdown across restarts.
+
+    Looks up the last run in job_history. If a run exists and the next scheduled
+    time is still in the future, return it — so a restart doesn't reset the timer.
+    If overdue or no history, schedule 30 seconds after startup.
+    """
+    now = datetime.now(timezone.utc)
+    try:
+        from . import database as _dbmod  # live attribute lookup respects monkeypatching in tests
+        async with aiosqlite.connect(_dbmod.DB_PATH) as db:
+            async with db.execute(
+                "SELECT started_at FROM job_history WHERE job_type=? "
+                "ORDER BY started_at DESC LIMIT 1",
+                (job_type,),
+            ) as cur:
+                row = await cur.fetchone()
+        if row and row[0]:
+            last_ran = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
+            if last_ran.tzinfo is None:
+                last_ran = last_ran.replace(tzinfo=timezone.utc)
+            next_run = last_ran + timedelta(minutes=interval_minutes)
+            if next_run > now:
+                return next_run
+    except Exception as e:
+        logger.debug(f"_job_next_run({job_type}): {e}")
+    return now + timedelta(seconds=30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
@@ -106,10 +135,15 @@ async def lifespan(app: FastAPI):
     except ValueError:
         scan_min, del_min = 360, 60
 
-    scheduler.add_job(run_scan, "interval", minutes=scan_min, id="scan_job", replace_existing=True)
-    scheduler.add_job(
-        run_deletion, "interval", minutes=del_min, id="deletion_job", replace_existing=True
-    )
+    # Preserve countdown across restarts: compute next_run from last job_history entry.
+    # If overdue (last run + interval < now), schedule 30s from now so startup is not blocked.
+    scan_next = await _job_next_run("scan", scan_min)
+    del_next  = await _job_next_run("deletion_check", del_min)
+
+    scheduler.add_job(run_scan, "interval", minutes=scan_min, id="scan_job",
+                      next_run_time=scan_next, replace_existing=True)
+    scheduler.add_job(run_deletion, "interval", minutes=del_min, id="deletion_job",
+                      next_run_time=del_next, replace_existing=True)
     # ignored_cleanup and overlay_daily are internal — they run silently without job_history entries
     scheduler.add_job(
         _internal_cleanup, "interval", hours=12, id="ignored_cleanup", replace_existing=True

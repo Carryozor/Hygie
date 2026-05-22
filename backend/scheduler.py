@@ -1049,47 +1049,42 @@ async def run_ignored_cleanup():
 
 
 # ═══ Emby "Bientôt supprimé" collection sync ═════════════════════════════════
-async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]:
-    """Add a colored banner 'Supprimé dans Xj' at the bottom of a poster."""
+def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr") -> Optional[bytes]:
+    """
+    CPU-bound PIL rendering — synchronous so it can run in a thread pool.
+    Called via run_in_executor from the async wrapper below.
+    """
+    if not image_bytes:
+        return None
     try:
         from PIL import Image, ImageDraw, ImageFont
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         w, h = img.size
 
-        # Banner at the BOTTOM — ~13% of height, font fills the banner
         banner_h = max(52, int(h * 0.13))
-
         banner = Image.new("RGBA", (w, banner_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(banner)
         draw.rectangle([0, 0, w, banner_h], fill=(200, 30, 30, 230))
 
-        # Bilingual overlay label based on Hygie language setting (stored in DB)
-        try:
-            ui_lang = await get_setting("ui_language") or "fr"
-        except Exception:
-            ui_lang = "fr"
         if ui_lang == "en":
             label = f"Deleted in {days_left}d" if days_left > 0 else "Imminent"
         else:
             label = f"Supprimé dans {days_left}j" if days_left > 0 else "Imminent"
 
-        # Find largest font that fits banner width and height
         font_paths = (
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         )
         font = None
-        max_font = banner_h - 10  # fill the banner, leave 5px padding top/bottom
+        max_font = banner_h - 10
         for size in range(max_font, 8, -1):
             for fp in font_paths:
                 try:
                     candidate = ImageFont.truetype(fp, size)
                     bbox = draw.textbbox((0, 0), label, font=candidate)
-                    text_w = bbox[2] - bbox[0]
-                    text_h = bbox[3] - bbox[1]
-                    if text_w <= w - 8 and text_h <= banner_h - 4:
+                    if bbox[2] - bbox[0] <= w - 8 and bbox[3] - bbox[1] <= banner_h - 4:
                         font = candidate
                         break
                 except Exception:
@@ -1100,10 +1095,8 @@ async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]
             font = ImageFont.load_default()
 
         bbox = draw.textbbox((0, 0), label, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        x = max(0, (w - text_w) // 2)
-        y = max(0, (banner_h - text_h) // 2)
+        x = max(0, (w - (bbox[2] - bbox[0])) // 2)
+        y = max(0, (banner_h - (bbox[3] - bbox[1])) // 2)
         draw.text((x + 1, y + 1), label, font=font, fill=(0, 0, 0, 160))
         draw.text((x, y), label, font=font, fill=(255, 255, 255, 255))
 
@@ -1112,11 +1105,17 @@ async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]
 
         out = io.BytesIO()
         result.convert("RGB").save(out, format="JPEG", quality=88)
-        logger.debug(f"Overlay généré: {w}x{h}, banner={banner_h}px, label={label!r}")
+        logger.debug(f"Overlay: {w}x{h}, banner={banner_h}px, label={label!r}")
         return out.getvalue()
     except Exception as e:
-        logger.warning(f"_overlay_poster error: {e}")
+        logger.warning(f"_overlay_poster_sync error: {e}")
         return None
+
+
+async def _overlay_poster(image_bytes: bytes, days_left: int, ui_lang: str = "fr") -> Optional[bytes]:
+    """Async wrapper — runs CPU-bound PIL work in a thread pool to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _overlay_poster_sync, image_bytes, days_left, ui_lang)
 
 
 async def sync_emby_collection():
@@ -1277,6 +1276,7 @@ async def sync_emby_collection():
             # after poster refresh, Emby restart, or code updates.
             overlay_enabled = await get_bool_setting("emby_leaving_soon_overlay")
             if overlay_enabled and wanted:
+                ui_lang = await get_setting("ui_language") or "fr"
                 for w in wanted:
                     try:
                         dt = parse_iso_dt(w["delete_at"])
@@ -1307,7 +1307,7 @@ async def sync_emby_collection():
 
                         if not original_bytes:
                             continue
-                        modified = await _overlay_poster(original_bytes, days_left)
+                        modified = await _overlay_poster(original_bytes, days_left, ui_lang)
                         if not modified:
                             continue
                         # Emby image upload: body must be base64-encoded

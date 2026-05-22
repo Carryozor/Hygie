@@ -627,9 +627,8 @@ async def reevaluate_library_queue(library_id: str) -> int:
                                 b64 = base64.b64encode(pr.content).decode("ascii")
                                 await hc.post(
                                     f"{emby_url_val}/Items/{emby_id}/Images/Primary",
-                                    params={"api_key": emby_key_val},
+                                    headers={"X-Emby-Token": emby_key_val, "Content-Type": "image/jpeg"},
                                     content=b64,
-                                    headers={"Content-Type": "image/jpeg"},
                                 )
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")
@@ -813,36 +812,81 @@ async def run_deletion():
             await finish_job_run(run_id, "error", str(e))
 
 
+async def _find_torrent_hash(row: dict) -> Optional[str]:
+    """Find torrent hash via Radarr/Sonarr history, with qBit path fallback.
+
+    Must be called BEFORE removing from arr — history disappears after deletion.
+    """
+    file_path = row.get("file_path", "")
+    media_type = row.get("media_type", "")
+    if media_type == "Movie":
+        rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
+        if rid:
+            return await radarr_get_torrent_hash(int(rid))
+    else:
+        sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
+        if sid:
+            return await sonarr_get_torrent_hash(int(sid))
+    if file_path:
+        return await qbit_find_by_path(file_path)
+    return None
+
+
+async def _delete_from_arr(row: dict) -> None:
+    """Remove media from Radarr or Sonarr (keep files — hardlink already removed by Emby)."""
+    file_path = row.get("file_path", "")
+    media_type = row.get("media_type", "")
+    title = row.get("title", "?")
+    if media_type == "Movie":
+        rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
+        if rid:
+            await radarr_delete(int(rid), delete_files=False)
+            await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
+    else:
+        sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
+        if sid:
+            await sonarr_delete_episode_file(int(sid))
+            await add_log("DEBUG", f"Sonarr : {title} retiré", "deletion")
+
+
+async def _delete_from_seerr(row: dict) -> None:
+    """Delete the Seerr request linked to this media, if any."""
+    if row.get("seerr_id"):
+        await seerr_delete_request(row["seerr_id"])
+        await add_log("DEBUG", f"Seerr : requête {row.get('title','?')} supprimée", "deletion")
+
+
+async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag: str) -> None:
+    """Tag or delete the torrent in qBittorrent based on configured action."""
+    try:
+        if qbit_action == "delete_torrent":
+            ok = await qbit_delete_torrent(torrent_hash, delete_files=True)
+            msg = (f"qBittorrent : torrent + fichier supprimés pour {title}"
+                   if ok else f"qBittorrent : échec suppression {title}")
+            await add_log("INFO" if ok else "WARN", msg, "deletion")
+        else:
+            ok = await qbit_add_tag(torrent_hash, qbit_tag)
+            msg = (f"qBittorrent : tag '{qbit_tag}' ajouté à {title}"
+                   if ok else f"qBittorrent : échec tag {title}")
+            await add_log("INFO" if ok else "WARN", msg, "deletion")
+    except Exception as e:
+        await add_log("WARN", f"qBittorrent erreur pour {title}: {e}", "deletion")
+
+
 async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_tag_val: str = "") -> bool:
     """
     Delete a media item across all services.
 
-    Order matters:
-      1. Find torrent hash (Radarr/Sonarr history) — BEFORE removing from arr
-      2. Send Discord notification — BEFORE Emby deletion (image still accessible)
+    Order:
+      1. Find torrent hash (before removing from arr — history disappears after)
+      2. Discord notification (before Emby — image still accessible)
       3. Emby — remove hardlink
       4. Radarr/Sonarr — remove item (keep files)
       5. Seerr — delete request
-      6. qBittorrent — tag OR delete torrent+files
+      6. qBittorrent — tag or delete torrent
     """
     title = row.get("title", "?")
     emby_id = row.get("emby_id")
-    file_path = row.get("file_path", "")
-    media_type = row.get("media_type", "")
-    # Resolve server_id from the item's library for multi-server correctness
-    library_server_id = "0"
-    if row.get("library_id"):
-        try:
-            async with aiosqlite.connect(DB_PATH) as _ldb:
-                async with _ldb.execute(
-                    "SELECT server_id FROM libraries WHERE id=?", (row["library_id"],)
-                ) as _cur:
-                    _lrow = await _cur.fetchone()
-                    if _lrow and _lrow[0]:
-                        library_server_id = str(_lrow[0])
-        except Exception:
-            pass
-
     prefix = "[DRY RUN] " if dry_run else ""
     await add_log("INFO", f"{prefix}Suppression : {title}", "deletion")
 
@@ -853,90 +897,53 @@ async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_ta
         qbit_action = qbit_action or await get_setting("qbit_action") or "tag_only"
         qbit_tag = qbit_tag_val or await get_setting("qbit_tag") or "Supprimé-Hygie"
 
-        # ── 1. Torrent hash via arr history (before deletion) ────────────────
-        torrent_hash: Optional[str] = None
-        if media_type == "Movie":
-            rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
-            if rid:
-                torrent_hash = await radarr_get_torrent_hash(int(rid))
-        else:
-            sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
-            if sid:
-                torrent_hash = await sonarr_get_torrent_hash(int(sid))
-        if not torrent_hash and file_path:
-            torrent_hash = await qbit_find_by_path(file_path)
+        # Resolve library server_id for multi-server correctness
+        library_server_id = "0"
+        if row.get("library_id"):
+            try:
+                async with aiosqlite.connect(DB_PATH) as _db:
+                    async with _db.execute(
+                        "SELECT server_id FROM libraries WHERE id=?", (row["library_id"],)
+                    ) as cur:
+                        lrow = await cur.fetchone()
+                        if lrow and lrow[0]:
+                            library_server_id = str(lrow[0])
+            except Exception:
+                pass
 
-        # ── 2. Discord (BEFORE Emby — image still accessible) ────────────────
+        torrent_hash = await _find_torrent_hash(row)
+
         try:
             await send_notification([row], "now", dry_run=False)
         except Exception as e:
             await add_log("WARN", f"Discord (non bloquant) : {e}", "deletion")
 
-        # ── 3. Emby ──────────────────────────────────────────────────────────
         if emby_id:
             await delete_item(emby_id, server_id=library_server_id)
             await add_log("DEBUG", f"Emby : hardlink retiré pour {title}", "deletion")
 
-        # ── 4. Radarr / Sonarr ───────────────────────────────────────────────
-        if media_type == "Movie":
-            rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
-            if rid:
-                await radarr_delete(int(rid), delete_files=False)
-                await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
-        else:
-            sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
-            if sid:
-                await sonarr_delete_episode_file(int(sid))
-                await add_log("DEBUG", f"Sonarr : {title} retiré", "deletion")
+        await _delete_from_arr(row)
+        await _delete_from_seerr(row)
 
-        # ── 5. Seerr ─────────────────────────────────────────────────────────
-        if row.get("seerr_id"):
-            await seerr_delete_request(row["seerr_id"])
-            await add_log("DEBUG", f"Seerr : requête {title} supprimée", "deletion")
-
-        # ── 6. qBittorrent ───────────────────────────────────────────────────
         if torrent_hash:
-            try:
-                if qbit_action == "delete_torrent":
-                    ok = await qbit_delete_torrent(torrent_hash, delete_files=True)
-                    msg = (
-                        f"qBittorrent : torrent + fichier supprimés pour {title}"
-                        if ok
-                        else f"qBittorrent : échec suppression {title}"
-                    )
-                    await add_log("INFO" if ok else "WARN", msg, "deletion")
-                else:
-                    ok = await qbit_add_tag(torrent_hash, qbit_tag)
-                    msg = (
-                        f"qBittorrent : tag '{qbit_tag}' ajouté à {title}"
-                        if ok
-                        else f"qBittorrent : échec tag {title}"
-                    )
-                    await add_log("INFO" if ok else "WARN", msg, "deletion")
-            except Exception as e:
-                await add_log(
-                    "WARN", f"qBittorrent erreur pour {title}: {e}", "deletion"
-                )
+            await _handle_qbit(torrent_hash, title, qbit_action, qbit_tag)
         else:
-            await add_log(
-                "INFO",
-                f"qBittorrent : torrent non trouvé pour {title} (ignoré)",
-                "deletion",
-            )
+            await add_log("INFO", f"qBittorrent : torrent non trouvé pour {title} (ignoré)", "deletion")
 
         await add_log("INFO", f"Suppression complète : {title}", "deletion")
-        # Increment global stats
+
         try:
             month = now_utc().strftime("%Y-%m")
             async with aiosqlite.connect(DB_PATH) as _db:
                 await _db.execute(
                     "INSERT INTO stats_history (ts, total_deleted, total_scanned, space_freed_bytes, month) "
                     "VALUES (?, 1, 0, 0, ?)",
-                    (now_utc().isoformat(), month)
+                    (now_utc().isoformat(), month),
                 )
                 await _db.commit()
         except Exception:
             pass
+
         return True
     except Exception as e:
         logger.exception(f"_delete_media {title}")
@@ -1049,47 +1056,42 @@ async def run_ignored_cleanup():
 
 
 # ═══ Emby "Bientôt supprimé" collection sync ═════════════════════════════════
-async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]:
-    """Add a colored banner 'Supprimé dans Xj' at the bottom of a poster."""
+def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr") -> Optional[bytes]:
+    """
+    CPU-bound PIL rendering — synchronous so it can run in a thread pool.
+    Called via run_in_executor from the async wrapper below.
+    """
+    if not image_bytes:
+        return None
     try:
         from PIL import Image, ImageDraw, ImageFont
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         w, h = img.size
 
-        # Banner at the BOTTOM — ~13% of height, font fills the banner
         banner_h = max(52, int(h * 0.13))
-
         banner = Image.new("RGBA", (w, banner_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(banner)
         draw.rectangle([0, 0, w, banner_h], fill=(200, 30, 30, 230))
 
-        # Bilingual overlay label based on Hygie language setting (stored in DB)
-        try:
-            ui_lang = await get_setting("ui_language") or "fr"
-        except Exception:
-            ui_lang = "fr"
         if ui_lang == "en":
             label = f"Deleted in {days_left}d" if days_left > 0 else "Imminent"
         else:
             label = f"Supprimé dans {days_left}j" if days_left > 0 else "Imminent"
 
-        # Find largest font that fits banner width and height
         font_paths = (
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         )
         font = None
-        max_font = banner_h - 10  # fill the banner, leave 5px padding top/bottom
+        max_font = banner_h - 10
         for size in range(max_font, 8, -1):
             for fp in font_paths:
                 try:
                     candidate = ImageFont.truetype(fp, size)
                     bbox = draw.textbbox((0, 0), label, font=candidate)
-                    text_w = bbox[2] - bbox[0]
-                    text_h = bbox[3] - bbox[1]
-                    if text_w <= w - 8 and text_h <= banner_h - 4:
+                    if bbox[2] - bbox[0] <= w - 8 and bbox[3] - bbox[1] <= banner_h - 4:
                         font = candidate
                         break
                 except Exception:
@@ -1100,10 +1102,8 @@ async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]
             font = ImageFont.load_default()
 
         bbox = draw.textbbox((0, 0), label, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        x = max(0, (w - text_w) // 2)
-        y = max(0, (banner_h - text_h) // 2)
+        x = max(0, (w - (bbox[2] - bbox[0])) // 2)
+        y = max(0, (banner_h - (bbox[3] - bbox[1])) // 2)
         draw.text((x + 1, y + 1), label, font=font, fill=(0, 0, 0, 160))
         draw.text((x, y), label, font=font, fill=(255, 255, 255, 255))
 
@@ -1112,11 +1112,185 @@ async def _overlay_poster(image_bytes: bytes, days_left: int) -> Optional[bytes]
 
         out = io.BytesIO()
         result.convert("RGB").save(out, format="JPEG", quality=88)
-        logger.debug(f"Overlay généré: {w}x{h}, banner={banner_h}px, label={label!r}")
+        logger.debug(f"Overlay: {w}x{h}, banner={banner_h}px, label={label!r}")
         return out.getvalue()
     except Exception as e:
-        logger.warning(f"_overlay_poster error: {e}")
+        logger.warning(f"_overlay_poster_sync error: {e}")
         return None
+
+
+async def _overlay_poster(image_bytes: bytes, days_left: int, ui_lang: str = "fr") -> Optional[bytes]:
+    """Async wrapper — runs CPU-bound PIL work in a thread pool to avoid blocking the event loop."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _overlay_poster_sync, image_bytes, days_left, ui_lang)
+
+
+# ═══ sync_emby_collection helpers ════════════════════════════════════════════
+
+async def _get_or_create_collection(
+    client: httpx.AsyncClient,
+    emby_url: str,
+    emby_key: str,
+    collection_name: str,
+    wanted_ids: set,
+) -> Optional[str]:
+    """Find existing collection by name or create it. Returns collection_id or None."""
+    r = await client.get(
+        f"{emby_url}/Items",
+        headers={"X-Emby-Token": emby_key},
+        params={"IncludeItemTypes": "BoxSet", "Recursive": "true",
+                "SearchTerm": collection_name, "Limit": 10},
+    )
+    if r.status_code == 200:
+        for item in r.json().get("Items", []):
+            if item.get("Name", "").lower() == collection_name.lower():
+                return item["Id"]
+
+    if not wanted_ids:
+        return None
+
+    ru = await client.get(f"{emby_url}/Users", headers={"X-Emby-Token": emby_key})
+    user_id = ru.json()[0]["Id"] if ru.status_code == 200 and ru.json() else ""
+
+    rc = await client.post(
+        f"{emby_url}/Collections",
+        headers={"X-Emby-Token": emby_key},
+        params={"Name": collection_name, "Ids": ",".join(wanted_ids), "UserId": user_id},
+    )
+    if rc.status_code in (200, 204):
+        await add_log("INFO",
+                      f"Collection Emby '{collection_name}' créée ({len(wanted_ids)} médias)",
+                      "system")
+        return rc.json().get("Id")
+    return None
+
+
+async def _sync_collection_membership(
+    client: httpx.AsyncClient,
+    emby_url: str,
+    emby_key: str,
+    collection_id: str,
+    wanted_ids: set,
+) -> tuple[set, set]:
+    """Add/remove items to match wanted_ids. Returns (added, removed) for logging."""
+    rc = await client.get(
+        f"{emby_url}/Items",
+        headers={"X-Emby-Token": emby_key},
+        params={"ParentId": collection_id, "Recursive": "false", "Limit": 5000, "Fields": "Id"},
+    )
+    current_ids: set = set()
+    if rc.status_code == 200:
+        current_ids = {item["Id"] for item in rc.json().get("Items", [])}
+
+    to_add = wanted_ids - current_ids
+    to_remove = current_ids - wanted_ids
+
+    if to_add:
+        await client.post(
+            f"{emby_url}/Collections/{collection_id}/Items",
+            headers={"X-Emby-Token": emby_key},
+            params={"Ids": ",".join(to_add)},
+        )
+    if to_remove:
+        await client.delete(
+            f"{emby_url}/Collections/{collection_id}/Items",
+            headers={"X-Emby-Token": emby_key},
+            params={"Ids": ",".join(to_remove)},
+        )
+    return to_add, to_remove
+
+
+async def _restore_posters_for_removed(
+    client: httpx.AsyncClient,
+    emby_url: str,
+    emby_key: str,
+    removed_ids: set,
+) -> None:
+    """Restore original TMDB poster for items removed from the collection."""
+    if not removed_ids:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        for emby_id in removed_ids:
+            try:
+                async with db.execute(
+                    "SELECT poster_url FROM media_queue WHERE emby_id=?", (emby_id,)
+                ) as cur:
+                    row = await cur.fetchone()
+                poster_url = dict(row)["poster_url"] if row else ""
+                if not poster_url or not poster_url.startswith("http"):
+                    continue
+                pr = await client.get(poster_url, follow_redirects=True)
+                if pr.status_code != 200 or not pr.headers.get("content-type", "").startswith("image"):
+                    continue
+                b64 = base64.b64encode(pr.content).decode("ascii")
+                resp = await client.post(
+                    f"{emby_url}/Items/{emby_id}/Images/Primary",
+                    headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
+                    content=b64,
+                )
+                if resp.status_code in (200, 204):
+                    await add_log("INFO", f"Affiche restaurée : {emby_id}", "system")
+                else:
+                    logger.warning(f"Restore poster HTTP {resp.status_code} for {emby_id}")
+            except Exception as e:
+                logger.warning(f"Restore poster error for {emby_id}: {e}")
+
+
+async def _apply_overlays(
+    client: httpx.AsyncClient,
+    emby_url: str,
+    emby_key: str,
+    wanted: list,
+    ui_lang: str,
+) -> None:
+    """Apply 'Supprimé dans Xj' banner to all wanted items."""
+    for w in wanted:
+        try:
+            dt = parse_iso_dt(w["delete_at"])
+            if not dt:
+                continue
+            days_left = max(0, (dt.date() - now_utc().date()).days)
+
+            original_bytes: Optional[bytes] = None
+            poster_url = w.get("poster_url", "")
+            if poster_url and poster_url.startswith("http"):
+                try:
+                    pr = await client.get(poster_url, follow_redirects=True)
+                    if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
+                        original_bytes = pr.content
+                except Exception as e:
+                    logger.debug(f"Poster fetch failed: {e}")
+
+            # Fallback: fetch from Emby only if no other source available
+            if not original_bytes:
+                pr = await client.get(
+                    f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
+                    headers={"X-Emby-Token": emby_key},
+                    params={"maxHeight": 600},
+                )
+                if pr.status_code == 200:
+                    original_bytes = pr.content
+
+            if not original_bytes:
+                continue
+
+            modified = await _overlay_poster(original_bytes, days_left, ui_lang)
+            if not modified:
+                continue
+
+            b64 = base64.b64encode(modified).decode("ascii")
+            resp = await client.post(
+                f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
+                headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
+                content=b64,
+            )
+            if resp.status_code in (200, 204):
+                await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")
+            else:
+                logger.warning(f"Overlay upload HTTP {resp.status_code} for {w.get('title')}: {resp.text[:100]}")
+        except Exception as e:
+            logger.warning(f"Overlay error for {w.get('title', '?')}: {e}")
 
 
 async def sync_emby_collection():
@@ -1167,173 +1341,29 @@ async def sync_emby_collection():
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # Find or create collection
-            r = await client.get(
-                f"{emby_url}/Items",
-                params={
-                    "api_key": emby_key,
-                    "IncludeItemTypes": "BoxSet",
-                    "Recursive": "true",
-                    "SearchTerm": collection_name,
-                    "Limit": 10,
-                },
+            collection_id = await _get_or_create_collection(
+                client, emby_url, emby_key, collection_name, wanted_ids
             )
-            collection_id = None
-            if r.status_code == 200:
-                for item in r.json().get("Items", []):
-                    if item.get("Name", "").lower() == collection_name.lower():
-                        collection_id = item["Id"]
-                        break
-
-            ru = await client.get(
-                f"{emby_url}/Users", params={"api_key": emby_key}
-            )
-            user_id = ""
-            if ru.status_code == 200 and ru.json():
-                user_id = ru.json()[0]["Id"]
-
             if not collection_id:
-                if not wanted_ids:
-                    return
-                rc = await client.post(
-                    f"{emby_url}/Collections",
-                    params={
-                        "api_key": emby_key,
-                        "Name": collection_name,
-                        "Ids": ",".join(wanted_ids),
-                        "UserId": user_id,
-                    },
-                )
-                if rc.status_code in (200, 204):
-                    collection_id = rc.json().get("Id")
-                    await add_log(
-                        "INFO",
-                        f"Collection Emby '{collection_name}' créée ({len(wanted_ids)} médias)",
-                        "system",
-                    )
                 return
 
-            # Current items in collection
-            rc = await client.get(
-                f"{emby_url}/Items",
-                params={
-                    "api_key": emby_key,
-                    "ParentId": collection_id,
-                    "Recursive": "false",
-                    "Limit": 5000,
-                    "Fields": "Id",
-                },
+            to_add, to_remove = await _sync_collection_membership(
+                client, emby_url, emby_key, collection_id, wanted_ids
             )
-            current_ids: set = set()
-            if rc.status_code == 200:
-                for item in rc.json().get("Items", []):
-                    current_ids.add(item["Id"])
 
-            to_add = wanted_ids - current_ids
-            to_remove = current_ids - wanted_ids
-
-            if to_add:
-                await client.post(
-                    f"{emby_url}/Collections/{collection_id}/Items",
-                    params={"api_key": emby_key, "Ids": ",".join(to_add)},
-                )
-            if to_remove:
-                await client.delete(
-                    f"{emby_url}/Collections/{collection_id}/Items",
-                    params={"api_key": emby_key, "Ids": ",".join(to_remove)},
-                )
-                # Restore original poster for removed items (remove the overlay)
-                overlay_enabled_check = await get_bool_setting("emby_leaving_soon_overlay")
-                if overlay_enabled_check:
-                    # Find poster_url for removed items from media_queue (any status)
-                    async with aiosqlite.connect(DB_PATH) as _db:
-                        _db.row_factory = aiosqlite.Row
-                        for emby_id in to_remove:
-                            try:
-                                async with _db.execute(
-                                    "SELECT poster_url FROM media_queue WHERE emby_id=?",
-                                    (emby_id,),
-                                ) as cur:
-                                    row = await cur.fetchone()
-                                poster_url = dict(row)["poster_url"] if row else ""
-                                if poster_url and poster_url.startswith("http"):
-                                    pr = await client.get(poster_url, follow_redirects=True)
-                                    if pr.status_code == 200 and pr.headers.get("content-type","").startswith("image"):
-                                        b64 = base64.b64encode(pr.content).decode("ascii")
-                                        resp = await client.post(
-                                            f"{emby_url}/Items/{emby_id}/Images/Primary",
-                                            params={"api_key": emby_key},
-                                            content=b64,
-                                            headers={"Content-Type": "image/jpeg"},
-                                        )
-                                        if resp.status_code in (200, 204):
-                                            await add_log("INFO", f"Affiche restaurée : {emby_id}", "system")
-                                        else:
-                                            logger.warning(f"Restore poster HTTP {resp.status_code} pour {emby_id}")
-                            except Exception as e_restore:
-                                logger.warning(f"Restore poster error pour {emby_id}: {e_restore}")
-
-            # Apply overlay to ALL items — ensures banners are always correct
-            # after poster refresh, Emby restart, or code updates.
             overlay_enabled = await get_bool_setting("emby_leaving_soon_overlay")
+            if to_remove and overlay_enabled:
+                await _restore_posters_for_removed(client, emby_url, emby_key, to_remove)
+
             if overlay_enabled and wanted:
-                for w in wanted:
-                    try:
-                        dt = parse_iso_dt(w["delete_at"])
-                        if not dt:
-                            continue
-                        days_left = max(0, (dt - now_utc()).days)
+                ui_lang = await get_setting("ui_language") or "fr"
+                await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
 
-                        # Fetch ORIGINAL poster from TMDB (via poster_url stored at scan time)
-                        # Never use Emby as source — it may already have a corrupted overlay
-                        original_bytes = None
-                        poster_url = w.get("poster_url", "")
-                        if poster_url and poster_url.startswith("http"):
-                            try:
-                                pr = await client.get(poster_url, follow_redirects=True)
-                                if pr.status_code == 200 and pr.headers.get("content-type","").startswith("image"):
-                                    original_bytes = pr.content
-                            except Exception as e_poster:
-                                logger.debug(f"Poster fetch from URL failed: {e_poster}")
-                        
-                        # Fallback: try Emby only if we have no other source
-                        if not original_bytes:
-                            pr = await client.get(
-                                f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                                params={"api_key": emby_key, "maxHeight": 600},
-                            )
-                            if pr.status_code == 200:
-                                original_bytes = pr.content
-
-                        if not original_bytes:
-                            continue
-                        modified = await _overlay_poster(original_bytes, days_left)
-                        if not modified:
-                            continue
-                        # Emby image upload: body must be base64-encoded
-                        b64 = base64.b64encode(modified).decode("ascii")
-                        resp = await client.post(
-                            f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                            params={"api_key": emby_key},
-                            content=b64,
-                            headers={"Content-Type": "image/jpeg"},
-                        )
-                        if resp.status_code in (200, 204):
-                            await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")
-                        else:
-                            logger.warning(
-                                f"Overlay upload HTTP {resp.status_code} "
-                                f"pour {w.get('title')}: {resp.text[:100]}"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Overlay error pour {w.get('title','?')}: {e}")
-
-            total = len(wanted_ids)
             if to_add or to_remove:
                 await add_log(
                     "INFO",
-                    f"Collection '{collection_name}' : {total} médias | "
-                    f"+{len(to_add)} ajoutés | -{len(to_remove)} retirés",
+                    f"Collection '{collection_name}' : {len(wanted_ids)} médias "
+                    f"| +{len(to_add)} ajoutés | -{len(to_remove)} retirés",
                     "system",
                 )
     except Exception as e:

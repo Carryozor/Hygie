@@ -16,7 +16,10 @@ build
 *.md
 data/
 .env
+*.env
 *.log
 .pytest_cache
 .coverage
 .mypy_cache
+docs/
+tests/

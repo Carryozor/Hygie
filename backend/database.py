@@ -637,27 +637,46 @@ async def save_media_servers(servers: list) -> None:
             ("media_servers", stored)
         )
         await db.commit()
-    # Invalidate cache immediately so next read reflects the new state
+    # Invalidate both caches immediately so next reads reflect the new state
     _ms_cache, _ms_cache_ts = servers, _time.monotonic()
+    _invalidate_settings_cache()
+
+
+# ─── Settings cache ───────────────────────────────────────────────────────────
+# Settings change rarely (user action only). Loading all of them in one query
+# and caching for TTL seconds removes dozens of DB opens per scan/deletion cycle.
+# Sensitive values are stored encrypted in the cache; decryption happens on read.
+_settings_cache: dict[str, str] = {}
+_settings_cache_ts: float = 0.0
+_SETTINGS_CACHE_TTL: float = 30.0  # seconds
+
+
+def _invalidate_settings_cache() -> None:
+    global _settings_cache_ts
+    _settings_cache_ts = 0.0
 
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
 async def get_setting(key: str) -> str:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT value FROM settings WHERE key=?", (key,)) as cur:
-            row = await cur.fetchone()
-            if not row:
-                return ""
-            return _decrypt_value(row[0]) if key in SENSITIVE_KEYS else row[0]
+    global _settings_cache, _settings_cache_ts
+    now = _time.monotonic()
+    if not _settings_cache or now - _settings_cache_ts >= _SETTINGS_CACHE_TTL:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT key, value FROM settings") as cur:
+                _settings_cache = {r[0]: r[1] for r in await cur.fetchall()}
+        _settings_cache_ts = now
+    raw = _settings_cache.get(key, "")
+    return _decrypt_value(raw) if key in SENSITIVE_KEYS else raw
 
 
-async def set_setting(key: str, value: str):
+async def set_setting(key: str, value: str) -> None:
     stored = _encrypt_value(value) if key in SENSITIVE_KEYS else value
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, stored)
         )
         await db.commit()
+    _invalidate_settings_cache()
 
 
 async def get_bool_setting(key: str, default: bool = False) -> bool:

@@ -68,26 +68,34 @@ async def get_settings(user: str = Depends(require_auth)):
 @router.post("")
 async def update_settings(body: SettingsUpdate, request: Request, user: str = Depends(require_auth)):
     """Update settings. Only sends non-None fields."""
+    incoming = body.model_dump(exclude_none=True)
+
+    # Read current interval values BEFORE saving to detect real changes
+    old_scan = await get_setting("scan_interval_minutes") or "360"
+    old_del  = await get_setting("deletion_check_interval_minutes") or "60"
+
     updated = []
-    for key, value in body.model_dump(exclude_none=True).items():
+    for key, value in incoming.items():
         await set_setting(key, value)
         updated.append(key)
 
-    # Reschedule jobs si les intervalles ont changé (en minutes)
+    # Reschedule only if the interval value actually changed — prevents timer reset on unrelated saves
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
         if "scan_interval_minutes" in updated:
-            try:
-                m = int(await get_setting("scan_interval_minutes") or "360")
-                scheduler.reschedule_job("scan_job", trigger="interval", minutes=m)
-            except Exception:
-                pass
+            new_scan = incoming["scan_interval_minutes"]
+            if str(new_scan) != str(old_scan):
+                try:
+                    scheduler.reschedule_job("scan_job", trigger="interval", minutes=int(new_scan))
+                except Exception:
+                    pass
         if "deletion_check_interval_minutes" in updated:
-            try:
-                m = int(await get_setting("deletion_check_interval_minutes") or "60")
-                scheduler.reschedule_job("deletion_job", trigger="interval", minutes=m)
-            except Exception:
-                pass
+            new_del = incoming["deletion_check_interval_minutes"]
+            if str(new_del) != str(old_del):
+                try:
+                    scheduler.reschedule_job("deletion_job", trigger="interval", minutes=int(new_del))
+                except Exception:
+                    pass
 
     # Invalidate image proxy whitelist when service URLs change
     _url_keys = {"emby_url", "emby_external_url", "radarr_url", "sonarr_url"}

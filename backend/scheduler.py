@@ -272,8 +272,25 @@ async def run_scan():
                 users = await get_users(server_id=server_id)
                 user_ids = [u["Id"] for u in users] if users else []
 
+                # Build arr caches once per server (not once per library)
+                radarr_cache = await build_radarr_path_cache()
+                sonarr_cache = await build_sonarr_path_cache()
+                seerr_cache  = await build_seerr_request_cache()
+
+                # Pre-load queued/ignored sets — eliminates 2 DB opens per item
+                async with aiosqlite.connect(DB_PATH) as _db:
+                    async with _db.execute("SELECT emby_id FROM media_queue") as _cur:
+                        queued_ids = {r[0] async for r in _cur}
+                    async with _db.execute("SELECT emby_id FROM ignored_media") as _cur:
+                        ignored_ids = {r[0] async for r in _cur}
+
                 for lib in libraries:
-                    added += await _scan_library(lib, user_ids, server_id=server_id)
+                    added += await _scan_library(
+                        lib, user_ids, server_id=server_id,
+                        radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+                        seerr_cache=seerr_cache,
+                        queued_ids=queued_ids, ignored_ids=ignored_ids,
+                    )
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             _scan_status, _scan_msg = "success", f"{added} queued"
@@ -316,7 +333,22 @@ async def run_scan_library(library_id: str):
             server_id = str(lib.get("server_id") or "0")
             users = await get_users(server_id=server_id)
             user_ids = [u["Id"] for u in users] if users else []
-            added = await _scan_library(lib, user_ids, server_id=server_id)
+
+            radarr_cache = await build_radarr_path_cache()
+            sonarr_cache = await build_sonarr_path_cache()
+            seerr_cache  = await build_seerr_request_cache()
+            async with aiosqlite.connect(DB_PATH) as _db:
+                async with _db.execute("SELECT emby_id FROM media_queue") as _cur:
+                    queued_ids = {r[0] async for r in _cur}
+                async with _db.execute("SELECT emby_id FROM ignored_media") as _cur:
+                    ignored_ids = {r[0] async for r in _cur}
+
+            added = await _scan_library(
+                lib, user_ids, server_id=server_id,
+                radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+                seerr_cache=seerr_cache,
+                queued_ids=queued_ids, ignored_ids=ignored_ids,
+            )
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             _sl_status, _sl_msg = "success", f"{added} queued"
@@ -332,8 +364,22 @@ async def run_scan_library(library_id: str):
             await finish_job_run(run_id, _sl_status, _sl_msg)
 
 
-async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
-    """Scan one library — returns count of items added."""
+async def _scan_library(
+    lib: dict,
+    user_ids: list,
+    server_id: str = "0",
+    *,
+    radarr_cache: Optional[dict] = None,
+    sonarr_cache: Optional[dict] = None,
+    seerr_cache: Optional[dict] = None,
+    queued_ids: Optional[set] = None,
+    ignored_ids: Optional[set] = None,
+) -> int:
+    """Scan one library — returns count of items added.
+
+    Caches (radarr/sonarr/seerr) and sets (queued/ignored) should be built
+    once in the calling scan job and passed here to avoid redundant HTTP/DB calls.
+    """
     conditions = json.loads(lib.get("conditions") or "[]")
     logic = lib.get("logic") or "AND"
     grace_days = lib.get("grace_days") or 7
@@ -344,15 +390,11 @@ async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
     start = 0
     await add_log("INFO", f"Scan : {lib['name']}", "scan")
 
-    # ── Build caches once per library (avoids per-item HTTP calls) ────────────
+    # User data cache: one HTTP call per user per library
     user_data_cache: dict = {}
     for uid in user_ids:
         user_data_cache[uid] = await get_library_user_data(uid, emby_library_id, server_id=server_id)
 
-    radarr_cache: dict = await build_radarr_path_cache()
-    sonarr_cache: dict = await build_sonarr_path_cache()
-    seerr_cache: dict = await build_seerr_request_cache()
-    # Read once per library, not once per item
     seerr_ext_url: str = await get_setting("seerr_external_url") or ""
 
     while True:
@@ -369,6 +411,8 @@ async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
                 sonarr_cache=sonarr_cache,
                 seerr_cache=seerr_cache,
                 seerr_ext=seerr_ext_url,
+                queued_ids=queued_ids,
+                ignored_ids=ignored_ids,
             ):
                 added += 1
         start += 500
@@ -393,6 +437,8 @@ async def _evaluate_item(
     sonarr_cache: Optional[dict] = None,
     seerr_cache: Optional[dict] = None,
     seerr_ext: str = "",
+    queued_ids: Optional[set] = None,
+    ignored_ids: Optional[set] = None,
 ) -> bool:
     """Evaluate a single Emby item; insert into queue if it matches.
 
@@ -400,7 +446,9 @@ async def _evaluate_item(
     radarr_cache:    {file_path: radarr_id}            — pre-fetched once per scan.
     sonarr_cache:    {episode_file_path: ep_file_id}   — pre-fetched once per scan.
     seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — pre-fetched once per scan.
-    Falls back to individual HTTP calls when caches are absent.
+    queued_ids:      set of emby_ids already in media_queue   — pre-fetched once per scan.
+    ignored_ids:     set of emby_ids in ignored_media         — pre-fetched once per scan.
+    Falls back to individual DB/HTTP calls when caches are absent.
     """
     emby_id = item.get("Id")
     title = item.get("Name") or "?"
@@ -441,18 +489,28 @@ async def _evaluate_item(
     ):
         return False
 
-    # Skip if already in queue or ignored
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT id FROM media_queue WHERE emby_id=?", (emby_id,)
-        ) as cur:
-            if await cur.fetchone():
-                return False
-        async with db.execute(
-            "SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)
-        ) as cur:
-            if await cur.fetchone():
-                return False
+    # Skip if already in queue or ignored — use pre-loaded sets when available
+    if queued_ids is not None:
+        if emby_id in queued_ids:
+            return False
+    else:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT id FROM media_queue WHERE emby_id=?", (emby_id,)
+            ) as cur:
+                if await cur.fetchone():
+                    return False
+
+    if ignored_ids is not None:
+        if emby_id in ignored_ids:
+            return False
+    else:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)
+            ) as cur:
+                if await cur.fetchone():
+                    return False
 
     # Seerr lookup — use pre-built cache when available (0 HTTP calls vs 1 per item)
     if seerr_cache is not None:
@@ -1244,53 +1302,58 @@ async def _apply_overlays(
     wanted: list,
     ui_lang: str,
 ) -> None:
-    """Apply 'Supprimé dans Xj' banner to all wanted items."""
-    for w in wanted:
-        try:
-            dt = parse_iso_dt(w["delete_at"])
-            if not dt:
-                continue
-            days_left = max(0, (dt.date() - now_utc().date()).days)
+    """Apply 'Supprimé dans Xj' banner to all wanted items — max 5 concurrent."""
+    sem = asyncio.Semaphore(5)
 
-            original_bytes: Optional[bytes] = None
-            poster_url = w.get("poster_url", "")
-            if poster_url and poster_url.startswith("http"):
-                try:
-                    pr = await client.get(poster_url, follow_redirects=True)
-                    if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
+    async def _apply_one(w: dict) -> None:
+        async with sem:
+            try:
+                dt = parse_iso_dt(w["delete_at"])
+                if not dt:
+                    return
+                days_left = max(0, (dt.date() - now_utc().date()).days)
+
+                original_bytes: Optional[bytes] = None
+                poster_url = w.get("poster_url", "")
+                if poster_url and poster_url.startswith("http"):
+                    try:
+                        pr = await client.get(poster_url, follow_redirects=True)
+                        if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
+                            original_bytes = pr.content
+                    except Exception as e:
+                        logger.debug(f"Poster fetch failed: {e}")
+
+                # Fallback: fetch from Emby only if no other source available
+                if not original_bytes:
+                    pr = await client.get(
+                        f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
+                        headers={"X-Emby-Token": emby_key},
+                        params={"maxHeight": 600},
+                    )
+                    if pr.status_code == 200:
                         original_bytes = pr.content
-                except Exception as e:
-                    logger.debug(f"Poster fetch failed: {e}")
 
-            # Fallback: fetch from Emby only if no other source available
-            if not original_bytes:
-                pr = await client.get(
+                if not original_bytes:
+                    return
+
+                modified = await _overlay_poster(original_bytes, days_left, ui_lang)
+                if not modified:
+                    return
+
+                b64 = base64.b64encode(modified).decode("ascii")
+                resp = await client.post(
                     f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                    headers={"X-Emby-Token": emby_key},
-                    params={"maxHeight": 600},
+                    headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
+                    content=b64,
                 )
-                if pr.status_code == 200:
-                    original_bytes = pr.content
+                if resp.status_code in (200, 204):
+                    await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")
+                else:
+                    logger.warning(f"Overlay upload HTTP {resp.status_code} for {w.get('title')}: {resp.text[:100]}")
+            except Exception as e:
+                logger.warning(f"Overlay error for {w.get('title', '?')}: {e}")
 
-            if not original_bytes:
-                continue
-
-            modified = await _overlay_poster(original_bytes, days_left, ui_lang)
-            if not modified:
-                continue
-
-            b64 = base64.b64encode(modified).decode("ascii")
-            resp = await client.post(
-                f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                content=b64,
-            )
-            if resp.status_code in (200, 204):
-                await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")
-            else:
-                logger.warning(f"Overlay upload HTTP {resp.status_code} for {w.get('title')}: {resp.text[:100]}")
-        except Exception as e:
-            logger.warning(f"Overlay error for {w.get('title', '?')}: {e}")
+    await asyncio.gather(*[_apply_one(w) for w in wanted])
 
 
 async def sync_emby_collection():

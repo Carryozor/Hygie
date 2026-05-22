@@ -266,7 +266,7 @@ hygie/
 ### 🧪 Tests
 
 ```bash
-pip install pytest pytest-asyncio pytest-httpx
+pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
@@ -498,7 +498,7 @@ docker buildx build \
 ### 🧪 Tests
 
 ```bash
-pip install pytest pytest-asyncio pytest-httpx
+pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 

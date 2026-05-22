@@ -627,9 +627,8 @@ async def reevaluate_library_queue(library_id: str) -> int:
                                 b64 = base64.b64encode(pr.content).decode("ascii")
                                 await hc.post(
                                     f"{emby_url_val}/Items/{emby_id}/Images/Primary",
-                                    params={"api_key": emby_key_val},
+                                    headers={"X-Emby-Token": emby_key_val, "Content-Type": "image/jpeg"},
                                     content=b64,
-                                    headers={"Content-Type": "image/jpeg"},
                                 )
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")
@@ -1169,8 +1168,8 @@ async def sync_emby_collection():
             # Find or create collection
             r = await client.get(
                 f"{emby_url}/Items",
+                headers={"X-Emby-Token": emby_key},
                 params={
-                    "api_key": emby_key,
                     "IncludeItemTypes": "BoxSet",
                     "Recursive": "true",
                     "SearchTerm": collection_name,
@@ -1185,7 +1184,7 @@ async def sync_emby_collection():
                         break
 
             ru = await client.get(
-                f"{emby_url}/Users", params={"api_key": emby_key}
+                f"{emby_url}/Users", headers={"X-Emby-Token": emby_key}
             )
             user_id = ""
             if ru.status_code == 200 and ru.json():
@@ -1196,8 +1195,8 @@ async def sync_emby_collection():
                     return
                 rc = await client.post(
                     f"{emby_url}/Collections",
+                    headers={"X-Emby-Token": emby_key},
                     params={
-                        "api_key": emby_key,
                         "Name": collection_name,
                         "Ids": ",".join(wanted_ids),
                         "UserId": user_id,
@@ -1215,8 +1214,8 @@ async def sync_emby_collection():
             # Current items in collection
             rc = await client.get(
                 f"{emby_url}/Items",
+                headers={"X-Emby-Token": emby_key},
                 params={
-                    "api_key": emby_key,
                     "ParentId": collection_id,
                     "Recursive": "false",
                     "Limit": 5000,
@@ -1234,17 +1233,18 @@ async def sync_emby_collection():
             if to_add:
                 await client.post(
                     f"{emby_url}/Collections/{collection_id}/Items",
-                    params={"api_key": emby_key, "Ids": ",".join(to_add)},
+                    headers={"X-Emby-Token": emby_key},
+                    params={"Ids": ",".join(to_add)},
                 )
             if to_remove:
                 await client.delete(
                     f"{emby_url}/Collections/{collection_id}/Items",
-                    params={"api_key": emby_key, "Ids": ",".join(to_remove)},
+                    headers={"X-Emby-Token": emby_key},
+                    params={"Ids": ",".join(to_remove)},
                 )
                 # Restore original poster for removed items (remove the overlay)
                 overlay_enabled_check = await get_bool_setting("emby_leaving_soon_overlay")
                 if overlay_enabled_check:
-                    # Find poster_url for removed items from media_queue (any status)
                     async with aiosqlite.connect(DB_PATH) as _db:
                         _db.row_factory = aiosqlite.Row
                         for emby_id in to_remove:
@@ -1261,9 +1261,8 @@ async def sync_emby_collection():
                                         b64 = base64.b64encode(pr.content).decode("ascii")
                                         resp = await client.post(
                                             f"{emby_url}/Items/{emby_id}/Images/Primary",
-                                            params={"api_key": emby_key},
+                                            headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
                                             content=b64,
-                                            headers={"Content-Type": "image/jpeg"},
                                         )
                                         if resp.status_code in (200, 204):
                                             await add_log("INFO", f"Affiche restaurée : {emby_id}", "system")
@@ -1295,12 +1294,13 @@ async def sync_emby_collection():
                                     original_bytes = pr.content
                             except Exception as e_poster:
                                 logger.debug(f"Poster fetch from URL failed: {e_poster}")
-                        
+
                         # Fallback: try Emby only if we have no other source
                         if not original_bytes:
                             pr = await client.get(
                                 f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                                params={"api_key": emby_key, "maxHeight": 600},
+                                headers={"X-Emby-Token": emby_key},
+                                params={"maxHeight": 600},
                             )
                             if pr.status_code == 200:
                                 original_bytes = pr.content
@@ -1310,13 +1310,11 @@ async def sync_emby_collection():
                         modified = await _overlay_poster(original_bytes, days_left, ui_lang)
                         if not modified:
                             continue
-                        # Emby image upload: body must be base64-encoded
                         b64 = base64.b64encode(modified).decode("ascii")
                         resp = await client.post(
                             f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
-                            params={"api_key": emby_key},
+                            headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
                             content=b64,
-                            headers={"Content-Type": "image/jpeg"},
                         )
                         if resp.status_code in (200, 204):
                             await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")

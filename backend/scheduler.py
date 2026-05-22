@@ -1282,7 +1282,7 @@ async def sync_emby_collection():
                         dt = parse_iso_dt(w["delete_at"])
                         if not dt:
                             continue
-                        days_left = max(0, (dt - now_utc()).days)
+                        days_left = max(0, (dt.date() - now_utc().date()).days)
 
                         # Fetch ORIGINAL poster from TMDB (via poster_url stored at scan time)
                         # Never use Emby as source — it may already have a corrupted overlay

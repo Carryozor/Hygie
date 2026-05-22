@@ -36,6 +36,8 @@ from .database import (
     add_log,
     finish_job_run,
     get_setting,
+    get_bool_setting,
+    get_int_setting,
     get_media_servers,
     parse_iso_dt,
 )
@@ -239,6 +241,7 @@ async def run_scan():
         run_id = await add_job_run("scan")
         await add_log("INFO", "Scan démarré", "job")
         added = 0
+        _scan_status, _scan_msg = "error", ""
         try:
             # Get enabled servers — fall back to a single "legacy" server if none configured
             servers = await get_media_servers()
@@ -273,15 +276,16 @@ async def run_scan():
                     added += await _scan_library(lib, user_ids, server_id=server_id)
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
-            await finish_job_run(run_id, "success", f"{added} queued")
-
+            _scan_status, _scan_msg = "success", f"{added} queued"
             if added > 0:
                 await sync_emby_collection()
                 await _send_pending_notifications()
         except Exception as e:
             logger.exception("Scan error")
             await add_log("ERROR", f"Erreur scan: {e}", "job")
-            await finish_job_run(run_id, "error", str(e))
+            _scan_msg = str(e)
+        finally:
+            await finish_job_run(run_id, _scan_status, _scan_msg)
 
 
 async def run_scan_library(library_id: str):
@@ -293,6 +297,7 @@ async def run_scan_library(library_id: str):
     async with _scan_lock:
         run_id = await add_job_run("scan_library")
         await add_log("INFO", f"Scan bibliothèque : {library_id}", "job")
+        _sl_status, _sl_msg = "error", ""
         try:
             async with aiosqlite.connect(DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
@@ -305,7 +310,7 @@ async def run_scan_library(library_id: str):
 
             if not lib:
                 await add_log("WARN", f"Bibliothèque {library_id} introuvable", "scan")
-                await finish_job_run(run_id, "warning", "Library not found")
+                _sl_status, _sl_msg = "warning", "Library not found"
                 return
 
             server_id = str(lib.get("server_id") or "0")
@@ -314,7 +319,7 @@ async def run_scan_library(library_id: str):
             added = await _scan_library(lib, user_ids, server_id=server_id)
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
-            await finish_job_run(run_id, "success", f"{added} queued")
+            _sl_status, _sl_msg = "success", f"{added} queued"
 
             if added > 0:
                 await sync_emby_collection()
@@ -322,7 +327,9 @@ async def run_scan_library(library_id: str):
         except Exception as e:
             logger.exception("Scan library error")
             await add_log("ERROR", f"Erreur scan: {e}", "job")
-            await finish_job_run(run_id, "error", str(e))
+            _sl_msg = str(e)
+        finally:
+            await finish_job_run(run_id, _sl_status, _sl_msg)
 
 
 async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
@@ -345,6 +352,8 @@ async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
     radarr_cache: dict = await build_radarr_path_cache()
     sonarr_cache: dict = await build_sonarr_path_cache()
     seerr_cache: dict = await build_seerr_request_cache()
+    # Read once per library, not once per item
+    seerr_ext_url: str = await get_setting("seerr_external_url") or ""
 
     while True:
         items, total = await get_items_in_library(
@@ -359,6 +368,7 @@ async def _scan_library(lib: dict, user_ids: list, server_id: str = "0") -> int:
                 radarr_cache=radarr_cache,
                 sonarr_cache=sonarr_cache,
                 seerr_cache=seerr_cache,
+                seerr_ext=seerr_ext_url,
             ):
                 added += 1
         start += 500
@@ -382,6 +392,7 @@ async def _evaluate_item(
     radarr_cache: Optional[dict] = None,
     sonarr_cache: Optional[dict] = None,
     seerr_cache: Optional[dict] = None,
+    seerr_ext: str = "",
 ) -> bool:
     """Evaluate a single Emby item; insert into queue if it matches.
 
@@ -493,7 +504,6 @@ async def _evaluate_item(
     )
 
     # Seerr request URL (for clickable link in UI)
-    seerr_ext = await get_setting("seerr_external_url")
     seerr_request_url = ""
     if seerr_id and seerr_ext:
         path = "movie" if media_type == "Movie" else "tv"
@@ -609,7 +619,7 @@ async def reevaluate_library_queue(library_id: str) -> int:
                 try:
                     _lib_srv = str(lib.get("server_id") or "0")
                     emby_url_val, emby_key_val = await get_client(_lib_srv)
-                    overlay_on = (await get_setting("emby_leaving_soon_overlay") or "false").lower() == "true"
+                    overlay_on = await get_bool_setting("emby_leaving_soon_overlay")
                     if overlay_on:
                         async with httpx.AsyncClient(timeout=10) as hc:
                             pr = await hc.get(poster_url, follow_redirects=True)
@@ -673,7 +683,7 @@ async def _send_pending_notifications():
     Lightweight version of run_deletion() — no job history entry, no deletions.
     Called automatically after each scan so new items notify immediately.
     """
-    dry_run = (await get_setting("dry_run") or "false").lower() == "true"
+    dry_run = await get_bool_setting("dry_run")
     try:
         cutoff_30d = now_utc() + timedelta(days=30, hours=1)
         async with aiosqlite.connect(DB_PATH) as db:
@@ -718,7 +728,7 @@ async def run_deletion():
     async with _deletion_lock:
         run_id = await add_job_run("deletion_check")
         await add_log("INFO", "Vérification suppressions démarrée", "job")
-        dry_run = (await get_setting("dry_run") or "false").lower() == "true"
+        dry_run = await get_bool_setting("dry_run")
         deleted_count = 0
 
         try:
@@ -768,8 +778,11 @@ async def run_deletion():
                 ) as cur:
                     to_delete = [dict(r) for r in await cur.fetchall()]
 
+            # Read qbit settings once for the whole batch
+            _qbit_action = await get_setting("qbit_action") or "tag_only"
+            _qbit_tag = await get_setting("qbit_tag") or "Supprimé-Hygie"
             for row in to_delete:
-                ok = await _delete_media(row, dry_run)
+                ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag)
                 status_val = STATUS_DELETED if ok else STATUS_ERROR
                 async with aiosqlite.connect(DB_PATH) as db:
                     await db.execute(
@@ -800,7 +813,7 @@ async def run_deletion():
             await finish_job_run(run_id, "error", str(e))
 
 
-async def _delete_media(row: dict, dry_run: bool) -> bool:
+async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_tag_val: str = "") -> bool:
     """
     Delete a media item across all services.
 
@@ -837,8 +850,8 @@ async def _delete_media(row: dict, dry_run: bool) -> bool:
         return True
 
     try:
-        qbit_action = await get_setting("qbit_action") or "tag_only"
-        qbit_tag = await get_setting("qbit_tag") or "Supprimé-Hygie"
+        qbit_action = qbit_action or await get_setting("qbit_action") or "tag_only"
+        qbit_tag = qbit_tag_val or await get_setting("qbit_tag") or "Supprimé-Hygie"
 
         # ── 1. Torrent hash via arr history (before deletion) ────────────────
         torrent_hash: Optional[str] = None
@@ -959,7 +972,7 @@ async def run_ignored_cleanup():
 
     # Purge deleted entries older than retention setting
     try:
-        retention_days = int(await get_setting("deleted_retention_days") or "90")
+        retention_days = await get_int_setting("deleted_retention_days", 90)
         if retention_days > 0:
             cutoff = (now_utc() - timedelta(days=retention_days)).isoformat()
             async with aiosqlite.connect(DB_PATH) as db:
@@ -986,7 +999,7 @@ async def run_ignored_cleanup():
 
     # Purge old log entries
     try:
-        log_retention = int(await get_setting("log_retention_days") or "14")
+        log_retention = await get_int_setting("log_retention_days", 14)
         if log_retention > 0:
             cutoff = (now_utc() - timedelta(days=log_retention)).isoformat()
             async with aiosqlite.connect(DB_PATH) as db:
@@ -1008,7 +1021,7 @@ async def run_ignored_cleanup():
 
     # Purge old job_history entries
     try:
-        jh_retention = int(await get_setting("job_history_retention_days") or "90")
+        jh_retention = await get_int_setting("job_history_retention_days", 90)
         if jh_retention > 0:
             cutoff = (now_utc() - timedelta(days=jh_retention)).isoformat()
             async with aiosqlite.connect(DB_PATH) as db:
@@ -1131,7 +1144,7 @@ async def sync_emby_collection():
         return
 
     try:
-        days = int(await get_setting("emby_leaving_soon_days") or "30")
+        days = await get_int_setting("emby_leaving_soon_days", 30)
     except ValueError:
         days = 30
 
@@ -1230,9 +1243,7 @@ async def sync_emby_collection():
                     params={"api_key": emby_key, "Ids": ",".join(to_remove)},
                 )
                 # Restore original poster for removed items (remove the overlay)
-                overlay_enabled_check = (
-                    await get_setting("emby_leaving_soon_overlay") or "false"
-                ).lower() == "true"
+                overlay_enabled_check = await get_bool_setting("emby_leaving_soon_overlay")
                 if overlay_enabled_check:
                     # Find poster_url for removed items from media_queue (any status)
                     async with aiosqlite.connect(DB_PATH) as _db:
@@ -1264,9 +1275,7 @@ async def sync_emby_collection():
 
             # Apply overlay to ALL items — ensures banners are always correct
             # after poster refresh, Emby restart, or code updates.
-            overlay_enabled = (
-                await get_setting("emby_leaving_soon_overlay") or "false"
-            ).lower() == "true"
+            overlay_enabled = await get_bool_setting("emby_leaving_soon_overlay")
             if overlay_enabled and wanted:
                 for w in wanted:
                     try:

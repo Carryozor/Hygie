@@ -152,8 +152,6 @@ DEFAULT_SETTINGS = {
     "qbit_tag": "Supprimé-Hygie",
     "discord_webhook": "",
     "dry_run": "false",
-    "scan_interval_hours": "6",
-    "deletion_check_interval_hours": "1",
     "scan_interval_minutes": "360",            # 6h par défaut
     "deletion_check_interval_minutes": "60",   # 1h par défaut
     "log_level": "INFO",
@@ -582,35 +580,65 @@ async def init_db():
                 )
         await db.commit()
 
+        # 9. Mark orphaned job_history entries (process killed mid-job) as interrupted
+        ts_now = datetime.now(timezone.utc).isoformat()
+        async with db.execute(
+            "UPDATE job_history SET finished_at=?, status='interrupted', message='Interrompu (redémarrage)' "
+            "WHERE finished_at IS NULL OR status IS NULL",
+            (ts_now,)
+        ) as cur:
+            if cur.rowcount:
+                logger.info(f"Marked {cur.rowcount} orphaned job(s) as interrupted")
+        await db.commit()
+
     logger.info(f"Database initialized: {DB_PATH}")
 
 
 # ─── Media servers helpers ────────────────────────────────────────────────────
+import time as _time
+
+_ms_cache: Optional[list] = None
+_ms_cache_ts: float = 0.0
+_MS_CACHE_TTL: float = 30.0  # seconds — invalidated immediately on save
+
+
 async def get_media_servers() -> list:
-    """Return the parsed (decrypted) media_servers list. Never raises."""
+    """Return the parsed (decrypted) media_servers list.
+    Cached for 30 seconds to avoid a DB open on every HTTP call to Emby/Jellyfin.
+    Never raises.
+    """
+    global _ms_cache, _ms_cache_ts
+    now = _time.monotonic()
+    if _ms_cache is not None and now - _ms_cache_ts < _MS_CACHE_TTL:
+        return _ms_cache
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
                 row = await cur.fetchone()
                 if not row or not row[0]:
+                    _ms_cache, _ms_cache_ts = [], now
                     return []
                 raw = _decrypt_value(row[0])
-                return json.loads(raw) if raw else []
+                result = json.loads(raw) if raw else []
+                _ms_cache, _ms_cache_ts = result, now
+                return result
     except Exception:
-        return []
+        return _ms_cache if _ms_cache is not None else []
 
 
 async def save_media_servers(servers: list) -> None:
-    """Persist the media_servers list (encrypts if key configured)."""
-    import json as _json
-    raw = _json.dumps(servers)
-    stored = _encrypt_value(raw)  # encrypts if Fernet key is set
+    """Persist the media_servers list (encrypts if key configured). Invalidates cache."""
+    global _ms_cache, _ms_cache_ts
+    raw = json.dumps(servers)
+    stored = _encrypt_value(raw)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
             ("media_servers", stored)
         )
         await db.commit()
+    # Invalidate cache immediately so next read reflects the new state
+    _ms_cache, _ms_cache_ts = servers, _time.monotonic()
 
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
@@ -630,6 +658,23 @@ async def set_setting(key: str, value: str):
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, stored)
         )
         await db.commit()
+
+
+async def get_bool_setting(key: str, default: bool = False) -> bool:
+    """Read a setting and return it as a boolean ('true'/'1' → True)."""
+    v = (await get_setting(key) or "").lower().strip()
+    if not v:
+        return default
+    return v in ("true", "1", "yes", "on")
+
+
+async def get_int_setting(key: str, default: int = 0) -> int:
+    """Read a setting and return it as an integer."""
+    v = (await get_setting(key) or "").strip()
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return default
 
 
 async def get_all_settings() -> dict:

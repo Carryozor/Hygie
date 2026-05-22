@@ -1162,7 +1162,7 @@ async function loadJobs() {
       const start=j.started_at?new Date(j.started_at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'medium'}):'—';
       const end=j.finished_at?new Date(j.finished_at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'medium'}):'—';
       const dur=j.finished_at?Math.round((new Date(j.finished_at)-new Date(j.started_at))/1000)+'s':'…';
-      const dc=j.status==='success'?'success':j.status==='error'?'error':'running';
+      const dc=j.status==='success'?'success':j.status==='error'?'error':j.status==='interrupted'?'warning':'running';
       const jn=j.job_name||j.job_type||'';
       const lbl=jn==='scan'||jn==='scan_library'?'<i class="fas fa-magnifying-glass" style="color:var(--muted)"></i> Scan':'<i class="fas fa-trash-can" style="color:var(--muted)"></i> Vérification';
       return `<tr><td style="color:#e2e8f0">${lbl}</td><td style="color:var(--muted)">${start}</td><td style="color:var(--muted)">${end}</td><td style="color:var(--muted)">${dur}</td><td><span class="badge badge-${dc}">${j.status}</span></td><td style="color:var(--muted);font-size:12px">${j.result||'—'}</td></tr>`;

@@ -44,6 +44,9 @@ from .scheduler import (
 )
 
 
+from .version import VERSION
+
+
 async def _internal_cleanup():
     """Run cleanup jobs silently — no job_history entry, no UI clutter."""
     try:
@@ -54,7 +57,6 @@ async def _internal_cleanup():
         await sync_emby_collection()
     except Exception:
         pass
-from .version import VERSION
 from .routers import (
     auth,
     calendar,
@@ -159,6 +161,7 @@ async def _get_proxy_whitelist() -> set:
             "fanart.tv",
             "assets.fanart.tv",
         }
+        # Legacy single-server URLs
         for setting_key in ("emby_url", "emby_external_url", "radarr_url", "sonarr_url"):
             s = await get_setting(setting_key)
             if s:
@@ -168,6 +171,18 @@ async def _get_proxy_whitelist() -> set:
                         allowed.add(h)
                 except Exception:
                     pass
+        # Multi-server: add all configured server URLs and external URLs
+        from .database import get_media_servers
+        for srv in await get_media_servers():
+            for field in ("url", "ext_url"):
+                u = (srv.get(field) or "").strip()
+                if u:
+                    try:
+                        h = (urlparse(u).hostname or "").lower()
+                        if h:
+                            allowed.add(h)
+                    except Exception:
+                        pass
         _proxy_whitelist = allowed
         _proxy_whitelist_ts = time.time()
         return allowed
@@ -501,8 +516,9 @@ async def jobs_history(user: str = Depends(auth.require_auth), limit: int = 100)
     result = []
     for row in rows:
         d = dict(row)
-        d["job_name"] = d.get("job_type", "")
-        d["result"] = d.get("message", "")
+        d["job_name"] = d.get("job_type") or ""
+        d["result"] = d.get("message") or ""
+        d["status"] = d.get("status") or "interrupted"
         # Dedup key: same job type within the same minute
         key = f"{d['job_type']}|{(d.get('started_at') or '')[:16]}"
         if key not in seen:

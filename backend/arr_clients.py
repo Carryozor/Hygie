@@ -18,6 +18,11 @@ from .database import get_setting, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 logger = logging.getLogger(__name__)
 
 
+def _arr_auth(key: str) -> dict:
+    """Return X-Api-Key header for Radarr/Sonarr."""
+    return {"X-Api-Key": key}
+
+
 # ═══ Radarr ═══════════════════════════════════════════════════════════════════
 async def _radarr_config():
     url = (await get_setting("radarr_url") or "").rstrip("/")
@@ -31,7 +36,7 @@ async def test_radarr() -> tuple[bool, str]:
         return False, "Non configuré"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            r = await c.get(f"{url}/api/v3/system/status", params={"apikey": key})
+            r = await c.get(f"{url}/api/v3/system/status", headers=_arr_auth(key))
             if r.status_code == 200:
                 return True, f"Radarr {r.json().get('version', '?')}"
             return False, f"HTTP {r.status_code}"
@@ -50,7 +55,7 @@ async def build_radarr_path_cache() -> dict:
         return {}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-            r = await c.get(f"{url}/api/v3/movie", params={"apikey": key})
+            r = await c.get(f"{url}/api/v3/movie", headers=_arr_auth(key))
             if r.status_code != 200:
                 return {}
             cache: dict = {}
@@ -89,7 +94,7 @@ async def radarr_find_by_path(file_path: str) -> Optional[int]:
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-            r = await c.get(f"{url}/api/v3/movie", params={"apikey": key})
+            r = await c.get(f"{url}/api/v3/movie", headers=_arr_auth(key))
             if r.status_code != 200:
                 return None
             for movie in r.json():
@@ -110,9 +115,7 @@ async def radarr_get(radarr_id: int) -> Optional[dict]:
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            r = await c.get(
-                f"{url}/api/v3/movie/{radarr_id}", params={"apikey": key}
-            )
+            r = await c.get(f"{url}/api/v3/movie/{radarr_id}", headers=_arr_auth(key))
             if r.status_code == 200:
                 return r.json()
     except Exception as e:
@@ -142,11 +145,8 @@ async def radarr_delete(radarr_id: int, delete_files: bool = False) -> bool:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.delete(
                 f"{url}/api/v3/movie/{radarr_id}",
-                params={
-                    "apikey": key,
-                    "deleteFiles": str(delete_files).lower(),
-                    "addImportExclusion": "false",
-                },
+                headers=_arr_auth(key),
+                params={"deleteFiles": str(delete_files).lower(), "addImportExclusion": "false"},
             )
             return r.status_code in (200, 204)
     except Exception as e:
@@ -161,10 +161,10 @@ async def radarr_get_torrent_hash(radarr_id: int) -> Optional[str]:
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            # Try /api/v3/history/movie endpoint
             r = await c.get(
                 f"{url}/api/v3/history/movie",
-                params={"apikey": key, "movieId": radarr_id},
+                headers=_arr_auth(key),
+                params={"movieId": radarr_id},
             )
             if r.status_code == 200:
                 records = r.json() if isinstance(r.json(), list) else r.json().get("records", [])
@@ -172,10 +172,10 @@ async def radarr_get_torrent_hash(radarr_id: int) -> Optional[str]:
                     dl_id = (rec.get("downloadId") or "").lower()
                     if dl_id and len(dl_id) >= 32:
                         return dl_id
-            # Fallback paginated
             r2 = await c.get(
                 f"{url}/api/v3/history",
-                params={"apikey": key, "movieId": radarr_id, "pageSize": 20},
+                headers=_arr_auth(key),
+                params={"movieId": radarr_id, "pageSize": 20},
             )
             if r2.status_code == 200:
                 for rec in r2.json().get("records", []):
@@ -200,7 +200,7 @@ async def test_sonarr() -> tuple[bool, str]:
         return False, "Non configuré"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            r = await c.get(f"{url}/api/v3/system/status", params={"apikey": key})
+            r = await c.get(f"{url}/api/v3/system/status", headers=_arr_auth(key))
             if r.status_code == 200:
                 return True, f"Sonarr {r.json().get('version', '?')}"
             return False, f"HTTP {r.status_code}"
@@ -220,7 +220,7 @@ async def build_sonarr_path_cache() -> dict:
     cache: dict = {}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
-            rs = await c.get(f"{url}/api/v3/series", params={"apikey": key})
+            rs = await c.get(f"{url}/api/v3/series", headers=_arr_auth(key))
             if rs.status_code != 200:
                 return {}
             for series in rs.json():
@@ -229,7 +229,8 @@ async def build_sonarr_path_cache() -> dict:
                     continue
                 rf = await c.get(
                     f"{url}/api/v3/episodefile",
-                    params={"apikey": key, "seriesId": series["id"]},
+                    headers=_arr_auth(key),
+                    params={"seriesId": series["id"]},
                 )
                 if rf.status_code == 200:
                     for ef in rf.json():
@@ -253,18 +254,17 @@ async def sonarr_find_by_path(file_path: str) -> Optional[int]:
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-            # Get all series
-            rs = await c.get(f"{url}/api/v3/series", params={"apikey": key})
+            rs = await c.get(f"{url}/api/v3/series", headers=_arr_auth(key))
             if rs.status_code != 200:
                 return None
             for series in rs.json():
                 folder = series.get("path") or ""
                 if not file_path.startswith(folder + "/"):
                     continue
-                # Get episode files for this series
                 rf = await c.get(
                     f"{url}/api/v3/episodefile",
-                    params={"apikey": key, "seriesId": series["id"]},
+                    headers=_arr_auth(key),
+                    params={"seriesId": series["id"]},
                 )
                 if rf.status_code == 200:
                     for ef in rf.json():
@@ -284,16 +284,14 @@ async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             ref = await c.get(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
-                params={"apikey": key},
+                headers=_arr_auth(key),
             )
             if ref.status_code != 200:
                 return None
             series_id = ref.json().get("seriesId")
             if not series_id:
                 return None
-            rs = await c.get(
-                f"{url}/api/v3/series/{series_id}", params={"apikey": key}
-            )
+            rs = await c.get(f"{url}/api/v3/series/{series_id}", headers=_arr_auth(key))
             if rs.status_code == 200:
                 return rs.json()
     except Exception as e:
@@ -322,7 +320,7 @@ async def sonarr_delete_episode_file(episode_file_id: int) -> bool:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             r = await c.delete(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
-                params={"apikey": key},
+                headers=_arr_auth(key),
             )
             return r.status_code in (200, 204)
     except Exception as e:
@@ -339,7 +337,7 @@ async def sonarr_get_torrent_hash(episode_file_id: int) -> Optional[str]:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             ref = await c.get(
                 f"{url}/api/v3/episodefile/{episode_file_id}",
-                params={"apikey": key},
+                headers=_arr_auth(key),
             )
             if ref.status_code != 200:
                 return None
@@ -348,7 +346,8 @@ async def sonarr_get_torrent_hash(episode_file_id: int) -> Optional[str]:
                 return None
             r = await c.get(
                 f"{url}/api/v3/history/series",
-                params={"apikey": key, "seriesId": series_id},
+                headers=_arr_auth(key),
+                params={"seriesId": series_id},
             )
             if r.status_code == 200:
                 records = r.json() if isinstance(r.json(), list) else r.json().get("records", [])
@@ -395,7 +394,6 @@ async def seerr_get_users() -> List[dict]:
         return []
     out = []
     try:
-        # Load existing Hygie mappings for merge
         from .database import DB_PATH
         import aiosqlite
         hygie_mappings: dict = {}
@@ -431,7 +429,6 @@ async def seerr_get_users() -> List[dict]:
                         or u.get("email")
                         or f"User #{uid}"
                     )
-                    # Get Discord ID from Seerr notification settings
                     seerr_discord = ""
                     try:
                         rn = await c.get(
@@ -442,17 +439,14 @@ async def seerr_get_users() -> List[dict]:
                             seerr_discord = str(rn.json().get("discordId") or "").strip()
                     except Exception:
                         pass
-
-                    # Hygie manual mapping takes priority
                     hygie_discord = hygie_mappings.get(str(uid), "")
                     discord_id = hygie_discord or seerr_discord
-
                     out.append({
                         "id": uid,
                         "username": name,
                         "discord_id": discord_id,
-                        "discord_id_seerr": seerr_discord,   # from Seerr
-                        "discord_id_hygie": hygie_discord,   # from Hygie rules
+                        "discord_id_seerr": seerr_discord,
+                        "discord_id_hygie": hygie_discord,
                     })
                 if skip + 100 >= total or not users:
                     break

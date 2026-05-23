@@ -233,7 +233,8 @@ async function loadDashboard() {
       return;
     }
     box.innerHTML = data.items.map(m => {
-      const days = Math.ceil((new Date(m.delete_at) - Date.now()) / 86400000);
+      const _delDt = new Date(m.delete_at); const _now = new Date();
+      const days = Math.max(0, Math.round((Date.UTC(_delDt.getUTCFullYear(),_delDt.getUTCMonth(),_delDt.getUTCDate()) - Date.UTC(_now.getUTCFullYear(),_now.getUTCMonth(),_now.getUTCDate())) / 86400000));
       const col = days<=1?'#ef4444':days<=7?'#f59e0b':'#94a3b8';
       const icon = m.media_type==='Movie'?'🎬':'📺';
       const _title = escapeHtml(m.title);
@@ -436,7 +437,8 @@ async function loadQueue() {
       grid.style.display = 'grid';
       grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;padding:16px';
       grid.innerHTML = data.items.map(m => {
-        const days = Math.ceil((new Date(m.delete_at)-Date.now())/86400000);
+        const _delDt2 = new Date(m.delete_at); const _now2 = new Date();
+        const days = Math.max(0, Math.round((Date.UTC(_delDt2.getUTCFullYear(),_delDt2.getUTCMonth(),_delDt2.getUTCDate()) - Date.UTC(_now2.getUTCFullYear(),_now2.getUTCMonth(),_now2.getUTCDate())) / 86400000));
         const delCol = days<=1?'#ef4444':days<=7?'#f59e0b':'#94a3b8';
         const icon = m.media_type==='Movie'?'🎬':'📺';
         const poster = m.poster_url
@@ -470,7 +472,8 @@ async function loadQueue() {
         const added = m.added_date ? new Date(m.added_date).toLocaleDateString('fr-FR') : '—';
         const seen = m.last_played ? new Date(m.last_played).toLocaleDateString('fr-FR') : `<em style="color:#ef444480">Jamais</em>`;
         const del = new Date(m.delete_at).toLocaleDateString('fr-FR');
-        const days = Math.ceil((new Date(m.delete_at)-Date.now())/86400000);
+        const _delDt3 = new Date(m.delete_at); const _now3 = new Date();
+        const days = Math.max(0, Math.round((Date.UTC(_delDt3.getUTCFullYear(),_delDt3.getUTCMonth(),_delDt3.getUTCDate()) - Date.UTC(_now3.getUTCFullYear(),_now3.getUTCMonth(),_now3.getUTCDate())) / 86400000));
         const delCol = days<=1?'#ef4444':days<=7?'#f59e0b':'var(--text)';
         const icon = m.media_type==='Movie'?'🎬':'📺';
         const lib = m.library_name || m.library_id;

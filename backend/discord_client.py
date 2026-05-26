@@ -10,6 +10,7 @@ Discord ID resolution priority for mentions:
   2. Seerr user notification settings discordId (auto from Seerr)
 """
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -21,11 +22,22 @@ from .database import DB_PATH, get_setting, parse_iso_dt
 logger = logging.getLogger(__name__)
 
 _TITLES = {
-    "30d": ("📅 Suppression dans 30 jours", 0x6366F1),
-    "7d":  ("🗓️ Suppression dans 7 jours",  0xF0A500),
-    "1d":  ("⚠️ Suppression dans 24 heures", 0xFF4500),
-    "now": ("🗑️ Médias supprimés",           0xFF0000),
+    "detected": ("🔍 Nouveau média détecté",  0x57F287),
+    "1d":       ("⚠️ Suppression dans 24h",   0xFF4500),
+    "now":      ("🗑️ Médias supprimés",        0xFF0000),
 }
+
+
+def _get_kind_meta(kind: str) -> tuple:
+    if kind in _TITLES:
+        return _TITLES[kind]
+    m = re.match(r'^(\d+)d$', kind)
+    if m:
+        days = int(m.group(1))
+        label = "24 heures" if days == 1 else f"{days} jours"
+        color = 0xFF4500 if days <= 2 else 0xF0A500 if days <= 7 else 0x6366F1
+        return (f"📅 Suppression dans {label}", color)
+    return ("ℹ️ Hygie", 0x6366F1)
 
 
 async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
@@ -144,7 +156,7 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
         logger.info("Discord: webhook non configuré — notification ignorée")
         return False
 
-    footer_label, color = _TITLES.get(kind, ("ℹ️ Hygie", 0x6366F1))
+    footer_label, color = _get_kind_meta(kind)
     single = len(media_list) == 1
 
     embeds: list = []

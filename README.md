@@ -510,6 +510,30 @@ Hygie applique automatiquement les migrations de schéma au démarrage. La mise 
 
 ---
 
+### 🆕 Changements récents (post v2.3.2)
+
+**Notifications Discord repensées**
+- Notification immédiate à la détection d'un média (avec date de suppression affichée)
+- Paliers configurables dans l'onglet Discord des paramètres (ex: `7,1` pour j-7 et j-1)
+- Chaque palier se déclenche indépendamment — plusieurs notifications possibles par item
+- Titres dynamiques pour n'importe quel palier (`📅 Suppression dans 14 jours`, etc.)
+- Migration transparente : les items déjà notifiés conservent leur état (`notified_thresholds`)
+
+**Correction période de grâce**
+- `delete_at` recalculé à chaque scan quand la période de grâce change
+- Notifications réinitialisées automatiquement si la date change de plus d'1h
+
+**Synchronisation Emby**
+- Collection et overlays resynchronisés à chaque scan (pas seulement lors de nouvelles détections)
+
+**Interface — file d'attente colorée**
+- Jaune `< 30j` · Orange `< 14j` · Rouge `< 7j` · Glow rouge animé `< 3j`
+
+**Cache-busting automatique**
+- Hash MD5 de `app.js` comme version `?v=X.Y.Z-hash` — rechargement garanti à chaque déploiement
+
+---
+
 <div align="center">
 
 ### ❤️ Support the project / Soutenir le projet

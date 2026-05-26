@@ -101,6 +101,7 @@
     .tab-btn { background:transparent; border:none; color:var(--muted); font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer; transition:all .15s; }
   .tab-btn:hover { background:#ffffff10; color:var(--text); }
   .tab-btn.tab-active { background:var(--accent); color:#fff; font-weight:600; }
+  @keyframes hygie-glow { 0%,100%{text-shadow:0 0 4px #ef444460} 50%{text-shadow:0 0 14px #ef4444,0 0 28px #ef444480} }
 </style>
 </head>
 <body>
@@ -504,6 +505,11 @@
       <div style="display:flex;flex-direction:column;gap:12px">
         <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook URL</label><input class="input" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..."></div>
         <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('discord')"><i class="fab fa-discord"></i>Tester</button>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:4px">Paliers de notification</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Nombre de jours avant suppression où envoyer une notification (séparés par des virgules). Ex: <code style="background:#1a1d2e;padding:1px 4px;border-radius:3px">7,1</code></div>
+          <input class="input" id="discord_notif_thresholds" placeholder="7,1" style="max-width:200px">
+        </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <div>

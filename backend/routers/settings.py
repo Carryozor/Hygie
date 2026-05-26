@@ -87,14 +87,20 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
             new_scan = incoming["scan_interval_minutes"]
             if str(new_scan) != str(old_scan):
                 try:
-                    scheduler.reschedule_job("scan_job", trigger="interval", minutes=int(new_scan))
+                    minutes = max(1, min(10080, int(new_scan)))
+                    scheduler.reschedule_job("scan_job", trigger="interval", minutes=minutes)
+                except (ValueError, TypeError):
+                    pass
                 except Exception:
                     pass
         if "deletion_check_interval_minutes" in updated:
             new_del = incoming["deletion_check_interval_minutes"]
             if str(new_del) != str(old_del):
                 try:
-                    scheduler.reschedule_job("deletion_job", trigger="interval", minutes=int(new_del))
+                    minutes = max(1, min(10080, int(new_del)))
+                    scheduler.reschedule_job("deletion_job", trigger="interval", minutes=minutes)
+                except (ValueError, TypeError):
+                    pass
                 except Exception:
                     pass
 

@@ -33,6 +33,7 @@ from .database import (
     get_setting,
     init_db,
     register_ws,
+    sanitize_url,
     set_setting,
     unregister_ws,
 )
@@ -141,11 +142,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
-    # Schedule jobs — intervals stored in minutes
+    # Schedule jobs — intervals stored in minutes, clamped to [1, 10080]
     try:
-        scan_min = int(await get_setting("scan_interval_minutes") or "360")
-        del_min = int(await get_setting("deletion_check_interval_minutes") or "60")
-    except ValueError:
+        scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))
+        del_min  = max(1, min(10080, int(await get_setting("deletion_check_interval_minutes") or "60")))
+    except (ValueError, TypeError):
         scan_min, del_min = 360, 60
 
     # Preserve countdown across restarts: compute next_run from last job_history entry.
@@ -305,9 +306,16 @@ async def health():
         status_info["database"] = f"error: {e}"
         status_info["status"] = "degraded"
 
-    # Scheduler check
+    # Scheduler check — verify critical jobs exist and have a valid next_run_time
     try:
-        status_info["scheduler"] = f"{len(scheduler.get_jobs())} jobs"
+        jobs = {j.id: j for j in scheduler.get_jobs()}
+        critical = ("scan_job", "deletion_job")
+        missing = [jid for jid in critical if jid not in jobs or jobs[jid].next_run_time is None]
+        if missing:
+            status_info["scheduler"] = f"degraded (jobs sans next_run: {', '.join(missing)})"
+            status_info["status"] = "degraded"
+        else:
+            status_info["scheduler"] = f"{len(jobs)} jobs"
     except Exception:
         status_info["scheduler"] = "unavailable"
 
@@ -433,7 +441,7 @@ async def proxy_image(request: Request):
                 )
             # Don't warn on 500 (Emby returns this for items without posters)
             if r.status_code != 500:
-                logger.warning(f"Proxy: upstream HTTP {r.status_code} for {target_url[:60]}")
+                logger.warning(f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(target_url)[:80]}")
     except Exception as e:
         logger.error(f"Proxy error: {e}")
     return Response(status_code=404)

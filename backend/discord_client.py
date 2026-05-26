@@ -17,7 +17,7 @@ from typing import List, Optional
 import aiosqlite
 import httpx
 
-from .database import DB_PATH, get_setting, parse_iso_dt
+from .database import DB_PATH, get_setting, parse_iso_dt, http_retry
 
 logger = logging.getLogger(__name__)
 
@@ -180,16 +180,23 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
             "color": color,
         })
 
+    titles = [m.get("title", "?") for m in media_list]
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(webhook, json={"embeds": embeds})
+            r = await http_retry(lambda: client.post(webhook, json={"embeds": embeds}))
             if r.status_code in (200, 204):
                 logger.info(f"Discord '{kind}': notification envoyée ({len(media_list)} média(s))")
                 return True
-            logger.error(f"Discord webhook HTTP {r.status_code}: {r.text[:200]}")
+            logger.error(
+                f"Discord webhook HTTP {r.status_code} pour '{kind}' "
+                f"({', '.join(titles[:5])}{'…' if len(titles) > 5 else ''}): {r.text[:200]}"
+            )
             return False
     except Exception as e:
-        logger.error(f"Discord send exception: {e}")
+        logger.error(
+            f"Discord send exception pour '{kind}' "
+            f"({', '.join(titles[:5])}{'…' if len(titles) > 5 else ''}): {e}"
+        )
         return False
 
 

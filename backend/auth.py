@@ -155,6 +155,7 @@ async def update_password(username: str, new_password: str):
 
 # ─── Rate limiting (in-memory, per-IP) ────────────────────────────────────────
 _rate_buckets: dict = {}  # key -> list of timestamps
+_rate_call_counter: int = 0
 
 RATE_LIMIT_WINDOW = 300  # 5 minutes
 RATE_LIMIT_MAX = 5  # 5 failed attempts
@@ -162,21 +163,23 @@ RATE_LIMIT_MAX = 5  # 5 failed attempts
 
 def rate_limit(key: str) -> bool:
     """Returns True if the key has exceeded the limit. Records this attempt."""
+    global _rate_call_counter
     now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+
     bucket = _rate_buckets.get(key, [])
-    # Trim expired entries
-    bucket = [t for t in bucket if now - t < RATE_LIMIT_WINDOW]
+    bucket = [t for t in bucket if t > cutoff]
     bucket.append(now)
-    if bucket:
-        _rate_buckets[key] = bucket
-    elif key in _rate_buckets:
-        del _rate_buckets[key]  # remove empty keys to prevent unbounded growth
-    # Periodic full cleanup: drop all empty or expired-only buckets
-    if len(_rate_buckets) > 10000:
-        cutoff = now - RATE_LIMIT_WINDOW
-        stale = [k for k, v in _rate_buckets.items() if not v or v[-1] < cutoff]
+    _rate_buckets[key] = bucket
+
+    # Periodic cleanup every 500 calls: remove all fully-expired buckets.
+    # This bounds memory regardless of how many distinct IPs hit the server.
+    _rate_call_counter += 1
+    if _rate_call_counter % 500 == 0:
+        stale = [k for k, v in list(_rate_buckets.items()) if not v or v[-1] <= cutoff]
         for k in stale:
             del _rate_buckets[k]
+
     return len(bucket) > RATE_LIMIT_MAX
 
 

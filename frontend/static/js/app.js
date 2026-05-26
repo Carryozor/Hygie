@@ -159,7 +159,7 @@ async function doSetup() {
   const u = document.getElementById('auth-username').value.trim();
   const p = document.getElementById('auth-password').value;
   if (!u || !p) { authError('Remplissez tous les champs'); return; }
-  if (p.length < 6) { authError('Mot de passe trop court (min 6 car.)'); return; }
+  if (p.length < 8) { authError('Mot de passe trop court (min 8 car.)'); return; }
   try {
     const r = await fetch('/api/auth/setup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u, password:p}) });
     if (!r.ok) { authError((await r.json()).detail || 'Erreur'); return; }

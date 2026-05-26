@@ -14,7 +14,7 @@ from typing import Optional, Tuple, List
 
 import httpx
 
-from .database import get_setting, set_setting, get_media_servers, save_media_servers, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from .database import get_setting, set_setting, get_media_servers, save_media_servers, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
 
 logger = logging.getLogger(__name__)
 
@@ -133,20 +133,17 @@ async def get_items_in_library(
     url, key = await get_client(server_id)
     if not url or not key:
         return [], 0
+    params = {
+        "ParentId": library_id,
+        "Recursive": "true",
+        "IncludeItemTypes": "Movie,Episode",
+        "Fields": "Path,DateCreated,ProviderIds",
+        "Limit": limit,
+        "StartIndex": start,
+    }
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            r = await client.get(
-                f"{url}/Items",
-                headers=_auth(key),
-                params={
-                    "ParentId": library_id,
-                    "Recursive": "true",
-                    "IncludeItemTypes": "Movie,Episode",
-                    "Fields": "Path,DateCreated,ProviderIds",
-                    "Limit": limit,
-                    "StartIndex": start,
-                },
-            )
+            r = await http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=params))
             if r.status_code == 200:
                 data = r.json()
                 return data.get("Items", []), data.get("TotalRecordCount", 0)
@@ -163,19 +160,16 @@ async def get_library_user_data(user_id: str, library_id: str, server_id: str = 
     url, key = await get_client(server_id)
     if not url or not key:
         return {}
+    params = {
+        "ParentId": library_id,
+        "Fields": "UserData",
+        "Recursive": "true",
+        "Limit": 100000,
+        "IncludeItemTypes": "Movie,Episode",
+    }
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            r = await client.get(
-                f"{url}/Users/{user_id}/Items",
-                headers=_auth(key),
-                params={
-                    "ParentId": library_id,
-                    "Fields": "UserData",
-                    "Recursive": "true",
-                    "Limit": 100000,
-                    "IncludeItemTypes": "Movie,Episode",
-                },
-            )
+            r = await http_retry(lambda: client.get(f"{url}/Users/{user_id}/Items", headers=_auth(key), params=params))
             if r.status_code == 200:
                 return {
                     item["Id"]: item.get("UserData") or {}

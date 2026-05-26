@@ -23,6 +23,13 @@ def _arr_auth(key: str) -> dict:
     return {"X-Api-Key": key}
 
 
+def _path_matches(file_path: str, item_path: str, folder: str) -> bool:
+    """Return True if file_path matches an arr item (exact path or inside folder)."""
+    return bool(item_path and item_path == file_path) or bool(
+        folder and file_path.startswith(folder.rstrip("/") + "/")
+    )
+
+
 # ═══ Radarr ═══════════════════════════════════════════════════════════════════
 async def _radarr_config():
     url = (await get_setting("radarr_url") or "").rstrip("/")
@@ -99,9 +106,7 @@ async def radarr_find_by_path(file_path: str) -> Optional[int]:
                 return None
             for movie in r.json():
                 mf = movie.get("movieFile") or {}
-                mf_path = mf.get("path") or ""
-                folder = movie.get("path") or ""
-                if mf_path == file_path or file_path.startswith(folder + "/"):
+                if _path_matches(file_path, mf.get("path") or "", movie.get("path") or ""):
                     return movie.get("id")
     except Exception as e:
         logger.debug(f"radarr_find_by_path: {e}")
@@ -258,8 +263,8 @@ async def sonarr_find_by_path(file_path: str) -> Optional[int]:
             if rs.status_code != 200:
                 return None
             for series in rs.json():
-                folder = series.get("path") or ""
-                if not file_path.startswith(folder + "/"):
+                folder = (series.get("path") or "").rstrip("/")
+                if not folder or not file_path.startswith(folder + "/"):
                     continue
                 rf = await c.get(
                     f"{url}/api/v3/episodefile",

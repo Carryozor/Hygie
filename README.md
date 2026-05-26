@@ -10,8 +10,8 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-2.3.2-brightgreen)](https://github.com/carryozor/hygie/releases)
-[![Tests](https://img.shields.io/badge/tests-154%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
+[![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Tests](https://img.shields.io/badge/tests-169%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -233,10 +233,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.3 \
+  --build-arg VERSION=2.4.0 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.3 \
+  -t ghcr.io/carryozor/hygie:2.4.0 \
   --push .
 ```
 
@@ -488,10 +488,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.3 \
+  --build-arg VERSION=2.4.0 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.3 \
+  -t ghcr.io/carryozor/hygie:2.4.0 \
   --push .
 ```
 
@@ -510,27 +510,38 @@ Hygie applique automatiquement les migrations de schéma au démarrage. La mise 
 
 ---
 
-### 🆕 Changements récents (post v2.3.2)
+### 🆕 Changements v2.4.0 — Stabilité & sécurité
 
-**Notifications Discord repensées**
+**Stabilité**
+- Suppressions en parallèle avec `Semaphore(3)` — plus rapide, sans surcharge des services externes
+- Retry HTTP avec backoff exponentiel (×3, 1s/2s/4s) sur TimeoutException et ConnectError
+- Timeout 5s sur chaque envoi WebSocket — un client lent ne bloque plus les autres
+- `init_db()` robuste avec base `:memory:` (tests et mode in-memory)
+
+**Performance**
+- 3 nouveaux index DB : `media_queue(emby_id)`, `media_queue(library_id)`, `ignored_media(emby_id)`
+- Colonnes `notified_detected` et `notified_thresholds` intégrées au schéma principal (plus de migration lazy)
+
+**Sécurité**
+- Rate limiter : suppression du dead code, cleanup périodique toutes les 500 appels (mémoire bornée)
+- `sanitize_url()` : les paramètres `api_key`, `token`, `password` sont masqués dans les logs
+- Intervalles scheduler clampés à `[1, 10080]` — valeur 0 ou négative ne crashe plus APScheduler
+- Validation mot de passe unifiée frontend/backend : minimum **8 caractères** partout
+
+**Qualité de code**
+- `_path_matches()` utilitaire commun pour la correspondance de chemins (Radarr/Sonarr)
+- Logs Discord enrichis : les titres des médias non notifiés sont loggés en cas d'échec webhook
+- Health check `/health` : détecte les jobs scheduler sans `next_run_time` (zombie jobs)
+- `http_retry()` exporté depuis `database.py` — utilisable par tous les clients
+
+**Notifications Discord v2.3.3** (intégrées dans cette version)
 - Notification immédiate à la détection d'un média (avec date de suppression affichée)
 - Paliers configurables dans l'onglet Discord des paramètres (ex: `7,1` pour j-7 et j-1)
-- Chaque palier se déclenche indépendamment — plusieurs notifications possibles par item
 - Titres dynamiques pour n'importe quel palier (`📅 Suppression dans 14 jours`, etc.)
-- Migration transparente : les items déjà notifiés conservent leur état (`notified_thresholds`)
+- File d'attente colorée : Jaune `< 30j` · Orange `< 14j` · Rouge `< 7j` · Glow rouge animé `< 3j`
 
-**Correction période de grâce**
-- `delete_at` recalculé à chaque scan quand la période de grâce change
-- Notifications réinitialisées automatiquement si la date change de plus d'1h
-
-**Synchronisation Emby**
-- Collection et overlays resynchronisés à chaque scan (pas seulement lors de nouvelles détections)
-
-**Interface — file d'attente colorée**
-- Jaune `< 30j` · Orange `< 14j` · Rouge `< 7j` · Glow rouge animé `< 3j`
-
-**Cache-busting automatique**
-- Hash MD5 de `app.js` comme version `?v=X.Y.Z-hash` — rechargement garanti à chaque déploiement
+**Tests**
+- 15 nouveaux tests (`test_v240_fixes.py`) : sanitize_url, http_retry, rate limiter, index DB
 
 ---
 

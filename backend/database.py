@@ -31,6 +31,38 @@ TIMEOUT_MEDIUM = 20   # bulk listing calls (movies, series, torrents)
 TIMEOUT_LONG   = 30   # paginated or library-wide calls
 
 
+import re as _re
+
+_SENSITIVE_PARAMS = _re.compile(r'(?i)(api[_-]?key|token|password|secret)=[^&\s]+')
+
+
+def sanitize_url(url: str) -> str:
+    """Redact sensitive query parameters from a URL for safe logging."""
+    return _SENSITIVE_PARAMS.sub(r'\1=***', url)
+
+
+async def http_retry(coro_factory, *, retries: int = 3, backoff: float = 1.0):
+    """Execute an async callable with exponential backoff on transient errors.
+
+    coro_factory: zero-arg async callable that performs one HTTP attempt.
+    Retries on httpx.TimeoutException and httpx.ConnectError.
+    Raises on exhaustion or non-transient errors (4xx, logic errors).
+
+    Example:
+        result = await http_retry(lambda: client.get(url, headers=h))
+    """
+    import httpx as _httpx
+    last_exc: Exception = RuntimeError("no attempts")
+    for attempt in range(retries):
+        try:
+            return await coro_factory()
+        except (_httpx.TimeoutException, _httpx.ConnectError, _httpx.RemoteProtocolError) as e:
+            last_exc = e
+            if attempt < retries - 1:
+                await asyncio.sleep(backoff * (2 ** attempt))
+    raise last_exc
+
+
 def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
     """Parse an ISO-8601 string (with or without trailing Z) to an aware datetime."""
     if not s:
@@ -171,13 +203,17 @@ def unregister_ws(ws):
     _ws_clients.discard(ws)
 
 async def _broadcast(payload: dict):
-    """Send a payload to all connected WebSocket clients."""
+    """Send a payload to all connected WebSocket clients.
+
+    Each send is wrapped in a 5-second timeout so a slow or stuck client
+    cannot block the broadcast for all other subscribers.
+    """
     if not _ws_clients:
         return
     dead = []
     for ws in list(_ws_clients):
         try:
-            await ws.send_json(payload)
+            await asyncio.wait_for(ws.send_json(payload), timeout=5.0)
         except Exception:
             dead.append(ws)
     for ws in dead:
@@ -252,7 +288,9 @@ _TABLES = [
             notified_30d INTEGER DEFAULT 0,
             notified_7d INTEGER DEFAULT 0,
             notified_1d INTEGER DEFAULT 0,
-            notified_now INTEGER DEFAULT 0
+            notified_now INTEGER DEFAULT 0,
+            notified_detected INTEGER DEFAULT 0,
+            notified_thresholds TEXT DEFAULT '[]'
         )""",
         [
             ("poster_url", "TEXT DEFAULT ''"),
@@ -269,6 +307,8 @@ _TABLES = [
             ("notified_7d", "INTEGER DEFAULT 0"),
             ("notified_1d", "INTEGER DEFAULT 0"),
             ("notified_now", "INTEGER DEFAULT 0"),
+            ("notified_detected", "INTEGER DEFAULT 0"),
+            ("notified_thresholds", "TEXT DEFAULT '[]'"),
         ],
     ),
     (
@@ -486,7 +526,9 @@ async def _ensure_columns(db, table: str, expected: list):
 # ─── Schema & migrations ──────────────────────────────────────────────────────
 async def init_db():
     """Create tables, run migrations, seed defaults."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:  # skip for in-memory (:memory:) or bare filenames
+        os.makedirs(db_dir, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
@@ -510,6 +552,15 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_emby_id ON media_queue(emby_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_library_id ON media_queue(library_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ignored_emby_id ON ignored_media(emby_id)"
         )
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)

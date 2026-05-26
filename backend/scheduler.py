@@ -892,17 +892,24 @@ async def run_deletion():
             # Read qbit settings once for the whole batch
             _qbit_action = await get_setting("qbit_action") or "tag_only"
             _qbit_tag = await get_setting("qbit_tag") or "Supprimé-Hygie"
-            for row in to_delete:
-                ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag)
-                status_val = STATUS_DELETED if ok else STATUS_ERROR
-                async with aiosqlite.connect(DB_PATH) as db:
-                    await db.execute(
-                        "UPDATE media_queue SET status=?, notified_now=1 WHERE id=?",
-                        (status_val, row["id"]),
-                    )
-                    await db.commit()
-                if ok:
-                    deleted_count += 1
+
+            # Semaphore limits concurrent deletions to avoid overwhelming external services
+            _del_sem = asyncio.Semaphore(3)
+
+            async def _delete_one(row: dict) -> bool:
+                async with _del_sem:
+                    ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag)
+                    status_val = STATUS_DELETED if ok else STATUS_ERROR
+                    async with aiosqlite.connect(DB_PATH) as db:
+                        await db.execute(
+                            "UPDATE media_queue SET status=?, notified_now=1 WHERE id=?",
+                            (status_val, row["id"]),
+                        )
+                        await db.commit()
+                    return ok
+
+            results = await asyncio.gather(*[_delete_one(r) for r in to_delete], return_exceptions=True)
+            deleted_count = sum(1 for r in results if r is True)
 
             prefix = "[DRY RUN] " if dry_run else ""
             await add_log(

@@ -35,6 +35,7 @@ class SettingsUpdate(BaseModel):
     qbit_action: Optional[str] = None
     qbit_tag: Optional[str] = None
     discord_webhook: Optional[str] = None
+    discord_notif_thresholds: Optional[str] = None
     dry_run: Optional[str] = None
     scan_interval_hours: Optional[str] = None
     deletion_check_interval_hours: Optional[str] = None

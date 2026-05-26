@@ -10,6 +10,15 @@ function escapeHtml(str) {
 }
 
 
+// ─── Queue urgency color ──────────────────────────────────────────────────────
+function daysColorStyle(days) {
+  if (days < 3)  return 'color:#ef4444;animation:hygie-glow 1.5s ease-in-out infinite';
+  if (days < 7)  return 'color:#ef4444';
+  if (days < 14) return 'color:#f97316';
+  if (days < 30) return 'color:#eab308';
+  return 'color:var(--muted)';
+}
+
 // ─── Confirmation modal (remplace les confirm() natifs) ──────────────────────
 let _confirmResolve = () => {};
 let _confirmReject  = () => {};
@@ -235,7 +244,7 @@ async function loadDashboard() {
     box.innerHTML = data.items.map(m => {
       const _delDt = new Date(m.delete_at); const _now = new Date();
       const days = Math.max(0, Math.round((Date.UTC(_delDt.getUTCFullYear(),_delDt.getUTCMonth(),_delDt.getUTCDate()) - Date.UTC(_now.getUTCFullYear(),_now.getUTCMonth(),_now.getUTCDate())) / 86400000));
-      const col = days<=1?'#ef4444':days<=7?'#f59e0b':'#94a3b8';
+      const col = daysColorStyle(days);
       const icon = m.media_type==='Movie'?'🎬':'📺';
       const _title = escapeHtml(m.title);
       const _lib = escapeHtml(m.library_name || m.library_id);
@@ -248,7 +257,7 @@ async function loadDashboard() {
           <div style="display:flex;gap:8px;margin-top:2px">${req}<span style="font-size:11px;color:var(--muted)">📚 ${_lib}</span></div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="color:${col};font-weight:600;font-size:12px">${days<=0?'Imminent':`dans ${days}j`}</div>
+          <div style="${col};font-weight:600;font-size:12px">${days<=0?'Imminent':`dans ${days}j`}</div>
           <div style="color:var(--muted);font-size:10px">${new Date(m.delete_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>
         </div>
       </div>`;
@@ -439,7 +448,7 @@ async function loadQueue() {
       grid.innerHTML = data.items.map(m => {
         const _delDt2 = new Date(m.delete_at); const _now2 = new Date();
         const days = Math.max(0, Math.round((Date.UTC(_delDt2.getUTCFullYear(),_delDt2.getUTCMonth(),_delDt2.getUTCDate()) - Date.UTC(_now2.getUTCFullYear(),_now2.getUTCMonth(),_now2.getUTCDate())) / 86400000));
-        const delCol = days<=1?'#ef4444':days<=7?'#f59e0b':'#94a3b8';
+        const delCol = daysColorStyle(days);
         const icon = m.media_type==='Movie'?'🎬':'📺';
         const poster = m.poster_url
           ? `<img src="${m.poster_url}" style="width:100%;height:220px;object-fit:cover;border-radius:8px 8px 0 0" onerror="this.style.display='none'">`
@@ -454,7 +463,7 @@ async function loadQueue() {
             ${titleEl}${req}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
               <span class="badge badge-${m.status}" style="font-size:10px">${m.status}</span>
-              <span style="font-size:10px;color:${delCol};font-weight:600">${days<=0?'Imminent':days+'j'}</span>
+              <span style="font-size:10px;${delCol};font-weight:600">${days<=0?'Imminent':days+'j'}</span>
             </div>
             ${m.status==='pending'?`<div style="display:flex;gap:4px;margin-top:6px">
               <button class="btn btn-ghost" style="flex:1;padding:3px;font-size:10px;justify-content:center" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="${escapeHtml(m.media_type)}" data-poster="${escapeHtml(m.poster_url||'')}" data-lib="${escapeHtml(m.library_name||'')}" onclick="event.stopPropagation();openIgnoreModalFromEl(this)"><i class="fas fa-ban"></i></button>
@@ -474,7 +483,7 @@ async function loadQueue() {
         const del = new Date(m.delete_at).toLocaleDateString('fr-FR');
         const _delDt3 = new Date(m.delete_at); const _now3 = new Date();
         const days = Math.max(0, Math.round((Date.UTC(_delDt3.getUTCFullYear(),_delDt3.getUTCMonth(),_delDt3.getUTCDate()) - Date.UTC(_now3.getUTCFullYear(),_now3.getUTCMonth(),_now3.getUTCDate())) / 86400000));
-        const delCol = days<=1?'#ef4444':days<=7?'#f59e0b':'var(--text)';
+        const delCol = daysColorStyle(days);
         const icon = m.media_type==='Movie'?'🎬':'📺';
         const lib = m.library_name || m.library_id;
         const poster = m.poster_url
@@ -500,7 +509,7 @@ async function loadQueue() {
           <td>${reqCell}</td>
           <td style="color:var(--muted);font-size:12px">${added}</td>
           <td style="font-size:12px">${seen}</td>
-          <td style="color:${delCol};font-weight:500;font-size:12px" title="${del}">${del}<br><span style="font-size:10px;opacity:.7">${days>0?days+'j':'aujourd\'hui'}</span></td>
+          <td style="${delCol};font-weight:500;font-size:12px" title="${del}">${del}<br><span style="font-size:10px;opacity:.7">${days>0?days+'j':'aujourd\'hui'}</span></td>
           <td>${badge}</td>
           <td onclick="event.stopPropagation()">${actions}</td>
         </tr>`;
@@ -789,7 +798,7 @@ const SETTINGS_FORM_FIELDS = [
   'seerr_url','seerr_api_key','seerr_external_url',
   'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-  'discord_webhook',
+  'discord_webhook','discord_notif_thresholds',
 ];
 
 

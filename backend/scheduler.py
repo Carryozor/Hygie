@@ -230,6 +230,69 @@ async def _get_seerr_grace(
             return row[0] if row else default_grace
 
 
+async def _update_delete_at_if_pending(emby_id: str, lib: dict, grace_days: int, title: str):
+    """Recalcule delete_at = detected_at + grace_days actuel pour un item déjà en file."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT id, detected_at, seerr_user_id, delete_at FROM media_queue "
+                "WHERE emby_id=? AND status='pending'",
+                (emby_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                row_id, row_detected_at, row_seerr_user_id, row_delete_at = row
+                detected_at_dt = parse_iso_dt(row_detected_at) if row_detected_at else None
+                if detected_at_dt:
+                    effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
+                    new_delete_at = detected_at_dt + timedelta(days=effective_grace)
+                    old_dt = parse_iso_dt(row_delete_at) if row_delete_at else None
+                    changed = old_dt is None or abs((new_delete_at - old_dt).total_seconds()) > 3600
+                    update_sql = (
+                        "UPDATE media_queue SET delete_at=?, notified_thresholds='[]' WHERE id=?"
+                        if changed else
+                        "UPDATE media_queue SET delete_at=? WHERE id=?"
+                    )
+                    await db.execute(update_sql, (new_delete_at.isoformat(), row_id))
+                    await db.commit()
+                    if changed:
+                        logger.debug(f"delete_at recalculé ({effective_grace}j) : {title} → {new_delete_at.strftime('%d/%m/%Y')} (notifs réinitialisées)")
+                    else:
+                        logger.debug(f"delete_at recalculé ({effective_grace}j) : {title} → {new_delete_at.strftime('%d/%m/%Y')}")
+    except Exception as e:
+        logger.error(f"Erreur recalcul delete_at pour {title}: {e}")
+
+
+async def _ensure_notif_columns():
+    """Add new notification columns to media_queue if missing (safe migration)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("ALTER TABLE media_queue ADD COLUMN notified_detected INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE media_queue ADD COLUMN notified_thresholds TEXT DEFAULT '[]'")
+        except Exception:
+            pass
+        # Migrate items already notified under old system: mark as migrated so they don't re-notify
+        await db.execute("""
+            UPDATE media_queue
+            SET notified_thresholds = '["migrated"]'
+            WHERE (notified_30d=1 OR notified_7d=1 OR notified_1d=1)
+              AND (notified_thresholds IS NULL OR notified_thresholds = '[]')
+        """)
+        await db.commit()
+
+
+def _parse_thresholds(raw: str) -> list:
+    """Parse comma-separated threshold days string into sorted list (descending)."""
+    try:
+        days = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+        return sorted(set(days), reverse=True)
+    except Exception:
+        return [7, 1]
+
+
 # ═══ Scan ════════════════════════════════════════════════════════════════════
 async def run_scan():
     """Full scan of all enabled libraries."""
@@ -242,6 +305,7 @@ async def run_scan():
         await add_log("INFO", "Scan démarré", "job")
         added = 0
         _scan_status, _scan_msg = "error", ""
+        await _ensure_notif_columns()
         try:
             # Get enabled servers — fall back to a single "legacy" server if none configured
             servers = await get_media_servers()
@@ -294,9 +358,8 @@ async def run_scan():
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             _scan_status, _scan_msg = "success", f"{added} queued"
-            if added > 0:
-                await sync_emby_collection()
-                await _send_pending_notifications()
+            await sync_emby_collection()
+            await _send_pending_notifications()
         except Exception as e:
             logger.exception("Scan error")
             await add_log("ERROR", f"Erreur scan: {e}", "job")
@@ -352,10 +415,8 @@ async def run_scan_library(library_id: str):
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             _sl_status, _sl_msg = "success", f"{added} queued"
-
-            if added > 0:
-                await sync_emby_collection()
-                await _send_pending_notifications()
+            await sync_emby_collection()
+            await _send_pending_notifications()
         except Exception as e:
             logger.exception("Scan library error")
             await add_log("ERROR", f"Erreur scan: {e}", "job")
@@ -489,17 +550,32 @@ async def _evaluate_item(
     ):
         return False
 
-    # Skip if already in queue or ignored — use pre-loaded sets when available
+    # Skip if already in queue, but recalcule delete_at si le grace_days a changé
     if queued_ids is not None:
         if emby_id in queued_ids:
+            await _update_delete_at_if_pending(emby_id, lib, grace_days, title)
             return False
     else:
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
-                "SELECT id FROM media_queue WHERE emby_id=?", (emby_id,)
+                "SELECT id, status, detected_at, seerr_user_id FROM media_queue WHERE emby_id=?", (emby_id,)
             ) as cur:
-                if await cur.fetchone():
-                    return False
+                existing = await cur.fetchone()
+        if existing:
+            row_id, row_status, row_detected_at, row_seerr_user_id = existing
+            if row_status == "pending" and row_detected_at:
+                try:
+                    detected_at_dt = parse_iso_dt(row_detected_at)
+                    if detected_at_dt:
+                        effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
+                        new_delete_at = detected_at_dt + timedelta(days=effective_grace)
+                        async with aiosqlite.connect(DB_PATH) as db:
+                            await db.execute("UPDATE media_queue SET delete_at=? WHERE id=?", (new_delete_at.isoformat(), row_id))
+                            await db.commit()
+                        logger.debug(f"delete_at recalculé ({effective_grace}j) : {title} → {new_delete_at.strftime('%d/%m/%Y')}")
+                except Exception as e:
+                    logger.error(f"Erreur recalcul delete_at pour {title}: {e}")
+            return False
 
     if ignored_ids is not None:
         if emby_id in ignored_ids:
@@ -609,6 +685,30 @@ async def _evaluate_item(
         f"Ajouté : {title} → {delete_at.strftime('%d/%m/%Y')}{note}",
         "scan",
     )
+
+    # Send "detected" notification immediately at scan time
+    dry_run = await get_bool_setting("dry_run")
+    item_notif = {
+        "title": title,
+        "media_type": media_type,
+        "library_name": lib.get("name", "?"),
+        "seerr_user_id": seerr_user_id,
+        "seerr_username": seerr_username,
+        "poster_url": poster_url,
+        "delete_at": delete_at.isoformat(),
+    }
+    try:
+        sent = await send_notification([item_notif], "detected", dry_run=dry_run)
+        if sent:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "UPDATE media_queue SET notified_detected=1 WHERE emby_id=? AND status='pending'",
+                    (emby_id,),
+                )
+                await db.commit()
+    except Exception as e:
+        logger.warning(f"Detected notification failed for {title}: {e}")
+
     return True
 
 
@@ -711,66 +811,52 @@ async def reevaluate_library_queue(library_id: str) -> int:
     return removed
 
 
-_VALID_FLAG_COLS = frozenset({"notified_30d", "notified_7d", "notified_1d", "notified_now"})
-
-async def _send_notif_batch(items: list, kind: str, flag_col: str, dry_run: bool):
-    """Send a notification batch and mark items as notified only on success."""
-    if flag_col not in _VALID_FLAG_COLS:
-        raise ValueError(f"Invalid flag_col: {flag_col!r}")
-    if not items:
-        return
-    sent = True
-    if not dry_run:
-        sent = await send_notification(items, kind, dry_run=False)
-    if not sent:
-        logger.warning(f"Discord notification '{kind}' failed — flag not set, will retry next cycle")
-        return
-    async with aiosqlite.connect(DB_PATH) as db:
-        ids = [r["id"] for r in items]
-        placeholders = ",".join("?" * len(ids))
-        await db.execute(
-            f"UPDATE media_queue SET {flag_col}=1 WHERE id IN ({placeholders})", ids
-        )
-        await db.commit()
-
-
 async def _send_pending_notifications():
     """
-    Send 30d/7d/1d Discord notifications for newly queued items.
-    Lightweight version of run_deletion() — no job history entry, no deletions.
-    Called automatically after each scan so new items notify immediately.
+    Send threshold-based Discord notifications for pending items.
+    Each threshold fires independently: an item can receive multiple notifications
+    (e.g., at 7 days and again at 1 day) based on configured discord_notif_thresholds.
     """
     dry_run = await get_bool_setting("dry_run")
+    thresholds_raw = await get_setting("discord_notif_thresholds") or "7,1"
+    threshold_days = _parse_thresholds(thresholds_raw)
+
     try:
-        cutoff_30d = now_utc() + timedelta(days=30, hours=1)
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM media_queue WHERE status='pending' AND notified_30d=0 AND delete_at <= ?",
-                (cutoff_30d.isoformat(),),
-            ) as cur:
-                to_30d = [dict(r) for r in await cur.fetchall()]
-        await _send_notif_batch(to_30d, "30d", "notified_30d", dry_run)
+        for days in threshold_days:
+            cutoff = now_utc() + timedelta(days=days, hours=1)
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT * FROM media_queue WHERE status='pending' AND delete_at <= ?",
+                    (cutoff.isoformat(),),
+                ) as cur:
+                    candidates = [dict(r) for r in await cur.fetchall()]
 
-        cutoff_7d = now_utc() + timedelta(days=7, hours=1)
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM media_queue WHERE status='pending' AND notified_7d=0 AND delete_at <= ?",
-                (cutoff_7d.isoformat(),),
-            ) as cur:
-                to_7d = [dict(r) for r in await cur.fetchall()]
-        await _send_notif_batch(to_7d, "7d", "notified_7d", dry_run)
+            to_notify = []
+            for item in candidates:
+                notified = json.loads(item.get("notified_thresholds") or "[]")
+                if days not in notified and "migrated" not in notified:
+                    to_notify.append(item)
 
-        cutoff_1d = now_utc() + timedelta(hours=25)
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM media_queue WHERE status='pending' AND notified_1d=0 AND delete_at <= ?",
-                (cutoff_1d.isoformat(),),
-            ) as cur:
-                to_1d = [dict(r) for r in await cur.fetchall()]
-        await _send_notif_batch(to_1d, "1d", "notified_1d", dry_run)
+            if not to_notify:
+                continue
+
+            kind = f"{days}d"
+            sent = await send_notification(to_notify, kind, dry_run=dry_run)
+            if sent:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    for item in to_notify:
+                        notified = json.loads(item.get("notified_thresholds") or "[]")
+                        if days not in notified:
+                            notified.append(days)
+                        await db.execute(
+                            "UPDATE media_queue SET notified_thresholds=? WHERE id=?",
+                            (json.dumps(notified), item["id"]),
+                        )
+                    await db.commit()
+                await add_log("INFO", f"Notification {days}j envoyée pour {len(to_notify)} média(s)", "job")
+            else:
+                logger.warning(f"Threshold notification '{kind}' failed — will retry next cycle")
     except Exception as e:
         logger.debug(f"_send_pending_notifications: {e}")
 
@@ -787,43 +873,11 @@ async def run_deletion():
         await add_log("INFO", "Vérification suppressions démarrée", "job")
         dry_run = await get_bool_setting("dry_run")
         deleted_count = 0
+        await _ensure_notif_columns()
 
         try:
-            # ── 30-day notifications ─────────────────────────────────────────
-            cutoff_30d = now_utc() + timedelta(days=30, hours=1)
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM media_queue "
-                    "WHERE status='pending' AND notified_30d=0 AND delete_at <= ?",
-                    (cutoff_30d.isoformat(),),
-                ) as cur:
-                    to_30d = [dict(r) for r in await cur.fetchall()]
-            await _send_notif_batch(to_30d, "30d", "notified_30d", dry_run)
-
-            # ── 7-day notifications ──────────────────────────────────────────
-            cutoff_7d = now_utc() + timedelta(days=7, hours=1)
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM media_queue "
-                    "WHERE status='pending' AND notified_7d=0 AND delete_at <= ?",
-                    (cutoff_7d.isoformat(),),
-                ) as cur:
-                    to_7d = [dict(r) for r in await cur.fetchall()]
-            await _send_notif_batch(to_7d, "7d", "notified_7d", dry_run)
-
-            # ── 1-day notifications ──────────────────────────────────────────
-            cutoff_1d = now_utc() + timedelta(hours=25)
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM media_queue "
-                    "WHERE status='pending' AND notified_1d=0 AND delete_at <= ?",
-                    (cutoff_1d.isoformat(),),
-                ) as cur:
-                    to_1d = [dict(r) for r in await cur.fetchall()]
-            await _send_notif_batch(to_1d, "1d", "notified_1d", dry_run)
+            # Send threshold notifications (configurable, independent per threshold)
+            await _send_pending_notifications()
 
             # ── Deletions ────────────────────────────────────────────────────
             async with aiosqlite.connect(DB_PATH) as db:

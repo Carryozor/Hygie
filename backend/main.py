@@ -10,6 +10,7 @@ Endpoints:
   *    /api/...                — authenticated API
 """
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -45,6 +46,18 @@ from .scheduler import (
 
 
 from .version import VERSION
+
+
+def _static_version() -> str:
+    """Compute a short hash of app.js for cache-busting on each deploy."""
+    try:
+        path = os.path.join(os.path.dirname(__file__), "..", "frontend", "static", "js", "app.js")
+        h = hashlib.md5(open(path, "rb").read()).hexdigest()[:10]
+        return f"{VERSION}-{h}"
+    except Exception:
+        return VERSION
+
+STATIC_VERSION = _static_version()
 
 
 async def _internal_cleanup():
@@ -267,7 +280,7 @@ templates = Jinja2Templates(directory="frontend/templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "version": VERSION})
+    return templates.TemplateResponse("index.html", {"request": request, "version": STATIC_VERSION})
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────

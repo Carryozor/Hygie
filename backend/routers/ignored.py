@@ -104,7 +104,8 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
     """
     from datetime import timedelta
     from ..database import get_setting
-    from ..scheduler import _get_poster_url, now_utc
+    from ..conditions import _get_poster_url
+    from ..database import now_utc
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

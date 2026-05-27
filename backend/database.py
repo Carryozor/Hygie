@@ -36,6 +36,11 @@ import re as _re
 _SENSITIVE_PARAMS = _re.compile(r'(?i)(api[_-]?key|token|password|secret)=[^&\s]+')
 
 
+def now_utc() -> datetime:
+    """Return current UTC datetime (timezone-aware)."""
+    return datetime.now(timezone.utc)
+
+
 def sanitize_url(url: str) -> str:
     """Redact sensitive query parameters from a URL for safe logging."""
     return _SENSITIVE_PARAMS.sub(r'\1=***', url)
@@ -406,12 +411,21 @@ _TABLES = [
         )""",
         [],
     ),
+    (
+        "rate_limit",
+        """CREATE TABLE IF NOT EXISTS rate_limit (
+            key TEXT NOT NULL,
+            ts REAL NOT NULL
+        )""",
+        [],
+    ),
 ]
 
 
 _KNOWN_TABLES = frozenset({
     "settings", "users", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
+    "rate_limit",
     # Legacy names used during migration
     "logs_legacy", "job_history_legacy",
 })
@@ -561,6 +575,9 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_ignored_emby_id ON ignored_media(emby_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)"
         )
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)

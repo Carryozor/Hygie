@@ -35,20 +35,18 @@ COPY --chown=hygie:hygie backend/ /app/backend/
 COPY --chown=hygie:hygie frontend/ /app/frontend/
 
 # Bundle frontend dependencies locally — no CDN needed at runtime
-# Tailwind CDN runtime + Font Awesome CSS and webfonts
+# Font Awesome CSS and webfonts (hygie.css is shipped directly in the image)
 RUN mkdir -p /app/frontend/static/css /app/frontend/static/webfonts \
-    && curl -fsSL https://cdn.tailwindcss.com \
-         -o /app/frontend/static/js/tailwind.cdn.js \
     && curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" \
          -o /app/frontend/static/css/fa.min.css \
     && for f in fa-solid-900.woff2 fa-regular-400.woff2 fa-brands-400.woff2; do \
          curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/$f" \
            -o "/app/frontend/static/webfonts/$f"; \
        done \
-    && chown -R hygie:hygie /app/frontend/static/js /app/frontend/static/css /app/frontend/static/webfonts \
+    && chown -R hygie:hygie /app/frontend/static/css /app/frontend/static/webfonts \
     # Dashboard icons (decorative logos in settings; graceful degradation already present)
     && mkdir -p /app/frontend/static/img/icons \
-    && for icon in radarr sonarr overseerr jellyseerr qbittorrent discord; do \
+    && for icon in radarr sonarr overseerr jellyseerr qbittorrent discord emby jellyfin; do \
          curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/$icon.png" \
            -o "/app/frontend/static/img/icons/$icon.png" || true; \
        done \

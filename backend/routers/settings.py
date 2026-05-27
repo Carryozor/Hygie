@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
 import json
-from ..database import get_all_settings, set_setting, get_setting, get_media_servers, save_media_servers
+from ..database import get_all_settings, set_setting, get_setting, get_media_servers, save_media_servers, SENSITIVE_KEYS
 from ..emby_client import test_connection as test_emby
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit
@@ -59,11 +59,29 @@ _TESTERS = {
 }
 
 
+_MASK = "***"
+
 @router.get("")
 async def get_settings(user: str = Depends(require_auth)):
-    """Return all settings (sensitive fields masked for display)."""
+    """Return all settings. Sensitive fields that are set are masked with '***'."""
     settings = await get_all_settings()
-    return settings  # Return real values — frontend needs them for forms
+    for key in SENSITIVE_KEYS:
+        if key not in settings or not settings[key]:
+            continue
+        if key == "media_servers":
+            # media_servers is a JSON array — mask api_key inside each server object
+            import json as _json
+            try:
+                servers = _json.loads(settings[key])
+                for s in servers:
+                    if s.get("api_key"):
+                        s["api_key"] = _MASK
+                settings[key] = _json.dumps(servers)
+            except Exception:
+                settings[key] = _MASK
+        else:
+            settings[key] = _MASK
+    return settings
 
 
 @router.post("")
@@ -77,6 +95,9 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
 
     updated = []
     for key, value in incoming.items():
+        # Skip masked values — user didn't change the field
+        if key in SENSITIVE_KEYS and value == _MASK:
+            continue
         await set_setting(key, value)
         updated.append(key)
 
@@ -149,6 +170,8 @@ async def update_media_server(server_id: str, body: dict, user: str = Depends(re
             for k in ("name", "url", "api_key", "ext_url", "enabled"):
                 if k in body:
                     val = body[k]
+                    if k == "api_key" and val == _MASK:
+                        continue  # user didn't change the key
                     if k in ("url", "ext_url") and isinstance(val, str):
                         val = val.rstrip("/")
                     s[k] = val

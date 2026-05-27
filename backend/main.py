@@ -80,6 +80,7 @@ from .routers import (
     media,
     seerr_rules,
     settings,
+    stats,
     storage,
     unmonitored,
 )
@@ -169,6 +170,8 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
 
     logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
+    if not os.environ.get("HYGIE_ENCRYPTION_KEY"):
+        logger.warning("HYGIE_ENCRYPTION_KEY not set — sensitive settings stored in plaintext")
     await add_log("INFO", f"Hygie {VERSION} démarré", "system")
 
     yield
@@ -264,6 +267,7 @@ app.include_router(libraries.router)
 app.include_router(media.router)
 app.include_router(ignored.router)
 app.include_router(logs.router)
+app.include_router(stats.router)
 app.include_router(storage.router)
 app.include_router(seerr_rules.router)
 app.include_router(calendar.router)
@@ -334,6 +338,14 @@ async def health():
     except Exception:
         status_info["disk"] = "unavailable"
 
+    # Encryption check
+    if os.environ.get("HYGIE_ENCRYPTION_KEY"):
+        status_info["encryption"] = "enabled"
+    else:
+        status_info["encryption"] = "disabled (HYGIE_ENCRYPTION_KEY not set)"
+        if status_info["status"] == "healthy":
+            status_info["status"] = "degraded"
+
     code = 200 if status_info["status"] == "healthy" else 503
     return JSONResponse(status_info, status_code=code)
 
@@ -344,56 +356,6 @@ async def version_info():
     """Public — version display in UI."""
     return {"version": VERSION}
 
-
-@app.get("/api/stats/global")
-async def global_stats(user: str = Depends(auth.require_auth)):
-    """Global lifetime statistics for the dashboard."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        # Total ever deleted (from stats_history + current deleted status)
-        cur = await db.execute("SELECT COALESCE(SUM(total_deleted),0) FROM stats_history")
-        from_history = (await cur.fetchone())[0]
-
-        cur = await db.execute("SELECT COUNT(*) FROM media_queue WHERE status='deleted'")
-        in_queue = (await cur.fetchone())[0]
-
-        # If stats_history is empty (before this feature), fall back to queue count
-        total_deleted = max(from_history, in_queue)
-
-        # Deletions by month (last 12 months)
-        cur = await db.execute(
-            "SELECT month, SUM(total_deleted) FROM stats_history "
-            "GROUP BY month ORDER BY month DESC LIMIT 12"
-        )
-        by_month = [{"month": r[0], "deleted": r[1]} for r in await cur.fetchall()]
-
-        # Current queue breakdown
-        cur = await db.execute("SELECT status, COUNT(*) FROM media_queue GROUP BY status")
-        queue_counts = {r[0]: r[1] for r in await cur.fetchall()}
-
-        # Total scans run
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type IN ('scan','scan_library')"
-        )
-        total_scans = (await cur.fetchone())[0]
-
-        # Total deletion checks
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type='deletion_check'"
-        )
-        total_checks = (await cur.fetchone())[0]
-
-        # Ignored count
-        cur = await db.execute("SELECT COUNT(*) FROM ignored_media")
-        total_ignored = (await cur.fetchone())[0]
-
-    return {
-        "total_deleted": total_deleted,
-        "total_ignored": total_ignored,
-        "total_scans": total_scans,
-        "total_deletion_checks": total_checks,
-        "queue": queue_counts,
-        "by_month": list(reversed(by_month)),
-    }
 
 
 # ─── Image proxy ──────────────────────────────────────────────────────────────

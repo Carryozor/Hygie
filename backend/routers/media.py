@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_auth
 from ..database import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, add_log, get_setting
-from ..scheduler import _delete_media, _get_poster_url
+from ..scheduler import _delete_media
+from ..conditions import _get_poster_url
 from ..arr_clients import seerr_find_request_by_tmdb
 
 router = APIRouter(prefix="/api/media", tags=["media"])

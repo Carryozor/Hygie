@@ -141,8 +141,8 @@ def test_rate_limit_cleans_up_old_entries():
     old_time = time.time() - auth_mod.RATE_LIMIT_WINDOW - 1
     auth_mod._rate_buckets[key] = [old_time] * 10
 
-    # One new call should clean out the expired entries and not be blocked
-    result = auth_mod.rate_limit(key)
+    # Test _memory_rate_limit directly — the in-memory path
+    result = auth_mod._memory_rate_limit(key, time.time(), time.time() - auth_mod.RATE_LIMIT_WINDOW)
     assert not result
     assert len(auth_mod._rate_buckets[key]) == 1  # only the new entry
 
@@ -159,10 +159,10 @@ def test_rate_limit_periodic_cleanup():
 
     assert len(auth_mod._rate_buckets) == 600
 
-    # Trigger 500 calls to trip the periodic cleanup
+    # Trigger periodic cleanup by calling _memory_rate_limit with counter at 499
     key = "trigger-ip"
     auth_mod._rate_call_counter = 499  # next call will hit modulo 500
-    auth_mod.rate_limit(key)
+    auth_mod._memory_rate_limit(key, time.time(), time.time() - auth_mod.RATE_LIMIT_WINDOW)
 
     # All stale IPs should be cleaned up
     assert len(auth_mod._rate_buckets) < 10

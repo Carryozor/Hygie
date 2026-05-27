@@ -10,8 +10,8 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-2.4.0-brightgreen)](https://github.com/carryozor/hygie/releases)
-[![Tests](https://img.shields.io/badge/tests-169%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
+[![Version](https://img.shields.io/badge/version-2.5.0-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Tests](https://img.shields.io/badge/tests-174%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -233,10 +233,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.4.0 \
+  --build-arg VERSION=2.5.0 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.4.0 \
+  -t ghcr.io/carryozor/hygie:2.5.0 \
   --push .
 ```
 
@@ -247,18 +247,39 @@ hygie/
 ├── backend/
 │   ├── main.py              # FastAPI app, WebSocket, image proxy
 │   ├── database.py          # SQLite, automatic migrations, encryption
-│   ├── auth.py              # JWT, Argon2id, rate limiting
-│   ├── scheduler.py         # Scan, deletions, notifications, overlay
+│   ├── auth.py              # JWT, Argon2id, SQLite-backed rate limiting
+│   ├── scheduler.py         # APScheduler — main orchestration
+│   ├── conditions.py        # Per-library condition evaluation
+│   ├── notifications.py     # Discord notifications (configurable thresholds)
+│   ├── overlay.py           # Pillow poster overlay generation
+│   ├── collection.py        # "Leaving Soon" collection sync
 │   ├── emby_client.py       # Emby & Jellyfin API client (multi-server)
 │   ├── arr_clients.py       # Radarr, Sonarr, Seerr clients
 │   ├── qbit_client.py       # qBittorrent (Gluetun + QUI proxy compatible)
 │   ├── discord_client.py    # Discord webhooks
 │   ├── healthcheck.py       # Docker healthcheck script
-│   └── routers/             # 10 FastAPI routers
+│   └── routers/             # 11 FastAPI routers (incl. stats)
 └── frontend/
-    ├── templates/index.html  # Single Page App
-    ├── static/js/app.js      # Vanilla JS
-    └── static/js/i18n.js     # FR/EN translations
+    ├── templates/index.html  # Single Page App (no CDN)
+    ├── static/css/hygie.css  # Unified CSS (extracted from template)
+    └── static/js/            # 17 focused modules
+        ├── api.js            # Fetch wrapper + Bearer auth
+        ├── ui.js             # Shared utilities (toast, modals, proxyImg)
+        ├── auth.js           # Authentication flow
+        ├── nav.js            # Routing / page switching
+        ├── dashboard.js      # Dashboard data
+        ├── queue.js          # Media queue (sort, pagination, bulk)
+        ├── libraries.js      # Library rules CRUD
+        ├── settings.js       # Per-service settings
+        ├── logs.js           # Log viewer
+        ├── jobs.js           # Job history
+        ├── ignored.js        # Ignored media + modal
+        ├── websocket.js      # Real-time WebSocket client
+        ├── calendar.js       # Calendar view
+        ├── storage.js        # Storage metrics
+        ├── unmonitored.js    # Unmonitored media
+        ├── i18n.js           # FR/EN translations
+        └── app.js            # Bootstrap + auto-refresh
 ```
 
 **Stack:** FastAPI · APScheduler · SQLite (aiosqlite) · httpx · Pillow · PyJWT · cryptography · Python 3.12
@@ -270,7 +291,7 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-139 tests covering: database encryption, settings cache, auth (JWT/Argon2id/rate limiting), condition evaluation, overlay rendering, Emby client (header auth), and FastAPI routes (auth, proxy security, scheduler).
+174 tests covering: database encryption, settings cache, auth (JWT/Argon2id/rate limiting), condition evaluation, overlay rendering, Emby client (header auth), and FastAPI routes (auth, proxy security, scheduler).
 
 ### 📋 Automatic Migrations
 
@@ -488,10 +509,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.4.0 \
+  --build-arg VERSION=2.5.0 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.4.0 \
+  -t ghcr.io/carryozor/hygie:2.5.0 \
   --push .
 ```
 
@@ -502,7 +523,7 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-139 tests couvrant : chiffrement de la base, cache des settings, authentification (JWT/Argon2id/rate limiting), évaluation des conditions, rendu des overlays, client Emby (auth par header) et routes FastAPI (auth, proxy SSRF, scheduler).
+174 tests couvrant : chiffrement de la base, cache des settings, authentification (JWT/Argon2id/rate limiting), évaluation des conditions, rendu des overlays, client Emby (auth par header) et routes FastAPI (auth, proxy SSRF, scheduler).
 
 ### 📋 Migrations automatiques
 
@@ -542,6 +563,28 @@ Hygie applique automatiquement les migrations de schéma au démarrage. La mise 
 
 **Tests**
 - 15 nouveaux tests (`test_v240_fixes.py`) : sanitize_url, http_retry, rate limiter, index DB
+
+---
+
+### 🆕 Changements v2.5.0 — Refactoring frontend & sécurité
+
+**Frontend — Refactoring majeur**
+- Suppression du CDN Tailwind JS (300 Ko inutiles au runtime — Hygie n'utilise que du CSS custom)
+- CSS inline extrait vers `frontend/static/css/hygie.css` — template HTML allégé
+- `app.js` monolithique découpé en **17 modules** ciblés : `api.js`, `ui.js`, `auth.js`, `nav.js`, `dashboard.js`, `queue.js`, `libraries.js`, `settings.js`, `logs.js`, `jobs.js`, `ignored.js`, `websocket.js`, `calendar.js`, `storage.js`, `unmonitored.js`, `i18n.js`, `app.js`
+- Toutes les affiches (TMDB) routées via le proxy backend `/api/proxy/image` — résout les erreurs 407 derrière un proxy d'entreprise ou une VPN
+
+**Backend — Modularisation**
+- `scheduler.py` découpé en modules dédiés : `conditions.py`, `notifications.py`, `overlay.py`, `collection.py`
+- Statistiques globales extraites vers `routers/stats.py`
+
+**Sécurité**
+- Rate limiting désormais **persistant via SQLite** — survie aux redémarrages du conteneur
+- Avertissement affiché dans les Paramètres si `HYGIE_ENCRYPTION_KEY` n'est pas configuré
+- Clés API **masquées dans l'UI** des Paramètres (seuls les 4 derniers caractères affichés)
+
+**Tests**
+- 174 tests (+ 2 tests rate limiting corrigés après migration SQLite)
 
 ---
 

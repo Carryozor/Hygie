@@ -2,7 +2,7 @@
 from datetime import datetime, timezone, timedelta
 import pytest
 
-from backend.scheduler import (
+from backend.conditions import (
     _eval_op,
     _evaluate_conditions,
     _seerr_filter_passes,

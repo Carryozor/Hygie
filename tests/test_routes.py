@@ -245,3 +245,119 @@ async def test_global_stats_returns_expected_fields(registered_client):
     assert "total_scans" in data
     assert "queue" in data
     assert "by_month" in data
+
+
+# ─── storage cache ────────────────────────────────────────────────────────────
+
+async def test_storage_requires_auth(client):
+    r = await client.get("/api/storage")
+    assert r.status_code == 401
+
+
+async def test_storage_returns_expected_shape(registered_client):
+    c, token = registered_client
+    r = await c.get("/api/storage", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    data = r.json()
+    assert "disks" in data
+    assert "movies" in data
+    assert "series" in data
+    assert "total_media_size" in data
+    assert "queue" in data
+    queue = data["queue"]
+    for key in ("pending", "deleted", "excluded", "error", "reclaimable_size", "reclaimable_count"):
+        assert key in queue
+
+
+async def test_storage_cache_hit_on_second_call(registered_client):
+    """Second call within TTL must return cached data (ts unchanged)."""
+    import backend.routers.storage as storage_mod
+    c, token = registered_client
+
+    # Reset cache to force a real fetch on the first call
+    storage_mod.invalidate_storage_cache()
+    assert storage_mod._storage_cache["data"] is None
+
+    r1 = await c.get("/api/storage", headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 200
+    ts_first = storage_mod._storage_cache["ts"]
+    assert ts_first > 0  # cache populated
+
+    r2 = await c.get("/api/storage", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200
+    assert storage_mod._storage_cache["ts"] == ts_first  # same ts → cache hit, no refetch
+
+
+async def test_storage_invalidate_clears_cache(registered_client):
+    """invalidate_storage_cache must force a fresh fetch on next call."""
+    import backend.routers.storage as storage_mod
+    c, token = registered_client
+
+    # Ensure cache is populated first
+    storage_mod.invalidate_storage_cache()
+    await c.get("/api/storage", headers={"Authorization": f"Bearer {token}"})
+    ts_before = storage_mod._storage_cache["ts"]
+    assert ts_before > 0
+
+    storage_mod.invalidate_storage_cache()
+    assert storage_mod._storage_cache["data"] is None
+    assert storage_mod._storage_cache["ts"] == 0.0
+
+
+# ─── proxy content-length cap ─────────────────────────────────────────────────
+
+async def test_proxy_rejects_oversized_image(registered_client, monkeypatch):
+    """Proxy must return 413 when upstream response exceeds 10 MB."""
+    import backend.main as main_mod
+    import httpx
+
+    c, token = registered_client
+
+    # Whitelist the test host
+    monkeypatch.setattr(main_mod, "_proxy_whitelist", {"bighost.example.com"})
+    monkeypatch.setattr(main_mod, "_proxy_whitelist_ts", float("inf"))
+
+    big_content = b"x" * (11 * 1024 * 1024)  # 11 MB
+
+    async def _fake_get_proxy_whitelist():
+        return {"bighost.example.com"}
+
+    monkeypatch.setattr(main_mod, "_get_proxy_whitelist", _fake_get_proxy_whitelist)
+
+    original_AsyncClient = httpx.AsyncClient
+
+    class FakeStream:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {"content-type": "image/jpeg"}
+
+        async def aiter_bytes(self, chunk_size=65536):
+            sent = 0
+            while sent < len(big_content):
+                chunk = big_content[sent:sent + chunk_size]
+                yield chunk
+                sent += len(chunk)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def stream(self, method, url, **kwargs):
+            return FakeStream()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: FakeClient())
+
+    from urllib.parse import quote
+    url = quote("http://bighost.example.com/huge.jpg", safe="")
+    r = await c.get(f"/api/proxy/image?url={url}",
+                    headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 413

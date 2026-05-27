@@ -428,20 +428,34 @@ async def proxy_image(request: Request):
             logger.warning(f"Proxy: host {host!r} not in whitelist")
             return Response(status_code=403, content=f"Host not allowed: {host}")
 
+        _PROXY_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — guard against memory exhaustion
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.get(target_url)
-            if r.status_code == 200:
-                ct = r.headers.get("content-type", "image/jpeg")
-                if not ct.startswith("image/"):
-                    return Response(status_code=415)
-                return Response(
-                    content=r.content,
-                    media_type=ct,
-                    headers={"Cache-Control": "public, max-age=3600"},
-                )
-            # Don't warn on 500 (Emby returns this for items without posters)
-            if r.status_code != 500:
-                logger.warning(f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(target_url)[:80]}")
+            async with client.stream("GET", target_url) as r:
+                if r.status_code == 200:
+                    ct = r.headers.get("content-type", "image/jpeg")
+                    if not ct.startswith("image/"):
+                        return Response(status_code=415)
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in r.aiter_bytes(65536):
+                        total += len(chunk)
+                        if total > _PROXY_MAX_BYTES:
+                            logger.warning(
+                                f"Proxy: response too large (>{_PROXY_MAX_BYTES // 1024 // 1024} MB)"
+                                f" for {sanitize_url(target_url)[:80]}"
+                            )
+                            return Response(status_code=413)
+                        chunks.append(chunk)
+                    return Response(
+                        content=b"".join(chunks),
+                        media_type=ct,
+                        headers={"Cache-Control": "public, max-age=3600"},
+                    )
+                # Don't warn on 500 (Emby returns this for items without posters)
+                if r.status_code != 500:
+                    logger.warning(
+                        f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(target_url)[:80]}"
+                    )
     except Exception as e:
         logger.error(f"Proxy error: {e}")
     return Response(status_code=404)

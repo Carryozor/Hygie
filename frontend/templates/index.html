@@ -7,8 +7,8 @@
 <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<script src="/static/js/tailwind.cdn.js"></script>
+<link rel="stylesheet" href="/static/css/fa.min.css"/>
 <style>
   :root{--accent:#6366f1;--accent2:#818cf8;--bg:#0d0f18;--bg2:#131620;--bg3:#1a1d2e;--border:#2a2d45;--text:#e2e8f0;--muted:#64748b}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -62,6 +62,8 @@
   .settings-tab{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:7px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;background:transparent;border:none;}
   .settings-tab:hover{background:#141824;color:#94a3b8;}
   .settings-tab.active{background:#1e2230;color:#e2e8f0;}
+  .skeleton{background:linear-gradient(90deg,#ffffff08 25%,#ffffff18 50%,#ffffff08 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite;border-radius:6px}
+  @keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   .log-ts{color:var(--muted);width:145px;flex-shrink:0}
   .log-level{width:46px;font-weight:700;flex-shrink:0}
   .log-cat{width:64px;flex-shrink:0;color:#6366f180;font-size:11px;padding-top:1px}
@@ -332,11 +334,11 @@
         <span id="stab-media-label">Serveur Multimédia</span>
         <span id="stab-media-pill" style="display:none;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600"></span>
       </button>
-      <button class="settings-tab" data-stab="radarr" onclick="switchSettingsTab('radarr')"><img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/radarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Radarr</button>
-      <button class="settings-tab" data-stab="sonarr" onclick="switchSettingsTab('sonarr')"><img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sonarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Sonarr</button>
-      <button class="settings-tab" data-stab="seerr" onclick="switchSettingsTab('seerr')"><img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/overseerr.png" width="16" height="16" style="border-radius:3px" onerror="this.src='https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyseerr.png';this.onerror=null"> Seerr</button>
-      <button class="settings-tab" data-stab="qbit" onclick="switchSettingsTab('qbit')"><img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/qbittorrent.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> qBittorrent</button>
-      <button class="settings-tab" data-stab="discord" onclick="switchSettingsTab('discord')"><img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/discord.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Discord</button>
+      <button class="settings-tab" data-stab="radarr" onclick="switchSettingsTab('radarr')"><img src="/static/img/icons/radarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Radarr</button>
+      <button class="settings-tab" data-stab="sonarr" onclick="switchSettingsTab('sonarr')"><img src="/static/img/icons/sonarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Sonarr</button>
+      <button class="settings-tab" data-stab="seerr" onclick="switchSettingsTab('seerr')"><img src="/static/img/icons/overseerr.png" width="16" height="16" style="border-radius:3px" onerror="this.src='/static/img/icons/jellyseerr.png';this.onerror=null"> Seerr</button>
+      <button class="settings-tab" data-stab="qbit" onclick="switchSettingsTab('qbit')"><img src="/static/img/icons/qbittorrent.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> qBittorrent</button>
+      <button class="settings-tab" data-stab="discord" onclick="switchSettingsTab('discord')"><img src="/static/img/icons/discord.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Discord</button>
     </div>
 
     <!-- ── Général ── -->
@@ -416,7 +418,7 @@
     <!-- ── Radarr ── -->
     <div id="spanel-radarr" class="card" style="display:none;padding:20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/radarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/radarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
         <div><div style="font-size:15px;font-weight:600">Radarr</div><div style="font-size:11px;color:var(--muted)">Gestion des films</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -429,7 +431,7 @@
     <!-- ── Sonarr ── -->
     <div id="spanel-sonarr" class="card" style="display:none;padding:20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sonarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/sonarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
         <div><div style="font-size:15px;font-weight:600">Sonarr</div><div style="font-size:11px;color:var(--muted)">Gestion des séries</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -442,7 +444,7 @@
     <!-- ── Seerr ── -->
     <div id="spanel-seerr" class="card" style="display:none;padding:20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/overseerr.png" width="32" height="32" style="border-radius:8px" onerror="this.src='https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyseerr.png';this.onerror=null">
+        <img src="/static/img/icons/overseerr.png" width="32" height="32" style="border-radius:8px" onerror="this.src='/static/img/icons/jellyseerr.png';this.onerror=null">
         <div><div style="font-size:15px;font-weight:600">Seerr</div><div style="font-size:11px;color:var(--muted)">Overseerr / Jellyseerr</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -460,7 +462,7 @@
     <!-- ── qBittorrent ── -->
     <div id="spanel-qbit" class="card" style="display:none;padding:20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/qbittorrent.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/qbittorrent.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
         <div><div style="font-size:15px;font-weight:600">qBittorrent</div><div style="font-size:11px;color:var(--muted)">Compatible Gluetun / QUI</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -499,7 +501,7 @@
     <!-- ── Discord ── -->
     <div id="spanel-discord" class="card" style="display:none;padding:20px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/discord.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/discord.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
         <div><div style="font-size:15px;font-weight:600">Discord</div><div style="font-size:11px;color:var(--muted)">Notifications webhook</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px">

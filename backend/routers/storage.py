@@ -1,16 +1,25 @@
-"""Storage — disk metrics from Radarr/Sonarr, matching frontend data shape exactly."""
+"""Storage — disk metrics from Radarr/Sonarr, with 60-second TTL cache."""
 import asyncio
 import logging
+import time
 
 import aiosqlite
 import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..database import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, get_setting, TIMEOUT_MEDIUM
+from ..database import DB_PATH, STATUS_PENDING, get_setting, TIMEOUT_MEDIUM
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
+
+_storage_cache: dict = {"data": None, "ts": 0.0}
+_STORAGE_TTL = 60.0  # seconds
+
+
+def invalidate_storage_cache() -> None:
+    """Call after deletions or scans to force fresh data on next request."""
+    _storage_cache.update({"data": None, "ts": 0.0})
 
 
 @router.get("")
@@ -24,7 +33,13 @@ async def get_storage(user: str = Depends(require_auth)):
       total_media_size: int,
       queue: {pending, deleted, excluded, error, reclaimable_size, reclaimable_count},
     }
+    Results are cached for 60 seconds to avoid hammering Radarr/Sonarr (~3.4 MB JSON each call).
+    Cache is invalidated by invalidate_storage_cache() after deletions/scans.
     """
+    now = time.time()
+    if _storage_cache["data"] is not None and now - _storage_cache["ts"] < _STORAGE_TTL:
+        return _storage_cache["data"]
+
     radarr_url = (await get_setting("radarr_url") or "").rstrip("/")
     radarr_key = await get_setting("radarr_api_key") or ""
     sonarr_url = (await get_setting("sonarr_url") or "").rstrip("/")
@@ -160,10 +175,12 @@ async def get_storage(user: str = Depends(require_auth)):
     except Exception as e:
         logger.warning(f"Queue stats: {e}")
 
-    return {
+    result = {
         "disks": disks,
         "movies": movies,
         "series": series,
         "total_media_size": total_media_size,
         "queue": queue,
     }
+    _storage_cache.update({"data": result, "ts": time.time()})
+    return result

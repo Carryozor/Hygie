@@ -10,11 +10,12 @@ LABEL org.opencontainers.image.title="Hygie" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="MIT"
 
-# System dependencies: fonts for poster overlays, tini for clean shutdown
+# System dependencies: fonts for poster overlays, tini for clean shutdown, curl for asset bundling
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         fonts-dejavu-core \
         tini \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user FIRST (UID/GID 1000 for bind-mount compatibility)
@@ -32,6 +33,26 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application code — copied with explicit ownership to hygie user
 COPY --chown=hygie:hygie backend/ /app/backend/
 COPY --chown=hygie:hygie frontend/ /app/frontend/
+
+# Bundle frontend dependencies locally — no CDN needed at runtime
+# Tailwind CDN runtime + Font Awesome CSS and webfonts
+RUN mkdir -p /app/frontend/static/css /app/frontend/static/webfonts \
+    && curl -fsSL https://cdn.tailwindcss.com \
+         -o /app/frontend/static/js/tailwind.cdn.js \
+    && curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" \
+         -o /app/frontend/static/css/fa.min.css \
+    && for f in fa-solid-900.woff2 fa-regular-400.woff2 fa-brands-400.woff2; do \
+         curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/$f" \
+           -o "/app/frontend/static/webfonts/$f"; \
+       done \
+    && chown -R hygie:hygie /app/frontend/static/js /app/frontend/static/css /app/frontend/static/webfonts \
+    # Dashboard icons (decorative logos in settings; graceful degradation already present)
+    && mkdir -p /app/frontend/static/img/icons \
+    && for icon in radarr sonarr overseerr jellyseerr qbittorrent discord; do \
+         curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/$icon.png" \
+           -o "/app/frontend/static/img/icons/$icon.png" || true; \
+       done \
+    && chown -R hygie:hygie /app/frontend/static/img/icons
 
 # Defensive permissions — readable by all users, writable only by owner
 # (covers cases where bind mounts or umask quirks would block access)

@@ -826,8 +826,8 @@ function renderMediaServers() {
   }
   container.innerHTML = _mediaServers.map((s, i) => {
     const type = s.type || '';
-    const EMBY_URL = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png';
-    const JF_URL = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png';
+    const EMBY_URL = '/static/img/icons/emby.png';
+    const JF_URL = '/static/img/icons/jellyfin.png';
     const iconHtml = type === 'emby'
       ? `<img src="${EMBY_URL}" width="28" height="28" style="border-radius:6px">`
       : type === 'jellyfin'
@@ -996,8 +996,8 @@ function updateMediaServerIcon(type) {
   const nonEmbyNotice = document.getElementById('media-non-emby-notice');
   const nonEmbyMsg = document.getElementById('media-non-emby-msg');
   if (!iconWrap) return;
-  const EMBY_ICON = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/emby.png';
-  const JF_ICON = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/jellyfin.png';
+  const EMBY_ICON = '/static/img/icons/emby.png';
+  const JF_ICON = '/static/img/icons/jellyfin.png';
   const EMBY_URL = EMBY_ICON; const JF_URL = JF_ICON;  // aliases used in template literals
   const GENERIC = '<i class="fas fa-photo-film" style="font-size:13px;color:#a78bfa"></i>';
   const GENERIC_HEADER = '<i class="fas fa-photo-film" style="font-size:20px;background:linear-gradient(135deg,#6366f1,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent"></i>';
@@ -1580,9 +1580,44 @@ function fmtSize(bytes) {
 
 async function loadStorage() {
   const box = document.getElementById('storage-content');
-  box.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)"><i class="fas fa-spinner fa-spin" style="font-size:24px;margin-bottom:12px;display:block"></i>Chargement...</div>';
+  box.innerHTML = `
+    <div class="card" style="padding:20px">
+      <div class="skeleton" style="height:18px;width:38%;margin-bottom:20px"></div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${[1,2,3].map(()=>`<div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+            <div class="skeleton" style="height:13px;width:42%"></div>
+            <div class="skeleton" style="height:22px;width:10%"></div>
+          </div>
+          <div class="skeleton" style="height:10px;width:100%"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px">
+            <div class="skeleton" style="height:11px;width:18%"></div>
+            <div class="skeleton" style="height:11px;width:18%"></div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${[1,2].map(()=>`<div class="card" style="padding:20px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <div class="skeleton" style="height:20px;width:20px;border-radius:4px"></div>
+          <div class="skeleton" style="height:16px;width:45%"></div>
+        </div>
+        ${[1,2,3,4,5].map(()=>`<div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <div class="skeleton" style="height:13px;width:48%"></div>
+          <div class="skeleton" style="height:13px;width:18%"></div>
+        </div>`).join('')}
+      </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${[1,2].map(()=>`<div class="card" style="padding:20px">
+        <div class="skeleton" style="height:16px;width:50%;margin-bottom:14px"></div>
+        <div class="skeleton" style="height:32px;width:55%;margin-bottom:6px"></div>
+        <div class="skeleton" style="height:12px;width:70%"></div>
+      </div>`).join('')}
+    </div>`;
   try {
-    const data = await api('/api/storage/');
+    const data = await api('/api/storage');
     let html = '';
 
     // ── Disk usage ─────────────────────────────────────────────────────────
@@ -1634,7 +1669,7 @@ async function loadStorage() {
     const mv = data.movies || {};
     html += `<div class="card" style="padding:20px">
       <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/radarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/radarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
         <span>${_('Films (hdr)','Movies')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Radarr)</span></span>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
@@ -1652,7 +1687,7 @@ async function loadStorage() {
     const sr = data.series || {};
     html += `<div class="card" style="padding:20px">
       <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:10px">
-        <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/sonarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
+        <img src="/static/img/icons/sonarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
         <span>${_('Séries (hdr)','Series')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Sonarr)</span></span>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">

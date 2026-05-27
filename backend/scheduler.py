@@ -898,7 +898,7 @@ async def run_deletion():
 
             async def _delete_one(row: dict) -> bool:
                 async with _del_sem:
-                    ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag)
+                    ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id)
                     status_val = STATUS_DELETED if ok else STATUS_ERROR
                     async with aiosqlite.connect(DB_PATH) as db:
                         await db.execute(
@@ -992,7 +992,13 @@ async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag
         await add_log("WARN", f"qBittorrent erreur pour {title}: {e}", "deletion")
 
 
-async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_tag_val: str = "") -> bool:
+async def _delete_media(
+    row: dict,
+    dry_run: bool,
+    qbit_action: str = "",
+    qbit_tag_val: str = "",
+    run_id: int = 0,
+) -> bool:
     """
     Delete a media item across all services.
 
@@ -1006,8 +1012,9 @@ async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_ta
     """
     title = row.get("title", "?")
     emby_id = row.get("emby_id")
-    prefix = "[DRY RUN] " if dry_run else ""
-    await add_log("INFO", f"{prefix}Suppression : {title}", "deletion")
+    dry_prefix = "[DRY RUN] " if dry_run else ""
+    job_tag = f"[job:{run_id}] " if run_id else ""
+    await add_log("INFO", f"{job_tag}{dry_prefix}Suppression : {title}", "deletion")
 
     if dry_run:
         return True
@@ -1035,11 +1042,11 @@ async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_ta
         try:
             await send_notification([row], "now", dry_run=False)
         except Exception as e:
-            await add_log("WARN", f"Discord (non bloquant) : {e}", "deletion")
+            await add_log("WARN", f"{job_tag}Discord (non bloquant) : {e}", "deletion")
 
         if emby_id:
             await delete_item(emby_id, server_id=library_server_id)
-            await add_log("DEBUG", f"Emby : hardlink retiré pour {title}", "deletion")
+            await add_log("DEBUG", f"{job_tag}Emby : hardlink retiré pour {title}", "deletion")
 
         await _delete_from_arr(row)
         await _delete_from_seerr(row)
@@ -1047,9 +1054,9 @@ async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_ta
         if torrent_hash:
             await _handle_qbit(torrent_hash, title, qbit_action, qbit_tag)
         else:
-            await add_log("INFO", f"qBittorrent : torrent non trouvé pour {title} (ignoré)", "deletion")
+            await add_log("INFO", f"{job_tag}qBittorrent : torrent non trouvé pour {title} (ignoré)", "deletion")
 
-        await add_log("INFO", f"Suppression complète : {title}", "deletion")
+        await add_log("INFO", f"{job_tag}Suppression complète : {title}", "deletion")
 
         try:
             month = now_utc().strftime("%Y-%m")
@@ -1066,7 +1073,7 @@ async def _delete_media(row: dict, dry_run: bool, qbit_action: str = "", qbit_ta
         return True
     except Exception as e:
         logger.exception(f"_delete_media {title}")
-        await add_log("ERROR", f"Erreur suppression {title}: {e}", "deletion")
+        await add_log("ERROR", f"{job_tag}Erreur suppression {title}: {e}", "deletion")
         return False
 
 

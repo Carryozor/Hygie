@@ -1,11 +1,6 @@
 services:
   hygie:
-    image: ghcr.io/carryozor/hygie:latest
-    # Local build alternative:
-    # build:
-    #   context: .
-    #   args:
-    #     VERSION: 2.0
+    image: ghcr.io/carryozor/hygie:2.5.0
     container_name: hygie
     restart: unless-stopped
     ports:

@@ -31,6 +31,7 @@ async def _seerr_pages(
             params={**(params or {}), "take": 100, "skip": skip},
         )
         if r.status_code != 200:
+            logger.warning("_seerr_pages: HTTP %s from %s (skip=%s)", r.status_code, url, skip)
             break
         data = r.json()
         page = data.get("results", []) if isinstance(data, dict) else data

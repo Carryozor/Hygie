@@ -17,6 +17,32 @@ async def _seerr_config():
     return url, key
 
 
+async def _seerr_pages(
+    client: "httpx.AsyncClient",
+    url: str,
+    headers: dict,
+    params: dict | None = None,
+):
+    """Async generator — yields each page's results list from a take/skip endpoint."""
+    skip = 0
+    while True:
+        r = await client.get(
+            url, headers=headers,
+            params={**(params or {}), "take": 100, "skip": skip},
+        )
+        if r.status_code != 200:
+            break
+        data = r.json()
+        page = data.get("results", []) if isinstance(data, dict) else data
+        total = data.get("pageInfo", {}).get("results", len(page))
+        if not page:
+            break
+        yield page
+        if skip + 100 >= total:
+            break
+        skip += 100
+
+
 async def test_seerr() -> tuple[bool, str]:
     url, key = await _seerr_config()
     if not url or not key:
@@ -57,19 +83,8 @@ async def seerr_get_users() -> List[dict]:
             pass
 
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-            skip = 0
-            while True:
-                r = await c.get(
-                    f"{url}/api/v1/user",
-                    headers={"X-Api-Key": key},
-                    params={"take": 100, "skip": skip},
-                )
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                users = data.get("results", []) if isinstance(data, dict) else data
-                total = data.get("pageInfo", {}).get("results", len(users))
-                for u in users:
+            async for users_page in _seerr_pages(c, f"{url}/api/v1/user", {"X-Api-Key": key}):
+                for u in users_page:
                     uid = u.get("id")
                     name = (
                         u.get("displayName")
@@ -96,9 +111,6 @@ async def seerr_get_users() -> List[dict]:
                         "discord_id_seerr": seerr_discord,
                         "discord_id_hygie": hygie_discord,
                     })
-                if skip + 100 >= total or not users:
-                    break
-                skip += 100
     except Exception as e:
         logger.debug(f"seerr_get_users: {e}")
     return out
@@ -116,18 +128,10 @@ async def build_seerr_request_cache() -> dict:
     cache: dict = {}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
-            skip = 0
-            while True:
-                r = await c.get(
-                    f"{url}/api/v1/request",
-                    headers={"X-Api-Key": key},
-                    params={"take": 100, "skip": skip, "sort": "added", "filter": "all"},
-                )
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                items = data.get("results", []) if isinstance(data, dict) else data
-                total = data.get("pageInfo", {}).get("results", len(items))
+            async for items in _seerr_pages(
+                c, f"{url}/api/v1/request", {"X-Api-Key": key},
+                {"sort": "added", "filter": "all"},
+            ):
                 for req in items:
                     media = req.get("media") or {}
                     tmdb_id = str(media.get("tmdbId") or "")
@@ -145,9 +149,6 @@ async def build_seerr_request_cache() -> dict:
                             or ""
                         ),
                     })
-                if skip + 100 >= total or not items:
-                    break
-                skip += 100
     except RuntimeError:
         raise   # propagate HTTP errors so callers can send Discord alert
     except Exception as e:
@@ -162,18 +163,10 @@ async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:
         return None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-            skip = 0
-            while True:
-                r = await c.get(
-                    f"{url}/api/v1/request",
-                    headers={"X-Api-Key": key},
-                    params={"take": 100, "skip": skip, "sort": "added", "filter": "all"},
-                )
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                items = data.get("results", []) if isinstance(data, dict) else data
-                total = data.get("pageInfo", {}).get("results", len(items))
+            async for items in _seerr_pages(
+                c, f"{url}/api/v1/request", {"X-Api-Key": key},
+                {"sort": "added", "filter": "all"},
+            ):
                 for req in items:
                     media = req.get("media") or {}
                     if str(media.get("tmdbId") or "") == str(tmdb_id):
@@ -188,9 +181,6 @@ async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:
                                 or ""
                             ),
                         }
-                if skip + 100 >= total or not items:
-                    break
-                skip += 100
     except Exception as e:
         logger.debug(f"seerr_find_request_by_tmdb: {e}")
     return None

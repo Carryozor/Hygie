@@ -1,6 +1,7 @@
 """Tests for arr_clients — verifies X-Api-Key header for Radarr and Sonarr."""
 import pytest
 from pytest_httpx import HTTPXMock
+from unittest.mock import MagicMock
 
 RADARR_URL = "http://radarr.test:7878"
 RADARR_KEY  = "radarr-test-key"
@@ -145,3 +146,77 @@ def test_arr_auth_returns_correct_header():
     from backend.arr_clients import _arr_auth
     assert _arr_auth("mykey") == {"X-Api-Key": "mykey"}
     assert _arr_auth("") == {"X-Api-Key": ""}
+
+
+# ─── _seerr_pages async generator ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_seerr_pages_yields_all_pages():
+    """_seerr_pages() should yield both pages when total > take."""
+    from backend.arr_clients.seerr import _seerr_pages
+
+    # Page 1: 2 items, total=150 (> 100, so a second request is needed)
+    # Page 2: 1 item — loop terminates because skip+100 >= total
+    responses = [
+        {"results": [{"id": 1}, {"id": 2}], "pageInfo": {"results": 150}},
+        {"results": [{"id": 3}],             "pageInfo": {"results": 150}},
+    ]
+    call_count = [0]
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = responses[call_count[0]]
+        call_count[0] += 1
+        return resp
+
+    client = MagicMock()
+    client.get = mock_get
+
+    collected = []
+    async for page in _seerr_pages(client, "http://x/api/v1/request", {"X-Api-Key": "k"}):
+        collected.extend(page)
+
+    assert [r["id"] for r in collected] == [1, 2, 3]
+    assert call_count[0] == 2
+
+
+@pytest.mark.asyncio
+async def test_seerr_pages_stops_on_non_200():
+    """_seerr_pages() should stop immediately on a non-200 response."""
+    from backend.arr_clients.seerr import _seerr_pages
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 503
+        return resp
+
+    client = MagicMock()
+    client.get = mock_get
+
+    pages = []
+    async for page in _seerr_pages(client, "http://x/api/v1/request", {}):
+        pages.append(page)
+
+    assert pages == []
+
+
+@pytest.mark.asyncio
+async def test_seerr_pages_stops_on_empty_page():
+    """_seerr_pages() should stop when results list is empty."""
+    from backend.arr_clients.seerr import _seerr_pages
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": [], "pageInfo": {"results": 0}}
+        return resp
+
+    client = MagicMock()
+    client.get = mock_get
+
+    pages = []
+    async for page in _seerr_pages(client, "http://x/api/v1/request", {}):
+        pages.append(page)
+
+    assert pages == []

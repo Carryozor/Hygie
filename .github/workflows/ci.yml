@@ -47,7 +47,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -60,3 +60,66 @@ jobs:
           tags: |
             ghcr.io/carryozor/hygie:latest
             ghcr.io/carryozor/hygie:${{ steps.version.outputs.VERSION }}
+
+  release:
+    name: GitHub Release
+    needs: docker
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log ${PREV_TAG}..${GITHUB_REF_NAME} --pretty=format:"- %s" --no-merges)
+          else
+            CHANGES=$(git log --pretty=format:"- %s" --no-merges | head -20)
+          fi
+          {
+            echo "CHANGES<<EOF"
+            echo "$CHANGES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          CHANGES="${{ steps.changelog.outputs.CHANGES }}"
+          BODY="## Docker
+
+          \`\`\`yaml
+          image: ghcr.io/carryozor/hygie:${VERSION}
+          \`\`\`
+
+          ## Changements
+
+          ${CHANGES}
+
+          ---
+          🐳 Image Docker : \`ghcr.io/carryozor/hygie:${VERSION}\`"
+
+          if gh release view "v${VERSION}" --repo ${{ github.repository }} &>/dev/null; then
+            gh release edit "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes "$BODY" \
+              --repo ${{ github.repository }}
+          else
+            gh release create "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes "$BODY" \
+              --repo ${{ github.repository }}
+          fi

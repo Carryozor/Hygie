@@ -1,7 +1,6 @@
 """Fernet encryption helpers for sensitive settings."""
-import os
 import logging
-from typing import Optional
+import os
 
 logger = logging.getLogger(__name__)
 

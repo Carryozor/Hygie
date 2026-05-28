@@ -329,21 +329,21 @@ async def test_storage_invalidate_clears_cache(registered_client):
 
 async def test_proxy_rejects_oversized_image(registered_client, monkeypatch):
     """Proxy must return 413 when upstream response exceeds 10 MB."""
-    import backend.main as main_mod
+    import backend.proxy as proxy_mod
     import httpx
 
     c, token = registered_client
 
     # Whitelist the test host
-    monkeypatch.setattr(main_mod, "_proxy_whitelist", {"bighost.example.com"})
-    monkeypatch.setattr(main_mod, "_proxy_whitelist_ts", float("inf"))
+    monkeypatch.setattr(proxy_mod, "_proxy_whitelist", {"bighost.example.com"})
+    monkeypatch.setattr(proxy_mod, "_proxy_whitelist_ts", float("inf"))
 
     big_content = b"x" * (11 * 1024 * 1024)  # 11 MB
 
     async def _fake_get_proxy_whitelist():
         return {"bighost.example.com"}
 
-    monkeypatch.setattr(main_mod, "_get_proxy_whitelist", _fake_get_proxy_whitelist)
+    monkeypatch.setattr(proxy_mod, "_get_proxy_whitelist", _fake_get_proxy_whitelist)
 
     original_AsyncClient = httpx.AsyncClient
 

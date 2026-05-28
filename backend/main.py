@@ -14,15 +14,12 @@ import hashlib
 import json
 import logging
 import os
-import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from urllib.parse import unquote, urlparse
 
 import aiosqlite
-import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,7 +32,6 @@ from .database import (
     get_setting,
     init_db,
     register_ws,
-    sanitize_url,
     set_setting,
     unregister_ws,
 )
@@ -46,6 +42,7 @@ from .scheduler import (
     run_scan,
     sync_emby_collection,
 )
+from . import proxy
 
 
 from .version import VERSION
@@ -209,61 +206,6 @@ async def lifespan(app: FastAPI):
     logger.info("Hygie shutdown")
 
 
-# ─── Image proxy whitelist cache (TTL: 5 min) ────────────────────────────────
-_proxy_whitelist: set = set()
-_proxy_whitelist_ts: float = 0.0
-_proxy_whitelist_lock = asyncio.Lock()
-_PROXY_WHITELIST_TTL = 300
-
-
-def invalidate_proxy_whitelist() -> None:
-    """Force whitelist rebuild on next request (call after service URL changes)."""
-    global _proxy_whitelist_ts
-    _proxy_whitelist_ts = 0.0
-
-
-async def _get_proxy_whitelist() -> set:
-    global _proxy_whitelist, _proxy_whitelist_ts
-    if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
-        return _proxy_whitelist
-    async with _proxy_whitelist_lock:
-        # Double-check inside lock to avoid thundering herd
-        if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
-            return _proxy_whitelist
-        allowed = {
-            "image.tmdb.org",
-            "artworks.thetvdb.com",
-            "thetvdb.com",
-            "fanart.tv",
-            "assets.fanart.tv",
-        }
-        # Legacy single-server URLs (emby* covered by media_servers loop below)
-        for setting_key in ("radarr_url", "sonarr_url"):
-            s = await get_setting(setting_key)
-            if s:
-                try:
-                    h = (urlparse(s).hostname or "").lower()
-                    if h:
-                        allowed.add(h)
-                except Exception:
-                    pass
-        # Multi-server: add all configured server URLs and external URLs
-        from .database import get_media_servers
-        for srv in await get_media_servers():
-            for field in ("url", "ext_url"):
-                u = (srv.get(field) or "").strip()
-                if u:
-                    try:
-                        h = (urlparse(u).hostname or "").lower()
-                        if h:
-                            allowed.add(h)
-                    except Exception:
-                        pass
-        _proxy_whitelist = allowed
-        _proxy_whitelist_ts = time.time()
-        return allowed
-
-
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Hygie",
@@ -299,6 +241,7 @@ app.include_router(calendar.router)
 app.include_router(unmonitored.router)
 app.include_router(metrics.router)
 app.include_router(backup.router)
+app.include_router(proxy.router)
 
 
 # ─── Static & templates ───────────────────────────────────────────────────────
@@ -383,71 +326,6 @@ async def version_info():
     """Public — version display in UI."""
     return {"version": VERSION}
 
-
-
-# ─── Image proxy ──────────────────────────────────────────────────────────────
-@app.get("/api/proxy/image")
-async def proxy_image(request: Request):
-    """
-    Proxy images from configured services (Emby/Radarr/Sonarr) and TMDB CDN.
-
-    SSRF protection: only hosts matching configured services or known image CDNs.
-    No auth requirement — img src can't send Bearer tokens.
-    """
-    # Extract `url` param manually from raw query string to handle nested & properly
-    raw = request.url.query
-    if not raw.startswith("url="):
-        return Response(status_code=400)
-
-    encoded = raw[4:]
-    target_url = unquote(encoded)
-    if not target_url:
-        return Response(status_code=400)
-
-    try:
-        parsed = urlparse(target_url)
-        if parsed.scheme not in ("http", "https"):
-            return Response(status_code=400)
-
-        host = (parsed.hostname or "").lower()
-
-        allowed = await _get_proxy_whitelist()
-
-        if host not in allowed:
-            logger.warning(f"Proxy: host {host!r} not in whitelist")
-            return Response(status_code=403, content=f"Host not allowed: {host}")
-
-        _PROXY_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — guard against memory exhaustion
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            async with client.stream("GET", target_url) as r:
-                if r.status_code == 200:
-                    ct = r.headers.get("content-type", "image/jpeg")
-                    if not ct.startswith("image/"):
-                        return Response(status_code=415)
-                    chunks: list[bytes] = []
-                    total = 0
-                    async for chunk in r.aiter_bytes(65536):
-                        total += len(chunk)
-                        if total > _PROXY_MAX_BYTES:
-                            logger.warning(
-                                f"Proxy: response too large (>{_PROXY_MAX_BYTES // 1024 // 1024} MB)"
-                                f" for {sanitize_url(target_url)[:80]}"
-                            )
-                            return Response(status_code=413)
-                        chunks.append(chunk)
-                    return Response(
-                        content=b"".join(chunks),
-                        media_type=ct,
-                        headers={"Cache-Control": "public, max-age=3600"},
-                    )
-                # Don't warn on 500 (Emby returns this for items without posters)
-                if r.status_code != 500:
-                    logger.warning(
-                        f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(target_url)[:80]}"
-                    )
-    except Exception as e:
-        logger.error(f"Proxy error: {e}")
-    return Response(status_code=404)
 
 
 # ─── WebSocket — log stream ───────────────────────────────────────────────────

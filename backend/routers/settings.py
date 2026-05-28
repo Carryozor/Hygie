@@ -131,29 +131,29 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         await set_setting(key, value)
         updated.append(key)
 
-    # Reschedule only if the interval value actually changed — prevents timer reset on unrelated saves
+    # Reschedule scan/deletion only if the interval value actually changed
+    scan_min: int | None = None
+    del_min: int | None = None
+    if "scan_interval_minutes" in updated:
+        new_scan = incoming["scan_interval_minutes"]
+        if str(new_scan) != str(old_scan):
+            try:
+                scan_min = max(1, min(10080, int(new_scan)))
+            except (ValueError, TypeError):
+                pass
+    if "deletion_check_interval_minutes" in updated:
+        new_del = incoming["deletion_check_interval_minutes"]
+        if str(new_del) != str(old_del):
+            try:
+                del_min = max(1, min(10080, int(new_del)))
+            except (ValueError, TypeError):
+                pass
+    if scan_min is not None or del_min is not None:
+        from ..main import reschedule_jobs
+        reschedule_jobs(scan_minutes=scan_min, deletion_minutes=del_min)
+
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
-        if "scan_interval_minutes" in updated:
-            new_scan = incoming["scan_interval_minutes"]
-            if str(new_scan) != str(old_scan):
-                try:
-                    minutes = max(1, min(10080, int(new_scan)))
-                    scheduler.reschedule_job("scan_job", trigger="interval", minutes=minutes)
-                except (ValueError, TypeError):
-                    pass
-                except Exception:
-                    pass
-        if "deletion_check_interval_minutes" in updated:
-            new_del = incoming["deletion_check_interval_minutes"]
-            if str(new_del) != str(old_del):
-                try:
-                    minutes = max(1, min(10080, int(new_del)))
-                    scheduler.reschedule_job("deletion_job", trigger="interval", minutes=minutes)
-                except (ValueError, TypeError):
-                    pass
-                except Exception:
-                    pass
         if "backup_interval_hours" in updated or "backup_enabled" in updated:
             try:
                 from ..backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS

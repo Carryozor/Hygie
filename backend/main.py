@@ -102,6 +102,22 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 scheduler = AsyncIOScheduler()
 
 
+def reschedule_jobs(scan_minutes: int | None = None, deletion_minutes: int | None = None) -> None:
+    """Reschedule interval jobs live after settings change. Pass None to skip."""
+    try:
+        if scan_minutes is not None:
+            scheduler.reschedule_job("scan_job", trigger="interval", minutes=max(1, scan_minutes))
+            logger.info(f"scan_job rescheduled to {max(1, scan_minutes)}m interval")
+    except Exception as e:
+        logger.warning(f"reschedule scan_job: {e}")
+    try:
+        if deletion_minutes is not None:
+            scheduler.reschedule_job("deletion_job", trigger="interval", minutes=max(1, deletion_minutes))
+            logger.info(f"deletion_job rescheduled to {max(1, deletion_minutes)}m interval")
+    except Exception as e:
+        logger.warning(f"reschedule deletion_job: {e}")
+
+
 async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     """Return next_run_time for a job, preserving the countdown across restarts.
 

@@ -40,6 +40,8 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
     # Fallback to legacy settings (backward compat) — get_setting decrypts automatically
     url = (await get_setting("emby_url") or "").rstrip("/")
     key = await get_setting("emby_api_key") or ""
+    if url:
+        logger.warning("Using legacy emby_url — reconfigure via Settings > Serveurs")
     return url, key
 
 
@@ -53,7 +55,10 @@ async def get_client_ext_url(server_id: str = "0") -> str:
             if ext.startswith("enc:"):
                 ext = _decrypt_value(ext)
             return ext
-    return (await get_setting("emby_external_url") or "").rstrip("/")
+    ext = (await get_setting("emby_external_url") or "").rstrip("/")
+    if ext:
+        logger.warning("Using legacy emby_external_url — reconfigure via Settings > Serveurs")
+    return ext
 
 
 async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:

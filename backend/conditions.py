@@ -192,17 +192,9 @@ async def _get_poster_url(
 
     try:
         emby_url, emby_key = await get_client(server_id)
-        ext_url = await get_client_ext_url(server_id)
-        if ext_url and emby_id:
-            return f"{ext_url}/Items/{emby_id}/Images/Primary?api_key={emby_key}&maxHeight=300"
-    except Exception:
-        pass
-
-    try:
-        emby_url, emby_key = await get_client(server_id)
         if emby_url and emby_key and emby_id:
-            internal = f"{emby_url}/Items/{emby_id}/Images/Primary?api_key={emby_key}&maxHeight=300"
-            return f"/api/proxy/image?url={urllib.parse.quote(internal, safe='')}"
+            target = f"{emby_url}/Items/{emby_id}/Images/Primary?api_key={emby_key}&maxHeight=300"
+            return f"/api/proxy/image?url={urllib.parse.quote(target, safe='')}"
     except Exception:
         pass
 

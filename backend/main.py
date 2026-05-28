@@ -78,6 +78,7 @@ from .routers import (
     libraries,
     logs,
     media,
+    metrics,
     seerr_rules,
     settings,
     stats,
@@ -212,8 +213,8 @@ async def _get_proxy_whitelist() -> set:
             "fanart.tv",
             "assets.fanart.tv",
         }
-        # Legacy single-server URLs
-        for setting_key in ("emby_url", "emby_external_url", "radarr_url", "sonarr_url"):
+        # Legacy single-server URLs (emby* covered by media_servers loop below)
+        for setting_key in ("radarr_url", "sonarr_url"):
             s = await get_setting(setting_key)
             if s:
                 try:
@@ -272,6 +273,7 @@ app.include_router(storage.router)
 app.include_router(seerr_rules.router)
 app.include_router(calendar.router)
 app.include_router(unmonitored.router)
+app.include_router(metrics.router)
 
 
 # ─── Static & templates ───────────────────────────────────────────────────────

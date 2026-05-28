@@ -10,7 +10,8 @@
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-2.5.0-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-2.5.1-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![CI](https://github.com/carryozor/hygie/actions/workflows/ci.yml/badge.svg)](https://github.com/carryozor/hygie/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-174%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
@@ -233,10 +234,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.5.0 \
+  --build-arg VERSION=2.5.1 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.5.0 \
+  -t ghcr.io/carryozor/hygie:2.5.1 \
   --push .
 ```
 
@@ -509,10 +510,10 @@ git clone https://github.com/carryozor/hygie.git
 cd hygie
 
 docker buildx build \
-  --build-arg VERSION=2.5.0 \
+  --build-arg VERSION=2.5.1 \
   --platform linux/amd64 \
   -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:2.5.0 \
+  -t ghcr.io/carryozor/hygie:2.5.1 \
   --push .
 ```
 
@@ -563,6 +564,22 @@ Hygie applique automatiquement les migrations de schéma au démarrage. La mise 
 
 **Tests**
 - 15 nouveaux tests (`test_v240_fixes.py`) : sanitize_url, http_retry, rate limiter, index DB
+
+---
+
+### 🆕 Changements v2.5.1 — CI, qualité & observabilité
+
+**CI/CD**
+- Pipeline GitHub Actions : tests Python 3.12 sur chaque push/PR, build & push Docker automatique sur tag `v*`
+
+**Observabilité**
+- Endpoint `/metrics` au format Prometheus (sans authentification — scraping direct par Prometheus/Grafana)
+- Métriques exposées : `hygie_media_pending`, `hygie_media_deleted_total`, `hygie_media_ignored_total`, `hygie_media_errors`, `hygie_scans_total`, `hygie_deletion_checks_total`
+
+**Nettoyage legacy**
+- Suppression de `emby_url`/`emby_external_url` de la boucle whitelist proxy (déjà couverts par `media_servers`)
+- Consolidation des deux blocs poster Emby en un seul — toutes les affiches passent désormais par le proxy backend
+- Warning loggé si les settings legacy `emby_url`/`emby_external_url` sont encore utilisés
 
 ---
 

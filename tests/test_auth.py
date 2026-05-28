@@ -4,6 +4,16 @@ import pytest
 import backend.auth as auth_mod
 
 
+@pytest.fixture(scope="module", autouse=True)
+def fast_argon2():
+    """Swap Argon2id to minimal params for the duration of this module (~10 ms vs ~170 ms)."""
+    from argon2 import PasswordHasher
+    _orig = auth_mod._ph
+    auth_mod._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+    yield
+    auth_mod._ph = _orig
+
+
 # ─── password hashing ────────────────────────────────────────────────────────
 
 def test_hash_and_verify_correct_password():

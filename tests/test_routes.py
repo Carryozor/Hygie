@@ -1,6 +1,7 @@
 """Smoke tests for FastAPI routes using TestClient with isolated DB."""
 import os
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 # Env vars must be set before any backend import
@@ -8,24 +9,30 @@ os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
 
 
-@pytest.fixture()
-async def client(tmp_path, monkeypatch):
-    """Full FastAPI app with isolated per-test DB."""
-    import backend.database as dbmod
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def client(tmp_path_factory):
+    """Full FastAPI app — one reload per module, isolated DB."""
+    import importlib
+    from argon2 import PasswordHasher
 
-    db_path = str(tmp_path / "route_test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
+    # Patch DB_PATH BEFORE importing backend.main so that routers (stats, storage, …)
+    # capture the test path when their module-level `from ..database import DB_PATH` runs.
+    import backend.database as dbmod
+    db_path = str(tmp_path_factory.mktemp("routes") / "route_test.db")
+    _orig_db = dbmod.DB_PATH
+    dbmod.DB_PATH = db_path
     dbmod._ms_cache = None
     dbmod._ms_cache_ts = 0.0
     dbmod._settings_cache.clear()
     dbmod._settings_cache_ts = 0.0
 
-    # Import AFTER patching so lifespan sees the right DB_PATH
-    import importlib
     import backend.auth as auth_mod
     import backend.main as main_mod
-    importlib.reload(auth_mod)   # re-load to pick up fresh SECRET_FILE path
+    importlib.reload(auth_mod)
     importlib.reload(main_mod)
+    # Fast Argon2 params — correct output, ~10 ms instead of ~170 ms per hash
+    auth_mod._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+    dbmod.DB_PATH = db_path  # reload may re-bind DB_PATH from env
 
     app = main_mod.app
     async with main_mod.lifespan(app):
@@ -33,14 +40,28 @@ async def client(tmp_path, monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
 
+    dbmod.DB_PATH = _orig_db
 
-@pytest.fixture()
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def registered_client(client):
-    """Client with a registered user; returns (client, token)."""
+    """Client with a registered user; returns (client, token).
+
+    Module-scoped: the user is created once. If a prior test already called
+    /api/auth/setup (e.g. test_setup_creates_user_and_returns_token), the 409
+    response triggers a plain login instead.
+    """
     r = await client.post("/api/auth/setup",
                           json={"username": "admin", "password": "strongpass123"})
-    assert r.status_code == 200, r.text
-    token = r.json()["token"]
+    if r.status_code == 200:
+        token = r.json()["token"]
+    elif r.status_code == 409:
+        r2 = await client.post("/api/auth/login",
+                               json={"username": "admin", "password": "strongpass123"})
+        assert r2.status_code == 200, r2.text
+        token = r2.json()["token"]
+    else:
+        raise AssertionError(f"Unexpected setup response {r.status_code}: {r.text}")
     return client, token
 
 

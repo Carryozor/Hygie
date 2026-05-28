@@ -34,6 +34,8 @@ _FORWARDED_ATTRS = {
     # Media-servers cache
     "_ms_cache":    [(_ms, "_ms_cache")],
     "_ms_cache_ts": [(_ms, "_ms_cache_ts")],
+    # WebSocket clients set
+    "_ws_clients":  [(_ws, "_ws_clients")],
 }
 
 

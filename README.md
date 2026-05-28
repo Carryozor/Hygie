@@ -12,7 +12,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
 [![Version](https://img.shields.io/badge/version-2.6.0-brightgreen)](https://github.com/carryozor/hygie/releases)
 [![CI](https://github.com/carryozor/hygie/actions/workflows/ci.yml/badge.svg)](https://github.com/carryozor/hygie/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-174%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-193%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 

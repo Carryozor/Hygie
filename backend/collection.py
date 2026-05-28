@@ -274,6 +274,20 @@ async def sync_emby_collection():
             if overlay_enabled and wanted:
                 ui_lang = await get_setting("ui_language") or "fr"
                 await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
+                # Force Emby to rebuild the collection thumbnail after overlay updates
+                try:
+                    await client.post(
+                        f"{emby_url}/Items/{collection_id}/Refresh",
+                        headers={"X-Emby-Token": emby_key},
+                        params={
+                            "Recursive": "false",
+                            "MetadataRefreshMode": "None",
+                            "ImageRefreshMode": "FullRefresh",
+                            "ReplaceAllImages": "false",
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Collection refresh error: {e}")
 
             if to_add or to_remove:
                 await add_log(

@@ -267,6 +267,25 @@
           </div>
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:12px;font-weight:500;color:#e2e8f0">Sauvegarde automatique</div>
+            <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="triggerManualBackup()"><i class="fas fa-database"></i>Sauvegarder maintenant</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 100px 120px;gap:10px;margin-bottom:8px">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Dossier</label>
+              <input class="input" id="backup_path" placeholder="/app/data/backups"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h)</label>
+              <input class="input" id="backup_interval_hours" type="number" min="1" max="168" placeholder="24"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Backups conservés</label>
+              <input class="input" id="backup_retention_count" type="number" min="1" max="90" placeholder="7"></div>
+          </div>
+          <div id="backup-list-wrap" style="display:none;margin-top:8px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Backups existants</div>
+            <div id="backup-list" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto"></div>
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-top:4px" onclick="loadBackupList()"><i class="fas fa-list"></i>Voir les backups</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
           <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:10px">Planification</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <div style="display:flex;align-items:center;gap:8px">

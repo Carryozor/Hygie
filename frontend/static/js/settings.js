@@ -7,6 +7,7 @@ const SETTINGS_FORM_FIELDS = [
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
   'discord_webhook','discord_notif_thresholds','discord_alert_error_threshold',
   'max_parallel_library_scans',
+  'backup_path','backup_interval_hours','backup_retention_count',
 ];
 
 // ─── Media Servers ────────────────────────────────────────────────────────────
@@ -383,4 +384,49 @@ function saveDiscordMapping(userId, username, discordId) {
       }
     } catch(e) { /* silent */ }
   }, 800);
+}
+
+// ─── Backup ───────────────────────────────────────────────────────────────────
+async function triggerManualBackup() {
+  try {
+    const r = await api('/api/backup', 'POST');
+    toast(`Backup créé : ${r.filename}`, 'success');
+    loadBackupList();
+  } catch(e) { toast('Erreur backup : ' + (e.message||''), 'error'); }
+}
+
+async function loadBackupList() {
+  const wrap = document.getElementById('backup-list-wrap');
+  const box  = document.getElementById('backup-list');
+  if (!wrap || !box) return;
+  try {
+    const files = await api('/api/backup');
+    wrap.style.display = 'block';
+    if (!files.length) {
+      box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px">Aucun backup</div>';
+      return;
+    }
+    box.innerHTML = files.map(f => {
+      const dt = new Date(f.created_at).toLocaleString();
+      const kb = Math.round(f.size_bytes / 1024);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0a0c14;border-radius:6px;font-size:11px">
+        <i class="fas fa-database" style="color:var(--muted);flex-shrink:0"></i>
+        <span style="flex:1;color:#e2e8f0">${escapeHtml(f.filename)}</span>
+        <span style="color:var(--muted)">${kb} Ko</span>
+        <span style="color:var(--muted)">${dt}</span>
+        <button class="btn btn-ghost" style="padding:2px 6px;font-size:10px;color:#ef4444" onclick="deleteBackup('${escapeHtml(f.filename)}')"><i class="fas fa-trash"></i></button>
+      </div>`;
+    }).join('');
+  } catch(e) { toast('Erreur liste backups','error'); }
+}
+
+async function deleteBackup(filename) {
+  try {
+    await showConfirm({ title: 'Supprimer ce backup ?', body: filename, icon: 'database', color: '#ef4444', okLabel: 'Supprimer' });
+  } catch(e) { return; }
+  try {
+    await api(`/api/backup/${encodeURIComponent(filename)}`, 'DELETE');
+    toast('Backup supprimé', 'success');
+    loadBackupList();
+  } catch(e) { toast('Erreur suppression', 'error'); }
 }

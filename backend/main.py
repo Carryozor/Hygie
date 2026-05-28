@@ -30,6 +30,7 @@ from fastapi.templating import Jinja2Templates
 from .database import (
     DB_PATH,
     add_log,
+    get_int_setting,
     get_setting,
     init_db,
     register_ws,
@@ -73,6 +74,7 @@ async def _internal_cleanup():
         pass
 from .routers import (
     auth,
+    backup,
     calendar,
     ignored,
     libraries,
@@ -167,6 +169,18 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _internal_cleanup, "cron", hour=3, minute=0, id="overlay_daily", replace_existing=True
     )
+
+    # Backup job — interval from settings, default 24h
+    try:
+        from .backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
+        backup_hours = await get_int_setting("backup_interval_hours", _DEFAULT_INTERVAL_HOURS)
+        scheduler.add_job(
+            _run_backup, "interval", hours=max(1, backup_hours),
+            id="backup_job", replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning(f"backup job setup: {e}")
+
     scheduler.start()
     app.state.scheduler = scheduler
 
@@ -274,6 +288,7 @@ app.include_router(seerr_rules.router)
 app.include_router(calendar.router)
 app.include_router(unmonitored.router)
 app.include_router(metrics.router)
+app.include_router(backup.router)
 
 
 # ─── Static & templates ───────────────────────────────────────────────────────

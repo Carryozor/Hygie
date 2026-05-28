@@ -199,6 +199,9 @@ DEFAULT_SETTINGS = {
     "log_retention_days": "14",
     "job_history_retention_days": "90",
     "ui_language": "fr",
+    "backup_path": "/app/data/backups",
+    "backup_interval_hours": "24",
+    "backup_retention_count": "7",
 }
 
 # ─── WebSocket broadcast ──────────────────────────────────────────────────────

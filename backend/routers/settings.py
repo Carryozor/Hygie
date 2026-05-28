@@ -49,6 +49,9 @@ class SettingsUpdate(BaseModel):
     deletion_check_interval_minutes: Optional[str] = None
     media_server_type: Optional[str] = None
     ui_language: Optional[str] = None
+    backup_path: Optional[str] = None
+    backup_interval_hours: Optional[str] = None
+    backup_retention_count: Optional[str] = None
 
 
 _TESTERS = {

@@ -37,6 +37,25 @@ from .settings_store import (
     _invalidate_settings_cache,
 )
 
+from .media_servers import (
+    get_media_servers,
+    save_media_servers,
+    _invalidate_media_servers_cache,
+)
+
+from .websocket import (
+    _ws_clients,
+    register_ws,
+    unregister_ws,
+    _broadcast,
+)
+
+from .logs import (
+    add_log,
+    add_job_run,
+    finish_job_run,
+)
+
 __all__ = [
     "DB_PATH", "STATUS_PENDING", "STATUS_DELETED", "STATUS_ERROR",
     "TIMEOUT_SHORT", "TIMEOUT_MEDIUM", "TIMEOUT_LONG",
@@ -45,4 +64,7 @@ __all__ = [
     "DEFAULT_SETTINGS",
     "get_setting", "set_setting", "get_bool_setting", "get_int_setting", "get_all_settings",
     "_invalidate_settings_cache",
+    "get_media_servers", "save_media_servers", "_invalidate_media_servers_cache",
+    "_ws_clients", "register_ws", "unregister_ws", "_broadcast",
+    "add_log", "add_job_run", "finish_job_run",
 ]

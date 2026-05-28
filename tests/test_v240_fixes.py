@@ -8,7 +8,7 @@ import pytest_asyncio
 # ─── sanitize_url ─────────────────────────────────────────────────────────────
 
 def test_sanitize_url_masks_api_key():
-    from backend.database import sanitize_url
+    from backend.db.utils import sanitize_url
     url = "http://emby:8096/Items/123/Images/Primary?api_key=MYSECRETKEY&maxHeight=300"
     result = sanitize_url(url)
     assert "MYSECRETKEY" not in result
@@ -17,7 +17,7 @@ def test_sanitize_url_masks_api_key():
 
 
 def test_sanitize_url_masks_token():
-    from backend.database import sanitize_url
+    from backend.db.utils import sanitize_url
     url = "http://example.com/api?token=abc123&foo=bar"
     result = sanitize_url(url)
     assert "abc123" not in result
@@ -26,13 +26,13 @@ def test_sanitize_url_masks_token():
 
 
 def test_sanitize_url_no_sensitive_params():
-    from backend.database import sanitize_url
+    from backend.db.utils import sanitize_url
     url = "http://example.com/api?param=value&other=data"
     assert sanitize_url(url) == url
 
 
 def test_sanitize_url_multiple_keys():
-    from backend.database import sanitize_url
+    from backend.db.utils import sanitize_url
     url = "http://x.com?api_key=SECRET1&token=SECRET2&name=hygie"
     result = sanitize_url(url)
     assert "SECRET1" not in result
@@ -44,7 +44,7 @@ def test_sanitize_url_multiple_keys():
 
 @pytest.mark.asyncio
 async def test_http_retry_success_first_try():
-    from backend.database import http_retry
+    from backend.db.utils import http_retry
 
     calls = []
 
@@ -63,7 +63,7 @@ async def test_http_retry_success_first_try():
 @pytest.mark.asyncio
 async def test_http_retry_retries_on_timeout():
     import httpx
-    from backend.database import http_retry
+    from backend.db.utils import http_retry
 
     calls = []
 
@@ -84,7 +84,7 @@ async def test_http_retry_retries_on_timeout():
 @pytest.mark.asyncio
 async def test_http_retry_raises_after_exhaustion():
     import httpx
-    from backend.database import http_retry
+    from backend.db.utils import http_retry
 
     async def factory():
         raise httpx.TimeoutException("always timeout")
@@ -95,7 +95,7 @@ async def test_http_retry_raises_after_exhaustion():
 
 @pytest.mark.asyncio
 async def test_http_retry_no_retry_on_non_transient():
-    from backend.database import http_retry
+    from backend.db.utils import http_retry
 
     calls = []
 
@@ -172,14 +172,23 @@ def test_rate_limit_periodic_cleanup():
 
 @pytest.fixture()
 async def fresh_db(monkeypatch, tmp_path):
-    import backend.database as dbmod
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _db_ss
+    import backend.db.media_servers as _db_ms
+    import backend.db.schema as _db_schema
+    import backend.db.logs as _db_logs
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    await dbmod.init_db()
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
+    from backend.db.schema import init_db
+    await init_db()
     yield db_path
 
 

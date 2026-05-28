@@ -14,8 +14,12 @@ from unittest.mock import AsyncMock, patch
 import aiosqlite
 import pytest
 
-import backend.database as dbmod
-from backend.database import init_db
+import backend.db.utils as _db_utils
+import backend.db.settings_store as _db_ss
+import backend.db.media_servers as _db_ms
+import backend.db.schema as _db_schema
+import backend.db.logs as _db_logs
+from backend.db.schema import init_db
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -23,11 +27,15 @@ from backend.database import init_db
 @pytest.fixture(autouse=True)
 async def isolated_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "e2e_test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
     await init_db()
 
     # scheduler/scanner/deletion import DB_PATH at module level — patch their local copies too

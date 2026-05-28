@@ -1,20 +1,85 @@
 """Unit tests for database.py — runs against a temporary file-based SQLite DB."""
 import pytest
 import aiosqlite
-import backend.database as dbmod
+import backend.db.utils as _db_utils
+import backend.db.settings_store as _db_ss
+import backend.db.media_servers as _db_ms
+import backend.db.schema as _db_schema
+import backend.db.logs as _db_logs
+import backend.db.encryption as _db_enc
+from backend.db import (
+    get_setting, set_setting, get_bool_setting, get_int_setting, get_all_settings,
+    add_log, add_job_run, finish_job_run,
+    get_media_servers, save_media_servers,
+    init_db, parse_iso_dt, SENSITIVE_KEYS,
+)
+
+# Provide a unified namespace for tests that use dbmod.something
+class _DbMod:
+    """Lightweight facade pointing at the real submodule objects."""
+    # -- utils
+    @staticmethod
+    def parse_iso_dt(s): return parse_iso_dt(s)
+    SENSITIVE_KEYS = _db_enc.SENSITIVE_KEYS
+    # -- settings
+    @staticmethod
+    async def get_setting(k): return await _db_ss.get_setting(k)
+    @staticmethod
+    async def set_setting(k, v): return await _db_ss.set_setting(k, v)
+    @staticmethod
+    async def get_bool_setting(k, default=False): return await _db_ss.get_bool_setting(k, default)
+    @staticmethod
+    async def get_int_setting(k, default=0): return await _db_ss.get_int_setting(k, default)
+    @property
+    def _settings_cache(self): return _db_ss._settings_cache
+    @property
+    def _settings_cache_ts(self): return _db_ss._settings_cache_ts
+    @_settings_cache_ts.setter
+    def _settings_cache_ts(self, v): _db_ss._settings_cache_ts = v
+    @property
+    def DB_PATH(self): return _db_utils.DB_PATH
+    # -- media servers
+    @staticmethod
+    async def save_media_servers(s): return await _db_ms.save_media_servers(s)
+    @staticmethod
+    async def get_media_servers(): return await _db_ms.get_media_servers()
+    @property
+    def _ms_cache(self): return _db_ms._ms_cache
+    @_ms_cache.setter
+    def _ms_cache(self, v): _db_ms._ms_cache = v
+    @property
+    def _ms_cache_ts(self): return _db_ms._ms_cache_ts
+    @_ms_cache_ts.setter
+    def _ms_cache_ts(self, v): _db_ms._ms_cache_ts = v
+    # -- logs
+    @staticmethod
+    async def add_log(level, msg, src=""): return await _db_logs.add_log(level, msg, src)
+    @staticmethod
+    async def add_job_run(job_type): return await _db_logs.add_job_run(job_type)
+    @staticmethod
+    async def finish_job_run(run_id, status, msg=""): return await _db_logs.finish_job_run(run_id, status, msg)
+    # -- schema
+    @staticmethod
+    async def init_db(): return await _db_schema.init_db()
+
+dbmod = _DbMod()
 
 
 @pytest.fixture(autouse=True)
 async def fresh_db(monkeypatch, tmp_path):
     """Each test gets its own temporary DB so state never leaks between tests."""
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     # Clear all module-level caches
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    await dbmod.init_db()
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
+    await _db_schema.init_db()
     yield db_path
 
 

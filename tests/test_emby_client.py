@@ -9,17 +9,25 @@ FAKE_KEY  = "test-api-key-12345"
 @pytest.fixture(autouse=True)
 async def mock_server_config(monkeypatch, tmp_path):
     """Configure database to use our fake server for every test."""
-    import backend.database as dbmod
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _db_ss
+    import backend.db.media_servers as _db_ms
+    import backend.db.schema as _db_schema
+    import backend.db.logs as _db_logs
 
     db_path = str(tmp_path / "emby_test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
 
-    await dbmod.init_db()
-    await dbmod.save_media_servers([{
+    await _db_schema.init_db()
+    await _db_ms.save_media_servers([{
         "id": "0", "name": "Test Server",
         "url": FAKE_URL, "api_key": FAKE_KEY,
         "ext_url": "", "type": "emby", "enabled": True,
@@ -137,14 +145,22 @@ async def test_get_items_in_library_uses_header(httpx_mock: HTTPXMock):
 # ─── no credentials → graceful fallback ───────────────────────────────────────
 
 async def test_get_users_no_url_returns_empty(monkeypatch, tmp_path):
-    import backend.database as dbmod
+    import backend.db.utils as _db_utils2
+    import backend.db.settings_store as _db_ss2
+    import backend.db.media_servers as _db_ms2
+    import backend.db.schema as _db_schema2
+    import backend.db.logs as _db_logs2
     db_path = str(tmp_path / "empty.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    await dbmod.init_db()
+    monkeypatch.setattr(_db_utils2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs2, "DB_PATH", db_path)
+    _db_ms2._ms_cache = None
+    _db_ms2._ms_cache_ts = 0.0
+    _db_ss2._settings_cache.clear()
+    _db_ss2._settings_cache_ts = 0.0
+    await _db_schema2.init_db()
     # No servers configured
 
     from backend.emby_client import get_users

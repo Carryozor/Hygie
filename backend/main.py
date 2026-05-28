@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .db import utils as _db_utils
 from .db.utils import DB_PATH
 from .db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
@@ -121,8 +122,7 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     """
     now = datetime.now(timezone.utc)
     try:
-        from . import database as _dbmod  # live attribute lookup respects monkeypatching in tests
-        async with aiosqlite.connect(_dbmod.DB_PATH) as db:
+        async with aiosqlite.connect(_db_utils.DB_PATH) as db:
             async with db.execute(
                 "SELECT started_at FROM job_history WHERE job_type=? "
                 "ORDER BY started_at DESC LIMIT 1",

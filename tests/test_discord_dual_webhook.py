@@ -10,18 +10,26 @@ Verifies:
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
-import backend.database as dbmod
-from backend.database import init_db
+import backend.db.utils as _db_utils
+import backend.db.settings_store as _db_ss
+import backend.db.media_servers as _db_ms
+import backend.db.schema as _db_schema
+import backend.db.logs as _db_logs
+from backend.db.schema import init_db
 
 
 @pytest.fixture(autouse=True)
 async def isolated_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "discord_test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
     await init_db()
     yield db_path
 
@@ -38,7 +46,7 @@ async def test_test_discord_no_webhook(isolated_db):
 
 async def test_test_discord_sends_to_main_webhook(isolated_db):
     """test_discord() POSTs to the main webhook URL."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
 
     mock_resp = MagicMock()
@@ -70,7 +78,7 @@ async def test_test_discord_alerts_no_webhook(isolated_db):
 
 async def test_test_discord_alerts_sends_to_alerts_webhook(isolated_db):
     """test_discord_alerts() POSTs to the alerts webhook URL, not the main one."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
     await db.set_setting("discord_webhook_alerts", "https://discord.com/api/webhooks/alerts/token")
 
@@ -96,7 +104,7 @@ async def test_test_discord_alerts_sends_to_alerts_webhook(isolated_db):
 
 async def test_send_alert_uses_alerts_webhook_when_set(isolated_db):
     """send_alert() sends to the alerts webhook when both webhooks are configured."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
     await db.set_setting("discord_webhook_alerts", "https://discord.com/api/webhooks/alerts/token")
 
@@ -119,7 +127,7 @@ async def test_send_alert_uses_alerts_webhook_when_set(isolated_db):
 
 async def test_send_alert_falls_back_to_main_when_no_alerts_webhook(isolated_db):
     """send_alert() falls back to main webhook when alerts webhook is not set."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
 
     mock_resp = MagicMock()
@@ -148,7 +156,7 @@ async def test_send_alert_no_webhook_returns_false(isolated_db):
 
 async def test_send_alert_with_mention_sends_content_field(isolated_db):
     """send_alert() with mention=... sets payload['content'] to trigger real Discord pings."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
 
     mock_resp = MagicMock()
@@ -174,7 +182,7 @@ async def test_send_alert_with_mention_sends_content_field(isolated_db):
 
 async def test_send_alert_custom_msg_template_interpolated(isolated_db):
     """send_alert() interpolates template_vars into custom_msg."""
-    import backend.database as db
+    import backend.db.settings_store as db
     await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
 
     mock_resp = MagicMock()

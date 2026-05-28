@@ -1,23 +1,31 @@
 """Tests for scheduler next_run_time persistence across restarts."""
 from datetime import datetime, timezone, timedelta
 import pytest
-import backend.database as dbmod
+import backend.db.utils as _db_utils
+import backend.db.settings_store as _db_ss
+import backend.db.media_servers as _db_ms
+import backend.db.schema as _db_schema
+import backend.db.logs as _db_logs
 
 
 @pytest.fixture(autouse=True)
 async def fresh_db(monkeypatch, tmp_path):
     db_path = str(tmp_path / "sched_test.db")
-    monkeypatch.setattr(dbmod, "DB_PATH", db_path)
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
-    await dbmod.init_db()
+    monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
+    await _db_schema.init_db()
     yield db_path
 
 
 async def _set_last_run(job_type: str, ran_at: datetime):
     """Insert a fake job_history entry so _job_next_run has something to read."""
     import aiosqlite
-    async with aiosqlite.connect(dbmod.DB_PATH) as db:
+    async with aiosqlite.connect(_db_utils.DB_PATH) as db:
         await db.execute(
             "INSERT INTO job_history (job_type, started_at, finished_at, status, message) "
             "VALUES (?, ?, ?, 'success', 'test')",

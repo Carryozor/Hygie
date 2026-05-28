@@ -16,15 +16,23 @@ async def client(tmp_path_factory):
     from argon2 import PasswordHasher
 
     # Patch DB_PATH BEFORE importing backend.main so that routers (stats, storage, …)
-    # capture the test path when their module-level `from ..database import DB_PATH` runs.
-    import backend.database as dbmod
+    # capture the test path when their module-level `from ..db.utils import DB_PATH` runs.
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _db_ss
+    import backend.db.media_servers as _db_ms
+    import backend.db.schema as _db_schema
+    import backend.db.logs as _db_logs
     db_path = str(tmp_path_factory.mktemp("routes") / "route_test.db")
-    _orig_db = dbmod.DB_PATH
-    dbmod.DB_PATH = db_path
-    dbmod._ms_cache = None
-    dbmod._ms_cache_ts = 0.0
-    dbmod._settings_cache.clear()
-    dbmod._settings_cache_ts = 0.0
+    _orig_db = _db_utils.DB_PATH
+    _db_utils.DB_PATH = db_path
+    _db_ss.DB_PATH = db_path
+    _db_ms.DB_PATH = db_path
+    _db_schema.DB_PATH = db_path
+    _db_logs.DB_PATH = db_path
+    _db_ms._ms_cache = None
+    _db_ms._ms_cache_ts = 0.0
+    _db_ss._settings_cache.clear()
+    _db_ss._settings_cache_ts = 0.0
 
     import backend.auth as auth_mod
     import backend.main as main_mod
@@ -32,7 +40,11 @@ async def client(tmp_path_factory):
     importlib.reload(main_mod)
     # Fast Argon2 params — correct output, ~10 ms instead of ~170 ms per hash
     auth_mod._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
-    dbmod.DB_PATH = db_path  # reload may re-bind DB_PATH from env
+    _db_utils.DB_PATH = db_path  # reload may re-bind DB_PATH from env
+    _db_ss.DB_PATH = db_path
+    _db_ms.DB_PATH = db_path
+    _db_schema.DB_PATH = db_path
+    _db_logs.DB_PATH = db_path
 
     app = main_mod.app
     async with main_mod.lifespan(app):
@@ -40,7 +52,11 @@ async def client(tmp_path_factory):
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
 
-    dbmod.DB_PATH = _orig_db
+    _db_utils.DB_PATH = _orig_db
+    _db_ss.DB_PATH = _orig_db
+    _db_ms.DB_PATH = _orig_db
+    _db_schema.DB_PATH = _orig_db
+    _db_logs.DB_PATH = _orig_db
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

@@ -1,13 +1,10 @@
 # backend/db/utils.py
 """DB-layer constants and pure utilities — no DB access."""
 import asyncio
-import logging
 import os
 import re as _re
 from datetime import datetime, timezone
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/hygie.db")
 

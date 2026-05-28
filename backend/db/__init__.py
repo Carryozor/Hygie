@@ -56,6 +56,15 @@ from .logs import (
     finish_job_run,
 )
 
+from .repositories import (
+    get_pending_queue,
+    get_queued_and_ignored_ids,
+    get_enabled_libraries,
+    insert_queue_entry,
+    mark_notified_detected,
+    update_queue_status,
+)
+
 from .schema import init_db
 
 __all__ = [

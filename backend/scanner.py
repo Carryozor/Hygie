@@ -24,6 +24,12 @@ from .db.utils import DB_PATH, STATUS_PENDING, now_utc, parse_iso_dt
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_job_run, add_log, finish_job_run
+from .db.repositories import (
+    get_enabled_libraries,
+    get_queued_and_ignored_ids,
+    insert_queue_entry,
+    mark_notified_detected,
+)
 from .emby_client import (
     delete_item,
     get_client,
@@ -76,13 +82,7 @@ async def run_scan():
                     await add_log("INFO", f"Serveur {server_id} ignoré (type: {server_type})", "scan")
                     continue
 
-                async with aiosqlite.connect(DB_PATH) as db:
-                    db.row_factory = aiosqlite.Row
-                    async with db.execute(
-                        "SELECT * FROM libraries WHERE enabled=1 AND (server_id=? OR server_id IS NULL OR server_id='')",
-                        (server_id,)
-                    ) as cur:
-                        libraries = [dict(r) for r in await cur.fetchall()]
+                libraries = await get_enabled_libraries(server_id, db_path=DB_PATH)
 
                 if not libraries:
                     continue
@@ -108,11 +108,7 @@ async def run_scan():
                         )
 
                 # Pre-load queued/ignored sets — eliminates 2 DB opens per item
-                async with aiosqlite.connect(DB_PATH) as _db:
-                    async with _db.execute("SELECT emby_id FROM media_queue") as _cur:
-                        queued_ids = {r[0] async for r in _cur}
-                    async with _db.execute("SELECT emby_id FROM ignored_media") as _cur:
-                        ignored_ids = {r[0] async for r in _cur}
+                queued_ids, ignored_ids = await get_queued_and_ignored_ids(db_path=DB_PATH)
 
                 try:
                     max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
@@ -303,26 +299,7 @@ async def _scan_library(
 
 async def _insert_queue_entry(entry: dict, queued_ids: Optional[set], dry_run: bool) -> None:
     """Insert one eligible item into media_queue and send detected notification."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """INSERT INTO media_queue
-            (emby_id, title, media_type, library_id, library_name, file_path,
-             poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-             seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
-             detected_at, delete_at, added_date, last_played, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
-            (
-                entry["emby_id"], entry["title"], entry["media_type"],
-                entry["library_id"], entry["library_name"], entry["file_path"],
-                entry["poster_url"], entry["tmdb_id"],
-                entry["seerr_id"], entry["seerr_user_id"], entry["seerr_username"],
-                entry["seerr_request_url"], entry["radarr_id"], entry["sonarr_id"],
-                entry.get("sonarr_series_id"), entry.get("season_number"),
-                entry["detected_at"], entry["delete_at"],
-                entry["added_date"], entry["last_played"],
-            ),
-        )
-        await db.commit()
+    await insert_queue_entry(entry, db_path=DB_PATH)
     if queued_ids is not None:
         queued_ids.add(entry["emby_id"])
     item_notif = {k: entry[k] for k in ("title", "media_type", "library_name",
@@ -331,12 +308,7 @@ async def _insert_queue_entry(entry: dict, queued_ids: Optional[set], dry_run: b
     try:
         sent = await send_notification([item_notif], "detected", dry_run=dry_run)
         if sent:
-            async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute(
-                    "UPDATE media_queue SET notified_detected=1 WHERE emby_id=? AND status='pending'",
-                    (entry["emby_id"],),
-                )
-                await db.commit()
+            await mark_notified_detected(entry["emby_id"], db_path=DB_PATH)
     except Exception as e:
         logger.warning(f"Detected notification failed for {entry['title']}: {e}")
 

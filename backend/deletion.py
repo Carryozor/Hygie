@@ -10,6 +10,7 @@ import aiosqlite
 from .db.utils import DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run
+from .db.repositories import get_pending_queue, update_queue_status
 from .emby_client import delete_item, get_client
 from .arr_clients import (
     radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,
@@ -44,14 +45,7 @@ async def run_deletion():
             await _send_pending_notifications()
 
             # ── Deletions ────────────────────────────────────────────────────
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM media_queue "
-                    "WHERE status='pending' AND delete_at <= ?",
-                    (now_utc().isoformat(),),
-                ) as cur:
-                    to_delete = [dict(r) for r in await cur.fetchall()]
+            to_delete = await get_pending_queue(db_path=DB_PATH)
 
             # Read qbit settings once for the whole batch
             _qbit_action = await get_setting("qbit_action") or "tag_only"
@@ -73,12 +67,7 @@ async def run_deletion():
                 async with _del_sem:
                     ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id)
                     status_val = STATUS_DELETED if ok else STATUS_ERROR
-                    async with aiosqlite.connect(DB_PATH) as db:
-                        await db.execute(
-                            "UPDATE media_queue SET status=?, notified_now=1 WHERE id=?",
-                            (status_val, row["id"]),
-                        )
-                        await db.commit()
+                    await update_queue_status(row["id"], status_val, db_path=DB_PATH)
                     if not ok:
                         _error_count += 1
                         if _alert_del_error:

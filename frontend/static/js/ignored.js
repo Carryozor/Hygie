@@ -102,7 +102,7 @@ async function confirmIgnore() {
     closeIgnoreModal();
     loadQueue();
     loadDashboard();
-  } catch(e) { toast('Erreur','error'); }
+  } catch(e) { toast(t('Erreur'),'error'); }
 }
 
 document.addEventListener('keydown', e => {

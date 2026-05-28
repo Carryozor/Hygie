@@ -57,7 +57,7 @@ async function loadLibraries() {
         </div>
       </div>`;
     }).join('');
-  } catch(e) { toast('Erreur bibliothèques','error'); }
+  } catch(e) { toast(t('Erreur bibliothèques'),'error'); }
 }
 
 function renderConditions() {
@@ -168,19 +168,19 @@ async function saveLibrary() {
     else await api('/api/libraries/','POST',body);
     toast(editingLibId?t('Mise à jour'):t('Bibliothèque ajoutée'),'success');
     closeModal(); loadLibraries();
-    if (savedId) { const r=await api(`/api/libraries/${savedId}/reevaluate`,'POST'); if (r.removed>0) toast(`${r.removed} média(s) retiré(s) de la file`,'info'); }
-  } catch(e) { toast('Erreur sauvegarde','error'); }
+    if (savedId) { const r=await api(`/api/libraries/${savedId}/reevaluate`,'POST'); if (r.removed>0) toast(`${r.removed} ${t('média(s) retiré(s) de la file')}`,'info'); }
+  } catch(e) { toast(t('Erreur sauvegarde'),'error'); }
 }
 async function deleteLibrary(id) {
-  try { await showConfirm({ title: 'Supprimer cette bibliothèque ?', body: "La bibliothèque et ses règles seront supprimées. Les médias déjà en file d'attente ne seront pas affectés.", icon: 'layer-group', color: '#ef4444', okLabel: t('Supprimer') }); } catch(e) { return; }
-  await api(`/api/libraries/${id}`,'DELETE'); toast('Supprimée','success'); loadLibraries();
+  try { await showConfirm({ title: t('Supprimer cette bibliothèque ?'), body: t("La bibliothèque et ses règles seront supprimées. Les médias déjà en file d'attente ne seront pas affectés."), icon: 'layer-group', color: '#ef4444', okLabel: t('Supprimer') }); } catch(e) { return; }
+  await api(`/api/libraries/${id}`,'DELETE'); toast(t('Supprimée'),'success'); loadLibraries();
 }
 async function cloneLibrary(id) {
   try {
     await api(`/api/libraries/${id}/clone`, 'POST');
     toast(t('Clonée'), 'success');
     await loadLibraries();
-  } catch(e) { toast('Erreur clonage : ' + e.message, 'error'); }
+  } catch(e) { toast(t('Erreur clonage') + ' : ' + e.message, 'error'); }
 }
 async function toggleLibrary(id, newEnabled) {
   await api(`/api/libraries/${id}`,'PUT',{enabled: newEnabled});

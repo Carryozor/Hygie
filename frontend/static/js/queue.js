@@ -191,13 +191,13 @@ function updateBulkBar() {
 async function bulkExclude() {
   try {
     await api('/api/media/bulk','POST',{ids:[...selectedIds],action:'ignore'});
-    toast(`${selectedIds.size} exclu(s)`,'success'); selectedIds.clear(); loadQueue();
-  } catch(e) { toast('Erreur lors de l\'exclusion','error'); }
+    toast(`${selectedIds.size} ${t('exclu(s)')}`,'success'); selectedIds.clear(); loadQueue();
+  } catch(e) { toast(t('Erreur lors de l\'exclusion'),'error'); }
 }
 async function bulkDelete() {
-  try { await showConfirm({ title: 'Supprimer ' + selectedIds.size + ' média(s) ?', body: 'Ces médias seront supprimés de tous vos services (Emby, Radarr/Sonarr, Seerr, qBittorrent).', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
+  try { await showConfirm({ title: t('Supprimer ?'), body: t('Ces médias seront supprimés de tous vos services (Emby, Radarr/Sonarr, Seerr, qBittorrent).'), icon: 'trash', color: '#ef4444', okLabel: t('Supprimer') }); } catch(e) { return; }
   const r = await api('/api/media/bulk','POST',{ids:[...selectedIds],action:'delete'});
-  toast(`${r.affected} supprimé(s)`,'success'); selectedIds.clear(); loadQueue();
+  toast(`${r.affected} ${t('supprimé(s)')}`,'success'); selectedIds.clear(); loadQueue();
 }
 function setPageSize(n) { queuePageSize=n; queueOffset=0; loadQueue(); }
 function queuePage(dir) {
@@ -207,7 +207,7 @@ function queuePage(dir) {
 }
 async function excludeMedia(id) { await api(`/api/media/${id}/remove`,'DELETE'); toast(t('Exclu'),'success'); loadQueue(); }
 async function deleteNow(id) {
-  try { await showConfirm({ title: 'Supprimer maintenant ?', body: 'Ce média sera supprimé immédiatement de tous vos services.', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
+  try { await showConfirm({ title: t('Supprimer maintenant ?'), body: t('Ce média sera supprimé immédiatement de tous vos services.'), icon: 'trash', color: '#ef4444', okLabel: t('Supprimer') }); } catch(e) { return; }
   try { await api(`/api/media/${id}/delete-now`,'POST'); toast(t('Supprimé'),'success'); loadQueue(); }
   catch(e) { toast(t('Erreur suppression'),'error'); }
 }

@@ -54,16 +54,16 @@ async function triggerDeletion() {
 async function triggerScanLibrary(libId, libName) {
   try { const st=await api('/api/media/job-status'); if(st.scan_running){toast(t('Un scan est déjà en cours'),'warn');return;} } catch(e){}
   await api(`/api/scan/library/${libId}`,'POST');
-  toast(`Scan de "${libName}" démarré`,'info');
+  toast(`${t('Scan')} "${libName}" ${t('démarré')}`,'info');
   setTimeout(()=>{ if(currentPage==='jobs') loadJobs(); },800);
 }
 
 function logout() { clearToken(); showLoginScreen(); }
 
 async function syncEmbyCollection() {
-  toast('Synchronisation collection Emby...', 'info');
+  toast(t('Synchronisation collection Emby...'), 'info');
   try {
     await api('/api/emby-collection/sync', 'POST');
-    toast('Collection Emby synchronisée', 'success');
-  } catch(e) { toast('Erreur sync collection', 'error'); }
+    toast(t('Collection Emby synchronisée'), 'success');
+  } catch(e) { toast(t('Erreur sync collection'), 'error'); }
 }

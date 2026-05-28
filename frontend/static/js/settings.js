@@ -56,7 +56,7 @@ function renderMediaServers() {
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <input class="input" style="width:160px;font-size:13px;font-weight:600" value="${escapeHtml(s.name||'')}"
-              onchange="updateServerField('${s.id}','name',this.value)" placeholder="Nom du serveur">
+              onchange="updateServerField('${s.id}','name',this.value)" placeholder="${t('Nom du serveur')}">
             ${typeBadge}
           </div>
         </div>
@@ -65,7 +65,7 @@ function renderMediaServers() {
             <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleMediaServer('${s.id}',this.checked)">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
-          <button class="btn btn-ghost" style="padding:5px 8px;font-size:11px;color:#ef4444" onclick="removeMediaServer('${s.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+          <button class="btn btn-ghost" style="padding:5px 8px;font-size:11px;color:#ef4444" onclick="removeMediaServer('${s.id}')" title="${t('Supprimer')}"><i class="fas fa-trash"></i></button>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
@@ -93,7 +93,7 @@ async function addMediaServer() {
     const result = await api('/api/settings/media-servers', 'POST', {name: 'Nouveau serveur', url: '', api_key: '', ext_url: '', enabled: true});
     _mediaServers = result.servers;
     renderMediaServers();
-  } catch(e) { toast('Erreur ajout serveur','error'); }
+  } catch(e) { toast(t('Erreur ajout serveur'),'error'); }
 }
 
 async function removeMediaServer(id) {
@@ -103,7 +103,7 @@ async function removeMediaServer(id) {
     _mediaServers = result.servers;
     renderMediaServers();
     updateMediaServerIconFromServers();
-  } catch(e) { toast('Erreur suppression','error'); }
+  } catch(e) { toast(t('Erreur suppression'),'error'); }
 }
 
 let _serverUpdateTimers = {};
@@ -144,7 +144,7 @@ async function testMediaServer(id, btn) {
       const col = document.getElementById('media-emby-only');
       if (col) col.style.display = hasEmby ? 'block' : 'none';
     }
-  } catch(e) { toast('Erreur connexion','error'); }
+  } catch(e) { toast(t('Erreur connexion'),'error'); }
   btn.innerHTML = origHtml;
   btn.disabled = false;
 }
@@ -213,14 +213,14 @@ function updateMediaServerIcon(type) {
     if (iconWrap) iconWrap.innerHTML = '<img src="' + EMBY_ICON + '" width="16" height="16" style="border-radius:3px">';
     if (headerLogo) headerLogo.innerHTML = '<img src="' + EMBY_ICON + '" style="width:38px;height:38px;object-fit:contain;border-radius:8px">';
     if (pill) { pill.textContent = 'Emby'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#52b04025;color:#52b040'; }
-    if (detected) { detected.textContent = '✓ Emby détecté'; detected.style.color = '#52b040'; detected.style.fontStyle = 'normal'; }
+    if (detected) { detected.textContent = t('✓ Emby détecté'); detected.style.color = '#52b040'; detected.style.fontStyle = 'normal'; }
     if (embyOnly) embyOnly.style.display = 'block';
     if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
   } else if (type === 'jellyfin') {
     if (iconWrap) iconWrap.innerHTML = '<img src="' + JF_ICON + '" width="16" height="16" style="border-radius:3px">';
     if (headerLogo) headerLogo.innerHTML = '<img src="' + JF_ICON + '" style="width:38px;height:38px;object-fit:contain;border-radius:8px">';
     if (pill) { pill.textContent = 'Jellyfin'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#8b5cf625;color:#a78bfa'; }
-    if (detected) { detected.textContent = '✓ Jellyfin détecté'; detected.style.color = '#a78bfa'; detected.style.fontStyle = 'normal'; }
+    if (detected) { detected.textContent = t('✓ Jellyfin détecté'); detected.style.color = '#a78bfa'; detected.style.fontStyle = 'normal'; }
     if (embyOnly) embyOnly.style.display = 'block';
     if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
   } else if (type === 'unknown') {
@@ -229,7 +229,7 @@ function updateMediaServerIcon(type) {
     if (pill) pill.style.display = 'none';
     if (detected) { detected.textContent = t('Serveur non reconnu — fonctionnalités Collection/Overlay disponibles avec Emby uniquement'); detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
     if (embyOnly) embyOnly.style.display = 'none';
-    if (nonEmbyNotice) { nonEmbyNotice.style.display = 'block'; if (nonEmbyMsg) nonEmbyMsg.innerHTML = '⚠️ <strong>Serveur non reconnu</strong> — Les fonctionnalités Collection et Overlay d\'affiches sont disponibles uniquement avec Emby.'; nonEmbyNotice.style.color = '#94a3b8'; }
+    if (nonEmbyNotice) { nonEmbyNotice.style.display = 'block'; if (nonEmbyMsg) nonEmbyMsg.innerHTML = `⚠️ <strong>${t('Serveur non reconnu')}</strong> — ${t('Les fonctionnalités Collection et Overlay d\'affiches sont disponibles uniquement avec Emby.')}`; nonEmbyNotice.style.color = '#94a3b8'; }
   } else if (type === 'mixed') {
     const SPLIT_TAB = `<div style="width:18px;height:18px;border-radius:4px;position:relative;overflow:hidden;flex-shrink:0"><img src="${EMBY_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 50% 0 0)"><img src="${JF_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 0 0 50%)"></div>`;
     const SPLIT_HDR = `<div style="width:44px;height:44px;border-radius:10px;position:relative;overflow:hidden"><img src="${EMBY_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 50% 0 0)"><img src="${JF_ICON}" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;clip-path:inset(0 0 0 50%)"></div>`;
@@ -312,7 +312,7 @@ async function loadSettings(force=false) {
       });
       _settingsListenersAttached = true;
     }
-  } catch(e) { toast('Erreur paramètres','error'); }
+  } catch(e) { toast(t('Erreur paramètres'),'error'); }
 }
 
 async function saveSettings() {
@@ -335,8 +335,8 @@ async function saveSettings() {
   const delU = document.getElementById('deletion_check_interval_unit')?.value || 'h';
   body.deletion_check_interval_minutes = String(delU === 'h' ? delV * 60 : delV);
   fields.forEach(f=>{ const el=document.getElementById(f); if(el) body[f]=el.value; });
-  try { await api('/api/settings/','POST',body); _settingsDirty=false; toast('Paramètres enregistrés','success'); }
-  catch(e) { toast('Erreur sauvegarde','error'); }
+  try { await api('/api/settings/','POST',body); _settingsDirty=false; toast(t('Paramètres enregistrés'),'success'); }
+  catch(e) { toast(t('Erreur sauvegarde'),'error'); }
 }
 
 function collectFormValues() {
@@ -348,7 +348,7 @@ function collectFormValues() {
 async function testConn(service) {
   try { await api('/api/settings/','POST',collectFormValues()); _settingsDirty=false; } catch(e) {}
   try { const r=await api(`/api/libraries/test/${service}`,'POST'); toast(r.message||'OK',r.ok?'success':'error'); }
-  catch(e) { toast('Erreur connexion','error'); }
+  catch(e) { toast(t('Erreur connexion'),'error'); }
 }
 
 // ─── Discord Mappings ─────────────────────────────────────────────────────────
@@ -412,9 +412,9 @@ function saveDiscordMapping(userId, username, discordId) {
 async function triggerManualBackup() {
   try {
     const r = await api('/api/backup', 'POST');
-    toast(`Backup créé : ${r.filename}`, 'success');
+    toast(`${t('Backup créé :')} ${r.filename}`, 'success');
     loadBackupList();
-  } catch(e) { toast('Erreur backup : ' + (e.message||''), 'error'); }
+  } catch(e) { toast(t('Erreur backup :') + ' ' + (e.message||''), 'error'); }
 }
 
 async function loadBackupList() {

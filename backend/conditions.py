@@ -321,11 +321,11 @@ async def _evaluate_item(
         has_includes = any(c.get("type") == "user_include" for c in seerr_conditions)
         has_excludes = any(c.get("type") == "user_exclude" for c in seerr_conditions)
         if has_includes and not seerr_user_id:
-            await add_log("INFO", f"Ignoré (non demandé sur Seerr) : {title}", "scan")
+            await add_log("DEBUG", f"Ignoré (non demandé sur Seerr) : {title}", "scan")
             return None
         if not _seerr_filter_passes(seerr_user_id, seerr_conditions):
             reason = "exclu" if has_excludes else "non inclus"
-            await add_log("INFO", f"Ignoré (utilisateur Seerr {reason}) : {title}", "scan")
+            await add_log("DEBUG", f"Ignoré (utilisateur Seerr {reason}) : {title}", "scan")
             return None
 
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)

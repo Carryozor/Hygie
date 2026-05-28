@@ -204,6 +204,7 @@ DEFAULT_SETTINGS = {
     "backup_path": "/app/data/backups",
     "backup_interval_hours": "24",
     "backup_retention_count": "7",
+    "backup_enabled": "true",
 }
 
 # ─── WebSocket broadcast ──────────────────────────────────────────────────────
@@ -660,6 +661,17 @@ async def init_db():
                 )
         await db.commit()
 
+        # 9a. One-time: purge per-item "Ignoré (non demandé sur Seerr)" log spam
+        #     These were logged at INFO before being moved to DEBUG.
+        async with db.execute(
+            "DELETE FROM logs WHERE message LIKE 'Ignoré (non demandé sur Seerr)%'"
+            " OR message LIKE 'Ignoré (utilisateur Seerr%'"
+        ) as cur:
+            purged = cur.rowcount
+        if purged:
+            logger.info(f"Purged {purged} verbose per-item scan log entries")
+            await db.commit()
+
         # 9. Mark orphaned job_history entries (process killed mid-job) as interrupted
         ts_now = datetime.now(timezone.utc).isoformat()
         async with db.execute(
@@ -786,8 +798,23 @@ async def get_all_settings() -> dict:
 
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
+_LOG_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARN": 2, "ERROR": 3}
+
+
 async def add_log(level: str, message: str, source: str = "system"):
-    """Insert a log entry and broadcast it via WebSocket."""
+    """Insert a log entry and broadcast it via WebSocket.
+
+    Respects the configured log_level: DEBUG entries are suppressed when the
+    configured level is INFO or higher (default). This prevents per-item scan
+    debug messages from filling the DB.
+    """
+    try:
+        configured = (await get_setting("log_level") or "INFO").upper()
+        if _LOG_LEVEL_ORDER.get(level, 1) < _LOG_LEVEL_ORDER.get(configured, 1):
+            return
+    except Exception:
+        pass  # Unable to read log level — write anyway
+
     ts = datetime.now(timezone.utc).isoformat()
     try:
         async with aiosqlite.connect(DB_PATH) as db:

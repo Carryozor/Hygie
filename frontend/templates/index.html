@@ -268,14 +268,21 @@
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <div style="font-size:12px;font-weight:500;color:#e2e8f0">Sauvegarde automatique</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:12px;font-weight:500;color:#e2e8f0">Sauvegarde automatique</div>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="backup_enabled" style="accent-color:var(--accent);width:14px;height:14px" onchange="onBackupEnabledChange()">
+                <span style="font-size:11px;color:var(--muted)">activée</span>
+              </label>
+              <span id="backup-disabled-badge" style="display:none;font-size:11px;font-weight:600;color:#ef4444;background:#ef444420;border:1px solid #ef444440;padding:2px 8px;border-radius:4px">⚠️ Backup désactivé</span>
+            </div>
             <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="triggerManualBackup()"><i class="fas fa-database"></i>Sauvegarder maintenant</button>
           </div>
           <div style="display:grid;grid-template-columns:1fr 100px 120px;gap:10px;margin-bottom:8px">
             <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Dossier</label>
               <input class="input" id="backup_path" placeholder="/app/data/backups"></div>
-            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h) — <span style="font-style:italic">0 = désactivé</span></label>
-              <input class="input" id="backup_interval_hours" type="number" min="0" max="168" placeholder="24"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h)</label>
+              <input class="input" id="backup_interval_hours" type="number" min="1" max="168" placeholder="24"></div>
             <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Backups conservés</label>
               <input class="input" id="backup_retention_count" type="number" min="1" max="90" placeholder="7"></div>
           </div>

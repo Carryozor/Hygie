@@ -30,6 +30,7 @@ from fastapi.templating import Jinja2Templates
 from .database import (
     DB_PATH,
     add_log,
+    get_bool_setting,
     get_int_setting,
     get_setting,
     init_db,
@@ -170,11 +171,12 @@ async def lifespan(app: FastAPI):
         _internal_cleanup, "cron", hour=3, minute=0, id="overlay_daily", replace_existing=True
     )
 
-    # Backup job — interval from settings, default 24h. 0 = disabled.
+    # Backup job — interval from settings, default 24h. 0 or backup_enabled=false = disabled.
     try:
         from .backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
         backup_hours = await get_int_setting("backup_interval_hours", _DEFAULT_INTERVAL_HOURS)
-        if backup_hours > 0:
+        backup_enabled = await get_bool_setting("backup_enabled")
+        if backup_enabled and backup_hours > 0:
             scheduler.add_job(
                 _run_backup, "interval", hours=backup_hours,
                 id="backup_job", replace_existing=True,

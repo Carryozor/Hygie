@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .database import DB_PATH, add_log, get_int_setting, get_setting
+from .database import DB_PATH, add_log, get_bool_setting, get_int_setting, get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ async def run_backup() -> Optional[str]:
         return None
 
     backup_dir, interval, retention = await _backup_settings()
-    if interval == 0:
+    if not await get_bool_setting("backup_enabled") or interval == 0:
         return None  # Backup disabled
 
     Path(backup_dir).mkdir(parents=True, exist_ok=True)

@@ -246,6 +246,12 @@ function updateMediaServerIcon(type) {
   }
 }
 
+function onBackupEnabledChange() {
+  const enabled = document.getElementById('backup_enabled')?.checked;
+  const badge = document.getElementById('backup-disabled-badge');
+  if (badge) badge.style.display = enabled ? 'none' : 'block';
+}
+
 async function loadSettings(force=false) {
   if (_settingsLoaded && _settingsDirty && !force) return;
   try {
@@ -282,6 +288,11 @@ async function loadSettings(force=false) {
     ['discord_alert_deletion_error','discord_alert_scan_failure','discord_alert_seerr_failure'].forEach(k => {
       const el = document.getElementById(k); if(el) el.checked = s[k]==='true';
     });
+    const backupEnabledEl = document.getElementById('backup_enabled');
+    if (backupEnabledEl) {
+      backupEnabledEl.checked = s.backup_enabled !== 'false';
+      onBackupEnabledChange();
+    }
     const ls=document.getElementById('log_level'); if(ls) ls.value=s.log_level||'INFO';
     _settingsLoaded=true; _settingsDirty=false;
     if (!_settingsListenersAttached) {
@@ -305,6 +316,7 @@ async function saveSettings() {
     discord_alert_deletion_error: document.getElementById('discord_alert_deletion_error')?.checked ? 'true' : 'false',
     discord_alert_scan_failure: document.getElementById('discord_alert_scan_failure')?.checked ? 'true' : 'false',
     discord_alert_seerr_failure: document.getElementById('discord_alert_seerr_failure')?.checked ? 'true' : 'false',
+    backup_enabled: document.getElementById('backup_enabled')?.checked ? 'true' : 'false',
   };
   const scanV = parseInt(document.getElementById('scan_interval_value')?.value) || 6;
   const scanU = document.getElementById('scan_interval_unit')?.value || 'h';

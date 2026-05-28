@@ -54,6 +54,7 @@ class SettingsUpdate(BaseModel):
     backup_path: Optional[str] = None
     backup_interval_hours: Optional[str] = None
     backup_retention_count: Optional[str] = None
+    backup_enabled: Optional[str] = None
 
 
 _TESTERS = {
@@ -147,11 +148,13 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
                     pass
                 except Exception:
                     pass
-        if "backup_interval_hours" in updated:
+        if "backup_interval_hours" in updated or "backup_enabled" in updated:
             try:
-                from ..backup import run_backup as _run_backup
-                hours = int(incoming["backup_interval_hours"])
-                if hours <= 0:
+                from ..backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
+                from ..database import get_bool_setting as _get_bool, get_int_setting as _get_int
+                hours = int(incoming.get("backup_interval_hours") or await _get_int("backup_interval_hours", _DEFAULT_INTERVAL_HOURS))
+                enabled = (incoming.get("backup_enabled", "true") == "true")
+                if not enabled or hours <= 0:
                     try:
                         scheduler.remove_job("backup_job")
                     except Exception:

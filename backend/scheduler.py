@@ -896,12 +896,18 @@ async def run_ignored_cleanup():
     except Exception as e:
         logger.debug(f"Purge job_history: {e}")
 
-    # WAL checkpoint to reclaim disk space — non-blocking unlike VACUUM
+    # VACUUM + WAL checkpoint to reclaim disk space after large purges
     if purged_rows > 1000:
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            await add_log("INFO", "WAL checkpoint exécuté — espace disque libéré", "system")
+            loop = asyncio.get_running_loop()
+            import sqlite3 as _sqlite3
+            def _vacuum():
+                conn = _sqlite3.connect(DB_PATH, timeout=30)
+                conn.execute("VACUUM")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.close()
+            await loop.run_in_executor(None, _vacuum)
+            await add_log("INFO", f"VACUUM exécuté — {purged_rows} entrées purgées, espace disque libéré", "system")
         except Exception as e:
-            logger.debug(f"WAL checkpoint: {e}")
+            logger.debug(f"VACUUM: {e}")
 

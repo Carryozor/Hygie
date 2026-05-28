@@ -7,10 +7,9 @@ from typing import Optional
 
 import aiosqlite
 
-from .database import (
-    DB_PATH, STATUS_DELETED, STATUS_ERROR, add_job_run, add_log, finish_job_run,
-    get_setting, get_bool_setting, get_int_setting, now_utc,
-)
+from .db.utils import DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc
+from .db.settings_store import get_setting, get_bool_setting, get_int_setting
+from .db.logs import add_job_run, add_log, finish_job_run
 from .emby_client import delete_item, get_client
 from .arr_clients import (
     radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,

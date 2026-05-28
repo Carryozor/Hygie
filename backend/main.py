@@ -24,17 +24,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .database import (
-    DB_PATH,
-    add_log,
-    get_bool_setting,
-    get_int_setting,
-    get_setting,
-    init_db,
-    register_ws,
-    set_setting,
-    unregister_ws,
-)
+from .db.utils import DB_PATH
+from .db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting
+from .db.logs import add_log
+from .db.schema import init_db
+from .db.websocket import register_ws, unregister_ws
 from .auth import verify_token
 from .scheduler import (
     run_deletion,

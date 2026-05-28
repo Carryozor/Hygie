@@ -8,7 +8,9 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from .database import get_setting, get_media_servers, sanitize_url
+from .db.settings_store import get_setting
+from .db.media_servers import get_media_servers
+from .db.utils import sanitize_url
 
 logger = logging.getLogger(__name__)
 

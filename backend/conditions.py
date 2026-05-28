@@ -17,13 +17,9 @@ from typing import Optional
 
 import aiosqlite
 
-from .database import (
-    DB_PATH,
-    add_log,
-    get_bool_setting,
-    now_utc,
-    parse_iso_dt,
-)
+from .db.utils import DB_PATH, now_utc, parse_iso_dt
+from .db.settings_store import get_bool_setting
+from .db.logs import add_log
 from .arr_clients import (
     radarr_find_by_path,
     radarr_find_by_path_cached,

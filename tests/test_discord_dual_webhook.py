@@ -144,3 +144,60 @@ async def test_send_alert_no_webhook_returns_false(isolated_db):
     from backend.discord_client import send_alert
     ok = await send_alert("Test", "No webhook configured")
     assert not ok
+
+
+async def test_send_alert_with_mention_sends_content_field(isolated_db):
+    """send_alert() with mention=... sets payload['content'] to trigger real Discord pings."""
+    import backend.database as db
+    await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 204
+    captured = {}
+
+    async def _fake_post(url, json=None, **kw):
+        captured["payload"] = json
+        return mock_resp
+
+    with patch("backend.discord_client.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=_fake_post)
+
+        from backend.discord_client import send_alert
+        ok = await send_alert("Test", "body", mention="@here")
+
+    assert ok
+    assert captured["payload"].get("content") == "@here"
+
+
+async def test_send_alert_custom_msg_template_interpolated(isolated_db):
+    """send_alert() interpolates template_vars into custom_msg."""
+    import backend.database as db
+    await db.set_setting("discord_webhook", "https://discord.com/api/webhooks/main/token")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 204
+    captured = {}
+
+    async def _fake_post(url, json=None, **kw):
+        captured["payload"] = json
+        return mock_resp
+
+    with patch("backend.discord_client.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=_fake_post)
+
+        from backend.discord_client import send_alert
+        ok = await send_alert(
+            "Scan failed", "default body",
+            custom_msg="Scan échoué : {detail}",
+            template_vars={"detail": "timeout"},
+        )
+
+    assert ok
+    embed_desc = captured["payload"]["embeds"][0]["description"]
+    assert embed_desc == "Scan échoué : timeout"

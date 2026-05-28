@@ -209,20 +209,46 @@ async def _get_alert_webhook() -> str:
     )
 
 
-async def send_alert(title: str, description: str, level: str = "error") -> bool:
-    """Send a critical operational alert to the alerts webhook (or main webhook as fallback)."""
+async def send_alert(
+    title: str,
+    description: str,
+    level: str = "error",
+    mention: str = "",
+    custom_msg: str = "",
+    template_vars: Optional[dict] = None,
+) -> bool:
+    """Send a critical operational alert to the alerts webhook (or main webhook as fallback).
+
+    mention: Discord mention string (@here, <@ID>, <@&ROLE>) — goes in content field to actually ping.
+    custom_msg: template string; supports {detail}, {title}, {count} vars via template_vars.
+    """
     webhook = await _get_alert_webhook()
     if not webhook:
         return False
+
     colors = {"error": 0xFF0000, "warning": 0xF0A500, "info": 0x6366F1}
     icons  = {"error": "🚨", "warning": "⚠️", "info": "ℹ️"}
-    payload = {"embeds": [{
-        "title": f"{icons.get(level, '🚨')} {title}",
-        "description": description,
-        "color": colors.get(level, 0xFF0000),
-        "footer": {"text": "Hygie — Alerte"},
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }]}
+
+    body_text = description
+    if custom_msg:
+        try:
+            body_text = custom_msg.format(**(template_vars or {}))
+        except (KeyError, ValueError):
+            body_text = custom_msg  # use as-is if template vars don't match
+
+    payload: dict = {
+        "embeds": [{
+            "title": f"{icons.get(level, '🚨')} {title}",
+            "description": body_text,
+            "color": colors.get(level, 0xFF0000),
+            "footer": {"text": "Hygie — Alerte"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }]
+    }
+    # content field triggers actual Discord pings (@here, @everyone, <@ID>, <@&ROLE>)
+    if mention and mention.strip():
+        payload["content"] = mention.strip()
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(webhook, json=payload)

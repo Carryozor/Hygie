@@ -36,8 +36,14 @@ class SettingsUpdate(BaseModel):
     discord_webhook_alerts: Optional[str] = None
     discord_notif_thresholds: Optional[str] = None
     discord_alert_deletion_error: Optional[str] = None
+    discord_alert_deletion_error_mention: Optional[str] = None
+    discord_alert_deletion_error_msg: Optional[str] = None
     discord_alert_scan_failure: Optional[str] = None
+    discord_alert_scan_failure_mention: Optional[str] = None
+    discord_alert_scan_failure_msg: Optional[str] = None
     discord_alert_seerr_failure: Optional[str] = None
+    discord_alert_seerr_failure_mention: Optional[str] = None
+    discord_alert_seerr_failure_msg: Optional[str] = None
     discord_alert_error_threshold: Optional[str] = None
     max_parallel_library_scans: Optional[str] = None
     dry_run: Optional[str] = None

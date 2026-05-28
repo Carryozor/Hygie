@@ -6,6 +6,9 @@ const SETTINGS_FORM_FIELDS = [
   'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
   'discord_webhook','discord_webhook_alerts','discord_notif_thresholds','discord_alert_error_threshold',
+  'discord_alert_deletion_error_mention','discord_alert_deletion_error_msg',
+  'discord_alert_scan_failure_mention','discord_alert_scan_failure_msg',
+  'discord_alert_seerr_failure_mention','discord_alert_seerr_failure_msg',
   'max_parallel_library_scans',
   'backup_path','backup_interval_hours','backup_retention_count',
 ];
@@ -250,6 +253,13 @@ function onBackupEnabledChange() {
   const enabled = document.getElementById('backup_enabled')?.checked;
   const badge = document.getElementById('backup-disabled-badge');
   if (badge) badge.style.display = enabled ? 'none' : 'block';
+}
+
+function toggleAlertCustom(name) {
+  const panel = document.getElementById(`alert-custom-${name}`);
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
 }
 
 async function loadSettings(force=false) {

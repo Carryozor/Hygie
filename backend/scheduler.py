@@ -137,7 +137,13 @@ async def run_scan():
                 except RuntimeError as _seerr_err:
                     await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
                     if await get_bool_setting("discord_alert_seerr_failure"):
-                        await send_alert("🔌 Seerr inaccessible", str(_seerr_err), "warning")
+                        _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+                        _msg = await get_setting("discord_alert_seerr_failure_msg") or ""
+                        await send_alert(
+                            "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                            mention=_mention, custom_msg=_msg,
+                            template_vars={"detail": str(_seerr_err)},
+                        )
 
                 # Pre-load queued/ignored sets — eliminates 2 DB opens per item
                 async with aiosqlite.connect(DB_PATH) as _db:
@@ -180,7 +186,13 @@ async def run_scan():
             await add_log("ERROR", f"Erreur scan: {e}", "job")
             _scan_msg = str(e)
             if await get_bool_setting("discord_alert_scan_failure"):
-                await send_alert("🔴 Échec du scan", f"Le scan global a échoué : {e}", "error")
+                _mention = await get_setting("discord_alert_scan_failure_mention") or ""
+                _msg = await get_setting("discord_alert_scan_failure_msg") or ""
+                await send_alert(
+                    "🔴 Échec du scan", f"Le scan global a échoué : {e}", "error",
+                    mention=_mention, custom_msg=_msg,
+                    template_vars={"detail": str(e)},
+                )
         finally:
             await finish_job_run(run_id, _scan_status, _scan_msg)
 
@@ -587,6 +599,8 @@ async def run_deletion():
             # Semaphore limits concurrent deletions to avoid overwhelming external services
             _del_sem = asyncio.Semaphore(3)
             _alert_del_error = await get_bool_setting("discord_alert_deletion_error")
+            _del_mention = await get_setting("discord_alert_deletion_error_mention") or ""
+            _del_msg = await get_setting("discord_alert_deletion_error_msg") or ""
             try:
                 _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
             except (ValueError, TypeError):
@@ -607,10 +621,14 @@ async def run_deletion():
                     if not ok:
                         _error_count += 1
                         if _alert_del_error:
+                            _title_val = row.get("title", "?")
                             await send_alert(
-                                f"❌ Échec suppression : {row.get('title', '?')}",
-                                f"La suppression de **{row.get('title', '?')}** a échoué.",
+                                f"❌ Échec suppression : {_title_val}",
+                                f"La suppression de **{_title_val}** a échoué.",
                                 "error",
+                                mention=_del_mention,
+                                custom_msg=_del_msg,
+                                template_vars={"title": _title_val, "detail": f"Échec suppression de {_title_val}"},
                             )
                     return ok
 
@@ -622,6 +640,9 @@ async def run_deletion():
                     f"🚨 {_error_count} suppressions en échec",
                     f"{_error_count} suppressions ont échoué sur {len(to_delete)} tentatives dans ce cycle.",
                     "error",
+                    mention=_del_mention,
+                    custom_msg=_del_msg,
+                    template_vars={"count": _error_count, "detail": f"{_error_count} suppressions en échec"},
                 )
 
             prefix = "[DRY RUN] " if dry_run else ""

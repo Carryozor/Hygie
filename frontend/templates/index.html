@@ -93,6 +93,17 @@
       </div>
     </div>
 
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 4px 0">
+      <i class="fas fa-globe" style="font-size:10px;color:var(--muted);flex-shrink:0"></i>
+      <select id="lang-selector" class="select" style="flex:1;font-size:11px;padding:3px 6px;height:26px" onchange="setLang(this.value)">
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="de">Deutsch</option>
+        <option value="it">Italiano</option>
+        <option value="pl">Polski</option>
+      </select>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;border-top:1px solid var(--border);margin-top:4px">
       <span id="user-display" style="font-size:12px;color:var(--muted)"></span>
       <span id="app-version" style="font-size:10px;color:#374151"></span>
@@ -455,22 +466,77 @@
           <input class="input" id="discord_notif_thresholds" placeholder="7,1" style="max-width:200px">
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
-          <div style="font-size:12px;font-weight:600;color:#e2e8f0;margin-bottom:10px">Alertes critiques</div>
+          <div style="font-size:12px;font-weight:600;color:#e2e8f0;margin-bottom:6px">Alertes critiques</div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:10px">Reçois une alerte Discord quand un problème technique survient (indépendant des notifications média).</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="discord_alert_deletion_error" style="accent-color:var(--accent);width:15px;height:15px">
-              <span style="font-size:12px;color:#e2e8f0">Échec suppression média</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="discord_alert_scan_failure" style="accent-color:var(--accent);width:15px;height:15px">
-              <span style="font-size:12px;color:#e2e8f0">Échec scan bibliothèque</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="discord_alert_seerr_failure" style="accent-color:var(--accent);width:15px;height:15px">
-              <span style="font-size:12px;color:#e2e8f0">Seerr inaccessible lors d'un scan</span>
-            </label>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+
+            <!-- Échec suppression -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_deletion_error" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Échec suppression média</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('deletion_error')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-deletion_error" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_deletion_error_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_deletion_error_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}, {title}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Échec scan -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_scan_failure" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Échec scan bibliothèque</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('scan_failure')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-scan_failure" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_scan_failure_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_scan_failure_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seerr inaccessible -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_seerr_failure" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Seerr inaccessible lors d'un scan</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('seerr_failure')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-seerr_failure" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_seerr_failure_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_seerr_failure_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;margin-top:2px;padding:0 4px">
               <span style="font-size:12px;color:#e2e8f0;white-space:nowrap">Seuil d'alerte groupée :</span>
               <input class="input" type="number" id="discord_alert_error_threshold" min="1" max="100" style="width:70px" placeholder="3">
               <span style="font-size:11px;color:var(--muted)">erreurs en un cycle → 1 alerte</span>

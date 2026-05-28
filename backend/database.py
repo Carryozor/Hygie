@@ -94,6 +94,7 @@ SENSITIVE_KEYS = frozenset({
     "qbit_password",
     "qbit_proxy_url",
     "discord_webhook",
+    "discord_webhook_alerts",
     "media_servers",   # JSON array contains API keys — encrypt the whole blob
 })
 
@@ -185,6 +186,7 @@ DEFAULT_SETTINGS = {
     "qbit_action": "tag_only",  # tag_only | delete_torrent
     "qbit_tag": "Supprimé-Hygie",
     "discord_webhook": "",
+    "discord_webhook_alerts": "",
     "discord_notif_thresholds": "7,1",
     "discord_alert_deletion_error": "false",
     "discord_alert_scan_failure": "false",

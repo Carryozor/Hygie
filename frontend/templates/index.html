@@ -428,8 +428,20 @@
         <div><div style="font-size:15px;font-weight:600">Discord</div><div style="font-size:11px;color:var(--muted)">Notifications webhook</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px">
-        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook URL</label><input class="input" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..."></div>
-        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('discord')"><i class="fab fa-discord"></i>Tester</button>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook notifications (suppressions, détections)</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="input" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
+            <button class="btn btn-ghost" onclick="testConn('discord')"><i class="fab fa-discord"></i>Tester</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook alertes admin — optionnel <span style="font-style:italic">(utilise le webhook principal par défaut)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="input" id="discord_webhook_alerts" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
+            <button class="btn btn-ghost" onclick="testConn('discord_alerts')"><i class="fab fa-discord"></i>Tester</button>
+          </div>
+        </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
           <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:4px">Paliers de notification</div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Nombre de jours avant suppression où envoyer une notification (séparés par des virgules). Ex: <code style="background:#1a1d2e;padding:1px 4px;border-radius:3px">7,1</code></div>

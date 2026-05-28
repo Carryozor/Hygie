@@ -5,7 +5,7 @@ const SETTINGS_FORM_FIELDS = [
   'seerr_url','seerr_api_key','seerr_external_url',
   'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-  'discord_webhook','discord_notif_thresholds','discord_alert_error_threshold',
+  'discord_webhook','discord_webhook_alerts','discord_notif_thresholds','discord_alert_error_threshold',
   'max_parallel_library_scans',
   'backup_path','backup_interval_hours','backup_retention_count',
 ];

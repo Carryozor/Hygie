@@ -200,9 +200,18 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
         return False
 
 
+async def _get_alert_webhook() -> str:
+    """Return the alerts webhook if configured, fall back to the main webhook."""
+    return (
+        await get_setting("discord_webhook_alerts")
+        or await get_setting("discord_webhook")
+        or ""
+    )
+
+
 async def send_alert(title: str, description: str, level: str = "error") -> bool:
-    """Send a critical operational alert to Discord (no auth, no media embed)."""
-    webhook = await get_setting("discord_webhook")
+    """Send a critical operational alert to the alerts webhook (or main webhook as fallback)."""
+    webhook = await _get_alert_webhook()
     if not webhook:
         return False
     colors = {"error": 0xFF0000, "warning": 0xF0A500, "info": 0x6366F1}
@@ -211,7 +220,7 @@ async def send_alert(title: str, description: str, level: str = "error") -> bool
         "title": f"{icons.get(level, '🚨')} {title}",
         "description": description,
         "color": colors.get(level, 0xFF0000),
-        "footer": {"text": "Hygie — Alerte critique"},
+        "footer": {"text": "Hygie — Alerte"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }]}
     try:
@@ -223,13 +232,10 @@ async def send_alert(title: str, description: str, level: str = "error") -> bool
         return False
 
 
-async def test_discord() -> tuple[bool, str]:
-    webhook = await get_setting("discord_webhook")
-    if not webhook:
-        return False, "Webhook non configuré"
+async def _test_webhook(webhook: str, label: str) -> tuple[bool, str]:
     payload = {"embeds": [{
-        "title": "✅ Hygie — Test de connexion",
-        "description": "Les notifications Discord fonctionnent correctement.",
+        "title": f"✅ Hygie — Test {label}",
+        "description": f"Le webhook **{label}** fonctionne correctement.",
         "color": 0x6366F1,
         "footer": {"text": "Hygie"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -238,7 +244,21 @@ async def test_discord() -> tuple[bool, str]:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(webhook, json=payload)
             if r.status_code in (200, 204):
-                return True, "Message de test envoyé ✅"
+                return True, f"Message de test envoyé ✅ ({label})"
             return False, f"HTTP {r.status_code}: {r.text[:100]}"
     except Exception as e:
         return False, str(e)
+
+
+async def test_discord() -> tuple[bool, str]:
+    webhook = await get_setting("discord_webhook")
+    if not webhook:
+        return False, "Webhook notifications non configuré"
+    return await _test_webhook(webhook, "notifications")
+
+
+async def test_discord_alerts() -> tuple[bool, str]:
+    webhook = await get_setting("discord_webhook_alerts")
+    if not webhook:
+        return False, "Webhook alertes non configuré"
+    return await _test_webhook(webhook, "alertes")

@@ -8,7 +8,7 @@ from ..database import get_all_settings, set_setting, get_setting, get_media_ser
 from ..emby_client import test_connection as test_emby
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit
-from ..discord_client import test_discord
+from ..discord_client import test_discord, test_discord_alerts
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -32,6 +32,7 @@ class SettingsUpdate(BaseModel):
     qbit_action: Optional[str] = None
     qbit_tag: Optional[str] = None
     discord_webhook: Optional[str] = None
+    discord_webhook_alerts: Optional[str] = None
     discord_notif_thresholds: Optional[str] = None
     discord_alert_deletion_error: Optional[str] = None
     discord_alert_scan_failure: Optional[str] = None
@@ -61,6 +62,7 @@ _TESTERS = {
     "seerr": test_seerr,
     "qbit": test_qbit,
     "discord": test_discord,
+    "discord_alerts": test_discord_alerts,
 }
 
 

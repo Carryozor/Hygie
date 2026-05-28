@@ -125,6 +125,7 @@ async function openAddLibrary() {
   editingLibId=null; conditions=[{field:'days_since_added',op:'gt',value:30},{field:'days_not_watched',op:'gt',value:60}]; seerrConditions=[];
   document.getElementById('modal-title').textContent='Ajouter une bibliothèque';
   document.getElementById('lib-name').value=''; document.getElementById('lib-grace').value=7; document.getElementById('lib-logic').value='AND';
+  document.getElementById('lib-deletion-unit').value='episode';
   renderConditions(); renderSeerrConditions();
   await loadEmbyLibOptions();
   availableSeerrUsers = await getSeerrUsers();
@@ -141,6 +142,7 @@ async function editLibrary(id) {
   document.getElementById('lib-name').value=lib.name;
   document.getElementById('lib-grace').value=lib.grace_days??7;
   document.getElementById('lib-logic').value=lib.logic||'AND';
+  document.getElementById('lib-deletion-unit').value=lib.deletion_unit||'episode';
   renderConditions();
   await loadEmbyLibOptions(lib.emby_library_id);
   availableSeerrUsers = await getSeerrUsers();
@@ -157,7 +159,7 @@ async function loadEmbyLibOptions(selected='') {
   } catch(e) { sel.innerHTML='<option value="">Erreur Emby</option>'; }
 }
 async function saveLibrary() {
-  const body = { name:document.getElementById('lib-name').value, emby_library_id:document.getElementById('lib-emby-id').value, grace_days:parseInt(document.getElementById('lib-grace').value)||7, logic:document.getElementById('lib-logic').value, conditions, seerr_conditions:seerrConditions, enabled:true };
+  const body = { name:document.getElementById('lib-name').value, emby_library_id:document.getElementById('lib-emby-id').value, grace_days:parseInt(document.getElementById('lib-grace').value)||7, logic:document.getElementById('lib-logic').value, deletion_unit:document.getElementById('lib-deletion-unit').value||'episode', conditions, seerr_conditions:seerrConditions, enabled:true };
   if (!body.name||!body.emby_library_id) { toast('Remplissez tous les champs','warn'); return; }
   try {
     const savedId = editingLibId;

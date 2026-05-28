@@ -417,6 +417,29 @@
           <input class="input" id="discord_notif_thresholds" placeholder="7,1" style="max-width:200px">
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:12px;font-weight:600;color:#e2e8f0;margin-bottom:10px">Alertes critiques</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">Reçois une alerte Discord quand un problème technique survient (indépendant des notifications média).</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" id="discord_alert_deletion_error" style="accent-color:var(--accent);width:15px;height:15px">
+              <span style="font-size:12px;color:#e2e8f0">Échec suppression média</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" id="discord_alert_scan_failure" style="accent-color:var(--accent);width:15px;height:15px">
+              <span style="font-size:12px;color:#e2e8f0">Échec scan bibliothèque</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" id="discord_alert_seerr_failure" style="accent-color:var(--accent);width:15px;height:15px">
+              <span style="font-size:12px;color:#e2e8f0">Seerr inaccessible lors d'un scan</span>
+            </label>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+              <span style="font-size:12px;color:#e2e8f0;white-space:nowrap">Seuil d'alerte groupée :</span>
+              <input class="input" type="number" id="discord_alert_error_threshold" min="1" max="100" style="width:70px" placeholder="3">
+              <span style="font-size:11px;color:var(--muted)">erreurs en un cycle → 1 alerte</span>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <div>
               <div style="font-size:12px;font-weight:500;color:#e2e8f0">Mentions utilisateurs</div>
@@ -551,6 +574,14 @@
             <option value="AND">ET — toutes les conditions</option><option value="OR">OU — au moins une</option>
           </select>
         </div>
+      </div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Unité de suppression</label>
+        <select class="select" id="lib-deletion-unit" style="width:100%">
+          <option value="episode">Épisode — suppression individuelle</option>
+          <option value="season">Saison — supprimer toute la saison quand tous les épisodes sont éligibles</option>
+          <option value="series">Série — supprimer toute la série quand tous les épisodes sont éligibles</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Pour les séries et animés. Les films ignorent ce réglage.</div>
       </div>
       <div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">

@@ -214,10 +214,11 @@ async def test_sonarr() -> tuple[bool, str]:
 
 
 async def build_sonarr_path_cache() -> dict:
-    """Build {episode_file_path: episode_file_id} for all Sonarr series.
+    """Build {episode_file_path: entry} for all Sonarr series.
 
-    1 + n_series HTTP calls total instead of n_series per item lookup.
-    Falls back to empty dict if Sonarr is unreachable.
+    entry = {"ef_id": int, "series_id": int, "season_number": int,
+             "series_title": str, "poster_url": str}
+    1 + n_series HTTP calls total. Falls back to empty dict if Sonarr is unreachable.
     """
     url, key = await _sonarr_config()
     if not url or not key:
@@ -232,16 +233,31 @@ async def build_sonarr_path_cache() -> dict:
                 folder = (series.get("path") or "").rstrip("/")
                 if not folder:
                     continue
+                sid = series.get("id")
+                stitle = series.get("title", "")
+                poster_url = ""
+                for img in series.get("images", []):
+                    if img.get("coverType") == "poster":
+                        remote = img.get("remoteUrl") or ""
+                        if remote.startswith("http"):
+                            poster_url = remote
+                            break
                 rf = await c.get(
                     f"{url}/api/v3/episodefile",
                     headers=_arr_auth(key),
-                    params={"seriesId": series["id"]},
+                    params={"seriesId": sid},
                 )
                 if rf.status_code == 200:
                     for ef in rf.json():
                         ep_path = ef.get("path") or ""
                         if ep_path:
-                            cache[ep_path] = ef.get("id")
+                            cache[ep_path] = {
+                                "ef_id": ef.get("id"),
+                                "series_id": sid,
+                                "season_number": ef.get("seasonNumber"),
+                                "series_title": stitle,
+                                "poster_url": poster_url,
+                            }
     except Exception as e:
         logger.debug(f"build_sonarr_path_cache: {e}")
     return cache
@@ -249,7 +265,18 @@ async def build_sonarr_path_cache() -> dict:
 
 def sonarr_find_by_path_cached(file_path: str, cache: dict) -> Optional[int]:
     """Look up a Sonarr episode file ID from a pre-built cache (no HTTP call)."""
-    return cache.get(file_path) if cache else None
+    entry = cache.get(file_path) if cache else None
+    if entry is None:
+        return None
+    return entry["ef_id"] if isinstance(entry, dict) else entry
+
+
+def sonarr_get_cache_entry(file_path: str, cache: dict) -> Optional[dict]:
+    """Return the full cache entry for an episode file path."""
+    entry = cache.get(file_path) if cache else None
+    if isinstance(entry, dict):
+        return entry
+    return None
 
 
 async def sonarr_find_by_path(file_path: str) -> Optional[int]:
@@ -330,6 +357,65 @@ async def sonarr_delete_episode_file(episode_file_id: int) -> bool:
             return r.status_code in (200, 204)
     except Exception as e:
         logger.warning(f"sonarr_delete_episode_file: {e}")
+        return False
+
+
+async def sonarr_delete_season(series_id: int, season_number: int) -> bool:
+    """Delete all episode files for a given season."""
+    url, key = await _sonarr_config()
+    if not url or not key:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            rf = await c.get(
+                f"{url}/api/v3/episodefile",
+                headers=_arr_auth(key),
+                params={"seriesId": series_id},
+            )
+            if rf.status_code != 200:
+                return False
+            ef_ids = [ef["id"] for ef in rf.json() if ef.get("seasonNumber") == season_number]
+            if not ef_ids:
+                return True
+            dr = await c.request(
+                "DELETE",
+                f"{url}/api/v3/episodefile/bulk",
+                headers=_arr_auth(key),
+                json={"episodeFileIds": ef_ids},
+            )
+            return dr.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"sonarr_delete_season: {e}")
+        return False
+
+
+async def sonarr_delete_series(series_id: int) -> bool:
+    """Delete an entire series from Sonarr (keeps the series entry, deletes all files)."""
+    url, key = await _sonarr_config()
+    if not url or not key:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            # Delete all episode files in bulk
+            rf = await c.get(
+                f"{url}/api/v3/episodefile",
+                headers=_arr_auth(key),
+                params={"seriesId": series_id},
+            )
+            if rf.status_code != 200:
+                return False
+            ef_ids = [ef["id"] for ef in rf.json()]
+            if not ef_ids:
+                return True
+            dr = await c.request(
+                "DELETE",
+                f"{url}/api/v3/episodefile/bulk",
+                headers=_arr_auth(key),
+                json={"episodeFileIds": ef_ids},
+            )
+            return dr.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"sonarr_delete_series: {e}")
         return False
 
 
@@ -504,8 +590,10 @@ async def build_seerr_request_cache() -> dict:
                 if skip + 100 >= total or not items:
                     break
                 skip += 100
+    except RuntimeError:
+        raise   # propagate HTTP errors so callers can send Discord alert
     except Exception as e:
-        logger.debug(f"build_seerr_request_cache: {e}")
+        raise RuntimeError(f"Seerr inaccessible: {e}") from e
     return cache
 
 

@@ -40,6 +40,7 @@ class LibraryCreate(BaseModel):
     grace_days: int = Field(default=7, ge=0, le=3650)
     seerr_conditions: List[SeerrCondition] = []
     enabled: bool = True
+    deletion_unit: Literal["episode", "season", "series"] = "episode"
 
 
 class LibraryUpdate(BaseModel):
@@ -50,6 +51,7 @@ class LibraryUpdate(BaseModel):
     grace_days: Optional[int] = Field(default=None, ge=0, le=3650)
     seerr_conditions: Optional[List[SeerrCondition]] = None
     enabled: Optional[bool] = None
+    deletion_unit: Optional[Literal["episode", "season", "series"]] = None
 
 
 @router.get("/emby-libraries")
@@ -86,8 +88,8 @@ async def create_library(body: LibraryCreate, user: str = Depends(require_auth))
         await db.execute(
             """INSERT INTO libraries
                (id, name, emby_library_id, conditions, logic, grace_days,
-                seerr_conditions, enabled, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                seerr_conditions, enabled, deletion_unit, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 lib_id,
                 body.name,
@@ -97,6 +99,7 @@ async def create_library(body: LibraryCreate, user: str = Depends(require_auth))
                 body.grace_days,
                 json.dumps([c.model_dump() for c in body.seerr_conditions]),
                 int(body.enabled),
+                body.deletion_unit,
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
@@ -114,7 +117,7 @@ async def update_library(
 ):
     _ALLOWED_LIB_COLS = frozenset({
         "name", "emby_library_id", "conditions", "logic",
-        "grace_days", "seerr_conditions", "enabled",
+        "grace_days", "seerr_conditions", "enabled", "deletion_unit",
     })
     updates = []
     params = []
@@ -176,8 +179,8 @@ async def clone_library(library_id: str, user: str = Depends(require_auth)):
             await db.execute(
                 """INSERT INTO libraries
                    (id, name, emby_library_id, conditions, logic, grace_days,
-                    seerr_conditions, enabled, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    seerr_conditions, enabled, deletion_unit, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     new_id,
                     f"{src['name']} (copie)",
@@ -187,6 +190,7 @@ async def clone_library(library_id: str, user: str = Depends(require_auth)):
                     src["grace_days"],
                     src["seerr_conditions"],
                     src["enabled"],
+                    src.get("deletion_unit", "episode"),
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

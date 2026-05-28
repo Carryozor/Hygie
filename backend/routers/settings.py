@@ -15,9 +15,6 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 class SettingsUpdate(BaseModel):
     """Partial settings update — all fields optional."""
-    emby_url: Optional[str] = None
-    emby_api_key: Optional[str] = None
-    emby_external_url: Optional[str] = None
     emby_leaving_soon_collection: Optional[str] = None
     emby_leaving_soon_days: Optional[str] = None
     emby_leaving_soon_overlay: Optional[str] = None
@@ -36,6 +33,11 @@ class SettingsUpdate(BaseModel):
     qbit_tag: Optional[str] = None
     discord_webhook: Optional[str] = None
     discord_notif_thresholds: Optional[str] = None
+    discord_alert_deletion_error: Optional[str] = None
+    discord_alert_scan_failure: Optional[str] = None
+    discord_alert_seerr_failure: Optional[str] = None
+    discord_alert_error_threshold: Optional[str] = None
+    max_parallel_library_scans: Optional[str] = None
     dry_run: Optional[str] = None
     scan_interval_hours: Optional[str] = None
     deletion_check_interval_hours: Optional[str] = None

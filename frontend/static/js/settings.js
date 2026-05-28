@@ -1,12 +1,12 @@
 // ─── Settings field lists ─────────────────────────────────────────────────────
 const SETTINGS_FORM_FIELDS = [
-  'emby_url','emby_api_key','emby_external_url',
   'radarr_url','radarr_api_key',
   'sonarr_url','sonarr_api_key',
   'seerr_url','seerr_api_key','seerr_external_url',
   'qbit_url','qbit_proxy_url','qbit_user','qbit_password',
   'emby_leaving_soon_collection','emby_leaving_soon_days','qbit_tag',
-  'discord_webhook','discord_notif_thresholds',
+  'discord_webhook','discord_notif_thresholds','discord_alert_error_threshold',
+  'max_parallel_library_scans',
 ];
 
 // ─── Media Servers ────────────────────────────────────────────────────────────
@@ -278,6 +278,9 @@ async function loadSettings(force=false) {
     if(document.getElementById('deleted_retention_days')) document.getElementById('deleted_retention_days').value = s.deleted_retention_days||'90';
     const qa = document.getElementById('qbit_action'); if(qa) qa.value = s.qbit_action||'tag_only';
     const ov = document.getElementById('emby_leaving_soon_overlay'); if(ov) ov.checked = s.emby_leaving_soon_overlay==='true';
+    ['discord_alert_deletion_error','discord_alert_scan_failure','discord_alert_seerr_failure'].forEach(k => {
+      const el = document.getElementById(k); if(el) el.checked = s[k]==='true';
+    });
     const ls=document.getElementById('log_level'); if(ls) ls.value=s.log_level||'INFO';
     _settingsLoaded=true; _settingsDirty=false;
     if (!_settingsListenersAttached) {
@@ -298,6 +301,9 @@ async function saveSettings() {
     log_level: document.getElementById('log_level')?.value || 'INFO',
     qbit_action: document.getElementById('qbit_action')?.value || 'tag_only',
     emby_leaving_soon_overlay: document.getElementById('emby_leaving_soon_overlay')?.checked ? 'true' : 'false',
+    discord_alert_deletion_error: document.getElementById('discord_alert_deletion_error')?.checked ? 'true' : 'false',
+    discord_alert_scan_failure: document.getElementById('discord_alert_scan_failure')?.checked ? 'true' : 'false',
+    discord_alert_seerr_failure: document.getElementById('discord_alert_seerr_failure')?.checked ? 'true' : 'false',
   };
   const scanV = parseInt(document.getElementById('scan_interval_value')?.value) || 6;
   const scanU = document.getElementById('scan_interval_unit')?.value || 'h';

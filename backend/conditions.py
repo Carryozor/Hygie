@@ -31,6 +31,7 @@ from .arr_clients import (
     seerr_find_request_by_tmdb,
     sonarr_find_by_path,
     sonarr_find_by_path_cached,
+    sonarr_get_cache_entry,
     sonarr_get_poster_url,
 )
 from .emby_client import get_client, get_client_ext_url, get_user_data
@@ -219,12 +220,13 @@ async def _evaluate_item(
     seerr_ext: str = "",
     queued_ids: Optional[set] = None,
     ignored_ids: Optional[set] = None,
-) -> bool:
-    """Evaluate a single Emby item; insert into queue if it matches.
+) -> Optional[dict]:
+    """Evaluate a single Emby item; return queue-entry dict if eligible, else None.
 
+    The caller (_scan_library) is responsible for DB insert and notifications.
     user_data_cache: {uid: {emby_id: UserData}}       — pre-fetched per library.
     radarr_cache:    {file_path: radarr_id}            — pre-fetched once per scan.
-    sonarr_cache:    {episode_file_path: ep_file_id}   — pre-fetched once per scan.
+    sonarr_cache:    {episode_file_path: entry_dict}   — pre-fetched once per scan.
     seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — pre-fetched once per scan.
     queued_ids:      set of emby_ids already in media_queue   — pre-fetched once per scan.
     ignored_ids:     set of emby_ids in ignored_media         — pre-fetched once per scan.
@@ -238,11 +240,11 @@ async def _evaluate_item(
     date_str   = item.get("DateCreated") or ""
 
     if not emby_id or not file_path:
-        return False
+        return None
 
     added_date = parse_iso_dt(date_str)
     if not added_date:
-        return False
+        return None
 
     # Aggregate UserData across users
     last_played: Optional[datetime] = None
@@ -264,13 +266,13 @@ async def _evaluate_item(
                     last_played = lp
 
     if not _evaluate_conditions(conditions, logic, added_date, last_played, play_count, never_watched):
-        return False
+        return None
 
     # Skip if already in queue — but recalculate delete_at if grace changed
     if queued_ids is not None:
         if emby_id in queued_ids:
             await _update_delete_at_if_pending(emby_id, lib, grace_days, title)
-            return False
+            return None
     else:
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
@@ -294,16 +296,16 @@ async def _evaluate_item(
                             await db2.commit()
                 except Exception as e:
                     logger.error(f"Erreur recalcul delete_at pour {title}: {e}")
-            return False
+            return None
 
     if ignored_ids is not None:
         if emby_id in ignored_ids:
-            return False
+            return None
     else:
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)) as cur:
                 if await cur.fetchone():
-                    return False
+                    return None
 
     # Seerr lookup
     if seerr_cache is not None:
@@ -320,11 +322,11 @@ async def _evaluate_item(
         has_excludes = any(c.get("type") == "user_exclude" for c in seerr_conditions)
         if has_includes and not seerr_user_id:
             await add_log("INFO", f"Ignoré (non demandé sur Seerr) : {title}", "scan")
-            return False
+            return None
         if not _seerr_filter_passes(seerr_user_id, seerr_conditions):
             reason = "exclu" if has_excludes else "non inclus"
             await add_log("INFO", f"Ignoré (utilisateur Seerr {reason}) : {title}", "scan")
-            return False
+            return None
 
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)
     delete_at = now_utc() + timedelta(days=effective_grace)
@@ -332,6 +334,8 @@ async def _evaluate_item(
     # Radarr/Sonarr IDs (from cache or individual HTTP call)
     radarr_id_val: Optional[int] = None
     sonarr_id_val: Optional[int] = None
+    sonarr_series_id_val: Optional[int] = None
+    season_number_val: Optional[int] = None
     if media_type == "Movie":
         radarr_id_val = (
             radarr_find_by_path_cached(file_path, radarr_cache)
@@ -339,11 +343,13 @@ async def _evaluate_item(
             else await radarr_find_by_path(file_path)
         )
     else:
-        sonarr_id_val = (
-            sonarr_find_by_path_cached(file_path, sonarr_cache)
-            if sonarr_cache is not None
-            else await sonarr_find_by_path(file_path)
-        )
+        sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
+        if sonarr_entry:
+            sonarr_id_val = sonarr_entry["ef_id"]
+            sonarr_series_id_val = sonarr_entry["series_id"]
+            season_number_val = sonarr_entry["season_number"]
+        else:
+            sonarr_id_val = await sonarr_find_by_path(file_path)
 
     poster_url = await _get_poster_url(
         emby_id, tmdb_id=tmdb_id, media_type=media_type,
@@ -355,50 +361,30 @@ async def _evaluate_item(
         path = "movie" if media_type == "Movie" else "tv"
         seerr_request_url = f"{seerr_ext.rstrip('/')}/{path}/{tmdb_id}"
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """
-            INSERT INTO media_queue
-            (emby_id, title, media_type, library_id, library_name, file_path,
-             poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-             seerr_request_url, radarr_id, sonarr_id,
-             detected_at, delete_at, added_date, last_played, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-            """,
-            (
-                emby_id, title, media_type, lib["id"], lib["name"], file_path,
-                poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-                seerr_request_url, radarr_id_val, sonarr_id_val,
-                now_utc().isoformat(), delete_at.isoformat(),
-                added_date.isoformat(),
-                last_played.isoformat() if last_played else None,
-            ),
-        )
-        await db.commit()
-
     note = ""
     if seerr_username and effective_grace != grace_days:
         note = f" (règle Seerr {seerr_username}: {effective_grace}j)"
-    await add_log("INFO", f"Ajouté : {title} → {delete_at.strftime('%d/%m/%Y')}{note}", "scan")
+    await add_log("INFO", f"Éligible : {title} → {delete_at.strftime('%d/%m/%Y')}{note}", "scan")
 
-    # "detected" notification at scan time
-    dry_run = await get_bool_setting("dry_run")
-    item_notif = {
-        "title": title, "media_type": media_type,
-        "library_name": lib.get("name", "?"),
-        "seerr_user_id": seerr_user_id, "seerr_username": seerr_username,
-        "poster_url": poster_url, "delete_at": delete_at.isoformat(),
+    return {
+        "emby_id": emby_id,
+        "title": title,
+        "media_type": media_type,
+        "library_id": lib["id"],
+        "library_name": lib["name"],
+        "file_path": file_path,
+        "poster_url": poster_url,
+        "tmdb_id": tmdb_id,
+        "seerr_id": seerr_id,
+        "seerr_user_id": seerr_user_id,
+        "seerr_username": seerr_username,
+        "seerr_request_url": seerr_request_url,
+        "radarr_id": radarr_id_val,
+        "sonarr_id": sonarr_id_val,
+        "sonarr_series_id": sonarr_series_id_val,
+        "season_number": season_number_val,
+        "detected_at": now_utc().isoformat(),
+        "delete_at": delete_at.isoformat(),
+        "added_date": added_date.isoformat(),
+        "last_played": last_played.isoformat() if last_played else None,
     }
-    try:
-        sent = await send_notification([item_notif], "detected", dry_run=dry_run)
-        if sent:
-            async with aiosqlite.connect(DB_PATH) as db:
-                await db.execute(
-                    "UPDATE media_queue SET notified_detected=1 WHERE emby_id=? AND status='pending'",
-                    (emby_id,),
-                )
-                await db.commit()
-    except Exception as e:
-        logger.warning(f"Detected notification failed for {title}: {e}")
-
-    return True

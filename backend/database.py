@@ -166,9 +166,6 @@ async def _migrate_encrypt_settings(db) -> None:
 
 # Default settings — written ONCE at first init (INSERT OR IGNORE)
 DEFAULT_SETTINGS = {
-    "emby_url": "",
-    "emby_api_key": "",
-    "emby_external_url": "",
     "emby_leaving_soon_collection": "",
     "emby_leaving_soon_days": "30",
     "emby_leaving_soon_overlay": "false",
@@ -188,6 +185,12 @@ DEFAULT_SETTINGS = {
     "qbit_action": "tag_only",  # tag_only | delete_torrent
     "qbit_tag": "Supprimé-Hygie",
     "discord_webhook": "",
+    "discord_notif_thresholds": "7,1",
+    "discord_alert_deletion_error": "false",
+    "discord_alert_scan_failure": "false",
+    "discord_alert_seerr_failure": "false",
+    "discord_alert_error_threshold": "3",
+    "max_parallel_library_scans": "3",
     "dry_run": "false",
     "scan_interval_minutes": "360",            # 6h par défaut
     "deletion_check_interval_minutes": "60",   # 1h par défaut
@@ -258,13 +261,15 @@ _TABLES = [
             seerr_conditions TEXT NOT NULL DEFAULT '[]',
             enabled INTEGER NOT NULL DEFAULT 1,
             created_at TEXT,
-            server_id TEXT DEFAULT '0'
+            server_id TEXT DEFAULT '0',
+            deletion_unit TEXT NOT NULL DEFAULT 'episode'
         )""",
         [
             ("seerr_conditions", "TEXT NOT NULL DEFAULT '[]'"),
             ("enabled", "INTEGER NOT NULL DEFAULT 1"),
             ("created_at", "TEXT"),
             ("server_id", "TEXT DEFAULT '0'"),
+            ("deletion_unit", "TEXT NOT NULL DEFAULT 'episode'"),
         ],
     ),
     (
@@ -314,6 +319,8 @@ _TABLES = [
             ("notified_now", "INTEGER DEFAULT 0"),
             ("notified_detected", "INTEGER DEFAULT 0"),
             ("notified_thresholds", "TEXT DEFAULT '[]'"),
+            ("sonarr_series_id", "INTEGER"),
+            ("season_number", "INTEGER"),
         ],
     ),
     (

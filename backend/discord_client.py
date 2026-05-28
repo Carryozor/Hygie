@@ -200,6 +200,29 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
         return False
 
 
+async def send_alert(title: str, description: str, level: str = "error") -> bool:
+    """Send a critical operational alert to Discord (no auth, no media embed)."""
+    webhook = await get_setting("discord_webhook")
+    if not webhook:
+        return False
+    colors = {"error": 0xFF0000, "warning": 0xF0A500, "info": 0x6366F1}
+    icons  = {"error": "🚨", "warning": "⚠️", "info": "ℹ️"}
+    payload = {"embeds": [{
+        "title": f"{icons.get(level, '🚨')} {title}",
+        "description": description,
+        "color": colors.get(level, 0xFF0000),
+        "footer": {"text": "Hygie — Alerte critique"},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }]}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(webhook, json=payload)
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.error(f"send_alert error: {e}")
+        return False
+
+
 async def test_discord() -> tuple[bool, str]:
     webhook = await get_setting("discord_webhook")
     if not webhook:

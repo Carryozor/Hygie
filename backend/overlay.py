@@ -32,9 +32,9 @@ def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr"
         draw.rectangle([0, 0, w, banner_h], fill=(200, 30, 30, 230))
 
         if ui_lang == "en":
-            label = f"Deleted in {days_left}d" if days_left > 0 else "Imminent"
+            label = f"Deleted in {days_left}d" if days_left > 0 else "Deletion today"
         else:
-            label = f"Supprimé dans {days_left}j" if days_left > 0 else "Imminent"
+            label = f"Supprimé dans {days_left}j" if days_left > 0 else "Suppression aujourd'hui"
 
         font_paths = (
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",

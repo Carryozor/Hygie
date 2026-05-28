@@ -31,7 +31,7 @@ function renderMediaServers() {
   const container = document.getElementById('media-servers-list');
   if (!container) return;
   if (!_mediaServers.length) {
-    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Aucun serveur configuré — cliquez "Ajouter" ci-dessous</div>';
+    container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">${t('Aucun serveur configuré — cliquez "Ajouter" ci-dessous')}</div>`;
     return;
   }
   container.innerHTML = _mediaServers.map((s, i) => {
@@ -48,8 +48,8 @@ function renderMediaServers() {
       : type === 'jellyfin'
       ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#8b5cf620;color:#a78bfa">Jellyfin</span>`
       : type === 'unknown'
-      ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff10;color:var(--muted)">Inconnu</span>`
-      : `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff08;color:var(--muted);font-style:italic">Non testé</span>`;
+      ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff10;color:var(--muted)">${t('Inconnu')}</span>`
+      : `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#ffffff08;color:var(--muted);font-style:italic">${t('Non testé')}</span>`;
     return `<div class="card" style="padding:16px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
         <div style="width:36px;height:36px;border-radius:8px;background:#0f1117;display:flex;align-items:center;justify-content:center;flex-shrink:0">${iconHtml}</div>
@@ -61,7 +61,7 @@ function renderMediaServers() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <label class="toggle-wrap" title="${s.enabled ? 'Activé — cliquer pour désactiver' : 'Désactivé — cliquer pour activer'}">
+          <label class="toggle-wrap" title="${s.enabled ? t('Activé — cliquer pour désactiver') : t('Désactivé — cliquer pour activer')}">
             <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleMediaServer('${s.id}',this.checked)">
             <div class="toggle-track"></div><div class="toggle-thumb"></div>
           </label>
@@ -70,18 +70,18 @@ function renderMediaServers() {
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">URL interne</label>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">${t('URL interne')}</label>
             <input class="input" style="font-size:12px" value="${escapeHtml(s.url||'')}" placeholder="http://emby:8096"
               onchange="updateServerField('${s.id}','url',this.value)"></div>
-          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Clé API</label>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">${t('Clé API')}</label>
             <input class="input" type="password" style="font-size:12px" value="${escapeHtml(s.api_key||'')}" placeholder="••••••••"
               onchange="updateServerField('${s.id}','api_key',this.value)"></div>
         </div>
-        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">URL externe (affiches)</label>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">${t('URL externe (affiches)')}</label>
           <input class="input" style="font-size:12px" value="${escapeHtml(s.ext_url||'')}" placeholder="https://emby.mondomaine.fr"
             onchange="updateServerField('${s.id}','ext_url',this.value)"></div>
         <button class="btn btn-ghost" style="align-self:flex-start;font-size:12px" onclick="testMediaServer('${s.id}',this)">
-          <i class="fas fa-plug"></i>Tester
+          <i class="fas fa-plug"></i>${t('Tester')}
         </button>
       </div>
     </div>`;
@@ -97,7 +97,7 @@ async function addMediaServer() {
 }
 
 async function removeMediaServer(id) {
-  try { await showConfirm({ title: 'Supprimer ce serveur ?', body: 'Ce serveur sera retiré de la liste. Les bibliothèques associées ne seront plus scannées.', icon: 'server', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
+  try { await showConfirm({ title: t('Supprimer ce serveur ?'), body: t('Ce serveur sera retiré de la liste. Les bibliothèques associées ne seront plus scannées.'), icon: 'server', color: '#ef4444', okLabel: t('Supprimer') }); } catch(e) { return; }
   try {
     const result = await api('/api/settings/media-servers/' + id, 'DELETE');
     _mediaServers = result.servers;
@@ -171,12 +171,12 @@ function updateIntervalPreview(id) {
   if (!el) return;
   let text;
   if (unit === 'h') {
-    text = '→ toutes les ' + val + 'h';
+    text = `→ ${t('toutes les')} ${val}h`;
   } else {
-    if (val < 60) { text = '→ toutes les ' + val + ' min'; }
+    if (val < 60) { text = `→ ${t('toutes les')} ${val} min`; }
     else {
       const h = Math.floor(val / 60), m = val % 60;
-      text = '→ toutes les ' + h + 'h' + (m > 0 ? m + 'min' : '');
+      text = `→ ${t('toutes les')} ${h}h${m > 0 ? m + 'min' : ''}`;
     }
   }
   el.textContent = text;
@@ -227,7 +227,7 @@ function updateMediaServerIcon(type) {
     if (iconWrap) iconWrap.innerHTML = GENERIC;
     if (headerLogo) headerLogo.innerHTML = GENERIC_HEADER;
     if (pill) pill.style.display = 'none';
-    if (detected) { detected.textContent = 'Serveur non reconnu — fonctionnalités Collection/Overlay disponibles avec Emby uniquement'; detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
+    if (detected) { detected.textContent = t('Serveur non reconnu — fonctionnalités Collection/Overlay disponibles avec Emby uniquement'); detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
     if (embyOnly) embyOnly.style.display = 'none';
     if (nonEmbyNotice) { nonEmbyNotice.style.display = 'block'; if (nonEmbyMsg) nonEmbyMsg.innerHTML = '⚠️ <strong>Serveur non reconnu</strong> — Les fonctionnalités Collection et Overlay d\'affiches sont disponibles uniquement avec Emby.'; nonEmbyNotice.style.color = '#94a3b8'; }
   } else if (type === 'mixed') {
@@ -236,14 +236,14 @@ function updateMediaServerIcon(type) {
     if (iconWrap) iconWrap.innerHTML = SPLIT_TAB;
     if (headerLogo) headerLogo.innerHTML = SPLIT_HDR;
     if (pill) { pill.textContent = 'Multi'; pill.style.cssText = 'display:inline;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600;background:#6366f125;color:#818cf8'; }
-    if (detected) { detected.textContent = 'Emby + Jellyfin — plusieurs serveurs actifs'; detected.style.color = '#818cf8'; detected.style.fontStyle = 'normal'; }
+    if (detected) { detected.textContent = t('Emby + Jellyfin — plusieurs serveurs actifs'); detected.style.color = '#818cf8'; detected.style.fontStyle = 'normal'; }
     if (embyOnly) embyOnly.style.display = 'block';
     if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
   } else {
     if (iconWrap) iconWrap.innerHTML = GENERIC;
     if (headerLogo) headerLogo.innerHTML = GENERIC_HEADER;
     if (pill) pill.style.display = 'none';
-    if (detected) { detected.textContent = 'Non encore testé — cliquez Tester pour détecter'; detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
+    if (detected) { detected.textContent = t('Non encore testé — cliquez Tester pour détecter'); detected.style.color = 'var(--muted)'; detected.style.fontStyle = 'italic'; }
     if (embyOnly) embyOnly.style.display = 'block';
     if (nonEmbyNotice) nonEmbyNotice.style.display = 'none';
   }
@@ -357,14 +357,14 @@ let _discordMappings = {};
 async function loadDiscordMappings() {
   const box = document.getElementById('discord-mappings-list');
   if (!box) return;
-  box.innerHTML = '<div style="font-size:12px;color:var(--muted)">Chargement...</div>';
+  box.innerHTML = `<div style="font-size:12px;color:var(--muted)">${t('Chargement...')}</div>`;
   try {
     const users = await api('/api/seerr-rules/users');
     const saved = await api('/api/seerr-rules/discord-mappings');
     const savedMap = {};
     for (const s of saved) savedMap[s.seerr_user_id] = s.discord_id || '';
     if (!users.length) {
-      box.innerHTML = '<div style="font-size:12px;color:var(--muted)">Aucun utilisateur Seerr trouvé (vérifiez la configuration Seerr)</div>';
+      box.innerHTML = `<div style="font-size:12px;color:var(--muted)">${t('Aucun utilisateur Seerr trouvé (vérifiez la configuration Seerr)')}</div>`;
       return;
     }
     box.innerHTML = users.map(u => {
@@ -382,7 +382,7 @@ async function loadDiscordMappings() {
       </div>`;
     }).join('');
   } catch(e) {
-    box.innerHTML = `<div style="font-size:12px;color:var(--muted)">Erreur chargement (Seerr configuré ?)</div>`;
+    box.innerHTML = `<div style="font-size:12px;color:var(--muted)">${t('Erreur chargement (Seerr configuré ?)')}</div>`;
   }
 }
 
@@ -425,7 +425,7 @@ async function loadBackupList() {
     const files = await api('/api/backup');
     wrap.style.display = 'block';
     if (!files.length) {
-      box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px">Aucun backup</div>';
+      box.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:6px">${t('Aucun backup')}</div>`;
       return;
     }
     box.innerHTML = files.map(f => {
@@ -439,16 +439,16 @@ async function loadBackupList() {
         <button class="btn btn-ghost" style="padding:2px 6px;font-size:10px;color:#ef4444" onclick="deleteBackup('${escapeHtml(f.filename)}')"><i class="fas fa-trash"></i></button>
       </div>`;
     }).join('');
-  } catch(e) { toast('Erreur liste backups','error'); }
+  } catch(e) { toast(t('Erreur liste backups'),'error'); }
 }
 
 async function deleteBackup(filename) {
   try {
-    await showConfirm({ title: 'Supprimer ce backup ?', body: filename, icon: 'database', color: '#ef4444', okLabel: 'Supprimer' });
+    await showConfirm({ title: t('Supprimer ce backup ?'), body: filename, icon: 'database', color: '#ef4444', okLabel: t('Supprimer') });
   } catch(e) { return; }
   try {
     await api(`/api/backup/${encodeURIComponent(filename)}`, 'DELETE');
-    toast('Backup supprimé', 'success');
+    toast(t('Backup supprimé'), 'success');
     loadBackupList();
-  } catch(e) { toast('Erreur suppression', 'error'); }
+  } catch(e) { toast(t('Erreur suppression'), 'error'); }
 }

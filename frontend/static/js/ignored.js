@@ -13,7 +13,7 @@ async function loadIgnored() {
     if (!items.length) {
       box.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:var(--muted)">
         <i class="fas fa-ban" style="font-size:32px;display:block;margin-bottom:12px;color:var(--border)"></i>
-        Aucun média ignoré.<br><span style="font-size:12px">Utilisez le bouton <i class="fas fa-ban"></i> dans la file d'attente pour ignorer définitivement un média.</span>
+        ${t('Aucun média ignoré.')}<br><span style="font-size:12px">${t('Utilisez le bouton')} <i class="fas fa-ban"></i> ${t('dans la file d\'attente pour ignorer définitivement un média.')}</span>
       </div>`;
       return;
     }
@@ -29,37 +29,37 @@ async function loadIgnored() {
         const daysLeft = Math.ceil((expDt - Date.now()) / 86400000);
         const expStr = expDt.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
         const col = daysLeft <= 7 ? '#ef4444' : daysLeft <= 30 ? '#f59e0b' : '#10b981';
-        expireBadge = `<div style="font-size:12px;color:${col};margin-top:3px"><i class="fas fa-clock" style="font-size:10px;margin-right:4px"></i>${_('Expire le','Expires on')} ${expStr} (${daysLeft > 0 ? _('dans','in')+' '+daysLeft+'j' : _("aujourd'hui",'today')})</div>`;
+        expireBadge = `<div style="font-size:12px;color:${col};margin-top:3px"><i class="fas fa-clock" style="font-size:10px;margin-right:4px"></i>${t('Expire le')} ${expStr} (${daysLeft > 0 ? t('dans')+' '+daysLeft+t('j') : t("aujourd'hui")})</div>`;
       } else {
-        expireBadge = `<div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="fas fa-infinity" style="font-size:10px;margin-right:4px"></i>${_('Ignoré définitivement','Permanently ignored')}</div>`;
+        expireBadge = `<div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="fas fa-infinity" style="font-size:10px;margin-right:4px"></i>${t('Ignoré définitivement')}</div>`;
       }
       return `<div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
         ${poster}
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.title)}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${lib} · ${_('Ignoré le','Ignored on')} ${dt}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">📚 ${lib} · ${t('Ignoré le')} ${dt}</div>
           ${expireBadge}
           ${item.reason ? `<div style="font-size:12px;color:#f59e0b;margin-top:3px;display:flex;align-items:center;gap:4px"><i class="fas fa-comment-dots" style="font-size:10px"></i>${escapeHtml(item.reason)}</div>` : ''}
         </div>
         <button class="btn btn-ghost" style="padding:7px 12px;flex-shrink:0;color:#10b981" data-id="${item.id}" data-title="${escapeHtml(item.title)}" onclick="unignoreMediaFromEl(this)">
-          <i class="fas fa-rotate-left"></i>Remettre
+          <i class="fas fa-rotate-left"></i>${t('Remettre')}
         </button>
       </div>`;
     }).join('');
-  } catch(e) { toast('Erreur chargement ignorés','error'); }
+  } catch(e) { toast(t('Erreur chargement ignorés'),'error'); }
 }
 
 function unignoreMediaFromEl(el) {
   unignoreMedia(parseInt(el.dataset.id), el.dataset.title);
 }
 async function unignoreMedia(id, title) {
-  try { await showConfirm({ title: 'Remettre en file d\'attente ?', body: escapeHtml(title), icon: 'rotate-left', color: '#10b981', okLabel: 'Remettre', okClass: 'btn-primary' }); } catch(e) { return; }
+  try { await showConfirm({ title: t('Remettre en file d\'attente ?'), body: escapeHtml(title), icon: 'rotate-left', color: '#10b981', okLabel: t('Remettre'), okClass: 'btn-primary' }); } catch(e) { return; }
   try {
     await api(`/api/ignored/${id}/requeue`, 'POST');
-    toast(`"${title}" remis en file d'attente`, 'success');
+    toast(`"${title}" ${t('remis en file d\'attente')}`, 'success');
   } catch(e) {
     await api(`/api/ignored/${id}`, 'DELETE');
-    toast(`"${title}" retiré des ignorés — sera détecté au prochain scan`, 'info');
+    toast(`"${title}" ${t('retiré des ignorés — sera détecté au prochain scan')}`, 'info');
   }
   loadIgnored();
   loadDashboard();
@@ -98,7 +98,7 @@ async function confirmIgnore() {
     let url = `/api/media/${_ignoreMediaId}/ignore?reason=${encodeURIComponent(reason)}`;
     if (expireDays > 0) url += `&expire_days=${expireDays}`;
     await api(url, 'POST');
-    toast(expireDays > 0 ? `Ignoré pour ${expireDays} jours` : 'Ignoré définitivement', 'success');
+    toast(expireDays > 0 ? `${t('Ignoré pour')} ${expireDays} ${t('jours')}` : t('Ignoré définitivement'), 'success');
     closeIgnoreModal();
     loadQueue();
     loadDashboard();

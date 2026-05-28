@@ -107,6 +107,6 @@ async function toggleSidebarDryRun(enabled) {
     _updateSidebarDryRunStyle(enabled);
     const settingsToggle = document.getElementById('dry-run-toggle');
     if (settingsToggle) settingsToggle.checked = enabled;
-    toast(enabled ? 'Dry Run activé — aucune suppression réelle' : 'Dry Run désactivé', enabled ? 'warn' : 'info');
+    toast(enabled ? t('Dry Run activé — aucune suppression réelle') : t('Dry Run désactivé'), enabled ? 'warn' : 'info');
   } catch(e) { toast('Erreur','error'); }
 }

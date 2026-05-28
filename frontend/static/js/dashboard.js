@@ -13,7 +13,7 @@ async function loadDashboard() {
     const data = await api('/api/media/?status=pending&limit=8&sort=delete_at&dir=asc');
     const box = document.getElementById('upcoming-list');
     if (!data.items.length) {
-      box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)"><i class="fas fa-circle-check" style="font-size:24px;color:#10b98180;display:block;margin-bottom:8px"></i>Aucun média en attente</div>';
+      box.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted)"><i class="fas fa-circle-check" style="font-size:24px;color:#10b98180;display:block;margin-bottom:8px"></i>${t('Aucun média en attente')}</div>`;
       return;
     }
     box.innerHTML = data.items.map(m => {
@@ -28,7 +28,7 @@ async function loadDashboard() {
       const titleEl = m.seerr_request_url
         ? `<a href="${escapeHtml(m.seerr_request_url)}" target="_blank" style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;display:block" onclick="event.stopPropagation()">${icon} ${_title}</a>`
         : `<div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${_title}</div>`;
-      const delLabel = days<=0 ? t('Suppression aujourd\'hui') : (_lang==='en' ? `in ${days}d` : `dans ${days}j`);
+      const delLabel = days<=0 ? t('Suppression aujourd\'hui') : `${t('dans')} ${days}${t('j')}`;
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
         ${poster}
         <div style="flex:1;min-width:0">
@@ -71,10 +71,10 @@ async function loadDashboard() {
 }
 
 function _fmtCountdown(diffMin) {
-  if (diffMin <= 0) return 'Imminent';
-  if (diffMin < 60) return `dans ${diffMin}min`;
+  if (diffMin <= 0) return t('Imminent');
+  if (diffMin < 60) return `${t('dans')} ${diffMin}min`;
   const h = Math.floor(diffMin / 60), m = diffMin % 60;
-  return `dans ${h}h${m > 0 ? String(m).padStart(2,'0') : ''}`;
+  return `${t('dans')} ${h}h${m > 0 ? String(m).padStart(2,'0') : ''}`;
 }
 
 async function loadSchedulerInfo() {
@@ -89,7 +89,7 @@ async function loadSchedulerInfo() {
     const scanEl  = document.getElementById('scan-countdown');
     const scanBar = document.getElementById('scan-progress-bar');
     if (status.scan_running) {
-      if (scanEl) scanEl.textContent = 'En cours...';
+      if (scanEl) scanEl.textContent = t('En cours...');
       if (scanBar) {
         scanBar.style.width = '100%';
         scanBar.style.opacity = '0.6';
@@ -110,7 +110,7 @@ async function loadSchedulerInfo() {
     const delEl  = document.getElementById('del-countdown');
     const delBar = document.getElementById('del-progress-bar');
     if (status.deletion_running) {
-      if (delEl) delEl.textContent = 'En cours...';
+      if (delEl) delEl.textContent = t('En cours...');
       if (delBar) {
         delBar.style.width = '100%';
         delBar.style.opacity = '0.6';

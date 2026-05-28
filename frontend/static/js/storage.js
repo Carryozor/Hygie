@@ -53,7 +53,6 @@ async function loadStorage() {
         <div class="skeleton" style="height:12px;width:70%"></div>
       </div>`).join('')}
     </div>`;
-  // If we have data from this session, render it instantly while fetching fresh data in background
   if (_storageCached) {
     renderStorage(_storageCached, box);
   }
@@ -64,7 +63,7 @@ async function loadStorage() {
   } catch(e) {
     if (!_storageCached) {
       console.error(e);
-      box.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Erreur chargement stockage</div>';
+      box.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">${t('Erreur chargement stockage')}</div>`;
     }
   }
 }
@@ -76,7 +75,7 @@ function renderStorage(data, box) {
   if (disks.length) {
     html += `<div class="card" style="padding:20px">
       <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        <i class="fas fa-hard-drive" style="color:var(--accent2)"></i>${_('Utilisation disque','Disk usage')}
+        <i class="fas fa-hard-drive" style="color:var(--accent2)"></i>${t('Utilisation disque')}
       </div>
       <div style="display:flex;flex-direction:column;gap:16px">
         ${disks.map(f => {
@@ -88,7 +87,7 @@ function renderStorage(data, box) {
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
               <div style="min-width:0;flex:1">
                 <div style="font-size:13px;color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.path || f.label || '?'}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${f.source}${!accessible?' · <span style="color:#ef4444">Non accessible</span>':''}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">${f.source}${!accessible?` · <span style="color:#ef4444">${t('Non accessible')}</span>`:''}</div>
               </div>
               <div style="text-align:right;flex-shrink:0;margin-left:16px">
                 <div style="font-size:18px;font-weight:700;color:${col}">${pct}%</div>
@@ -99,8 +98,8 @@ function renderStorage(data, box) {
               <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${col}aa,${col});border-radius:5px;transition:width .6s ease"></div>
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:5px">
-              <span style="font-size:11px;color:var(--muted)">${fmtSize(f.free)} libres</span>
-              <span style="font-size:11px;color:var(--muted)">${fmtSize(f.total)} total</span>
+              <span style="font-size:11px;color:var(--muted)">${fmtSize(f.free)} ${t('libres')}</span>
+              <span style="font-size:11px;color:var(--muted)">${fmtSize(f.total)} ${t('total')}</span>
             </div>
           </div>`;
         }).join('<div style="border-top:1px solid var(--border)"></div>')}
@@ -109,7 +108,7 @@ function renderStorage(data, box) {
   } else {
     html += `<div class="card" style="padding:20px;text-align:center;color:var(--muted)">
       <i class="fas fa-hard-drive" style="font-size:24px;margin-bottom:8px;display:block"></i>
-      Données disque non disponibles — vérifiez la configuration Radarr/Sonarr
+      ${t('Données disque non disponibles — vérifiez la configuration Radarr/Sonarr')}
     </div>`;
   }
 
@@ -119,16 +118,16 @@ function renderStorage(data, box) {
   html += `<div class="card" style="padding:20px">
     <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:10px">
       <img src="/static/img/icons/radarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
-      <span>${_('Films (hdr)','Movies')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Radarr)</span></span>
+      <span>${t('Films (hdr)')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Radarr)</span></span>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      ${statRow(_('Total dans la bibliothèque','Total in library'), mv.total_in_library ?? '—')}
-      ${statRow(_('Avec fichier','With file'), mv.count ?? '—', '#10b981')}
-      ${statRow(_('Surveillés','Monitored'), mv.monitored ?? '—', 'var(--accent2)')}
-      ${statRow(_('Non surveillés','Unmonitored'), mv.unmonitored ?? '—', '#94a3b8')}
+      ${statRow(t('Total dans la bibliothèque'), mv.total_in_library ?? '—')}
+      ${statRow(t('Avec fichier'), mv.count ?? '—', '#10b981')}
+      ${statRow(t('Surveillés'), mv.monitored ?? '—', 'var(--accent2)')}
+      ${statRow(t('Non surveillés'), mv.unmonitored ?? '—', '#94a3b8')}
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      ${statRow(_('Espace utilisé','Space used'), fmtSize(mv.size || 0), '#e2e8f0')}
-      ${statRow(_('Taille moyenne / film','Avg size / movie'), mv.count ? fmtSize((mv.size||0)/mv.count) : '—', '#e2e8f0')}
+      ${statRow(t('Espace utilisé'), fmtSize(mv.size || 0), '#e2e8f0')}
+      ${statRow(t('Taille moyenne / film'), mv.count ? fmtSize((mv.size||0)/mv.count) : '—', '#e2e8f0')}
     </div>
   </div>`;
 
@@ -136,16 +135,16 @@ function renderStorage(data, box) {
   html += `<div class="card" style="padding:20px">
     <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:10px">
       <img src="/static/img/icons/sonarr.png" width="20" height="20" style="border-radius:4px" onerror="this.style.display='none'">
-      <span>${_('Séries (hdr)','Series')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Sonarr)</span></span>
+      <span>${t('Séries (hdr)')} <span style="font-size:11px;color:var(--muted);font-weight:400">(Sonarr)</span></span>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      ${statRow(_('Séries au total','Total series'), sr.count ?? '—')}
-      ${statRow(_('Surveillées','Monitored'), sr.monitored ?? '—', 'var(--accent2)')}
-      ${statRow(_('Non surveillées','Unmonitored'), sr.unmonitored ?? '—', '#94a3b8')}
-      ${statRow(_('Épisodes (fichiers)','Episodes (files)'), sr.episodes ?? '—', '#10b981')}
+      ${statRow(t('Séries au total'), sr.count ?? '—')}
+      ${statRow(t('Surveillées'), sr.monitored ?? '—', 'var(--accent2)')}
+      ${statRow(t('Non surveillées'), sr.unmonitored ?? '—', '#94a3b8')}
+      ${statRow(t('Épisodes (fichiers)'), sr.episodes ?? '—', '#10b981')}
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      ${statRow(_('Espace utilisé','Space used'), fmtSize(sr.size || 0), '#e2e8f0')}
-      ${statRow(_('Taille moyenne / série','Avg size / series'), sr.count ? fmtSize((sr.size||0)/sr.count) : '—', '#e2e8f0')}
+      ${statRow(t('Espace utilisé'), fmtSize(sr.size || 0), '#e2e8f0')}
+      ${statRow(t('Taille moyenne / série'), sr.count ? fmtSize((sr.size||0)/sr.count) : '—', '#e2e8f0')}
     </div>
   </div>`;
 
@@ -157,29 +156,29 @@ function renderStorage(data, box) {
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <div class="card" style="padding:20px">
       <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-        <i class="fas fa-database" style="color:var(--accent2)"></i>${_('Total médias','Total media')}
+        <i class="fas fa-database" style="color:var(--accent2)"></i>${t('Total médias')}
       </div>
       <div style="font-size:28px;font-weight:700;color:#e2e8f0">${fmtSize(data.total_media_size)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">${_('Films + Séries sur disque','Movies + Series on disk')}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">${t('Films + Séries sur disque')}</div>
     </div>
     <div class="card" style="padding:20px;border:1px solid #f59e0b40;background:#f59e0b08">
       <div style="font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-        <i class="fas fa-recycle" style="color:#f59e0b"></i>${_('File de suppression','Deletion queue')}
+        <i class="fas fa-recycle" style="color:#f59e0b"></i>${t('File de suppression')}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        ${statRow(_('En attente','Pending'), pending, '#f59e0b')}
-        ${statRow(_('Supprimés','Deleted'), deleted, '#10b981')}
-        ${statRow(_('Exclus','Excluded'), q.excluded ?? 0, '#94a3b8')}
-        ${statRow(_('Erreurs','Errors'), q.error ?? 0, '#ef4444')}
+        ${statRow(t('En attente'), pending, '#f59e0b')}
+        ${statRow(t('Supprimés'), deleted, '#10b981')}
+        ${statRow(t('Exclus'), q.excluded ?? 0, '#94a3b8')}
+        ${statRow(t('Erreurs'), q.error ?? 0, '#ef4444')}
         ${q.reclaimable_size > 0 ? `<div style="border-top:1px solid var(--border);margin:6px 0"></div>
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;color:#f59e0b">💾 Espace récupérable</span>
+          <span style="font-size:13px;color:#f59e0b">${t('💾 Espace récupérable')}</span>
           <span style="font-size:15px;font-weight:700;color:#f59e0b">${fmtSize(q.reclaimable_size)}</span>
         </div>
-        <div style="font-size:11px;color:var(--muted)">si les ${q.reclaimable_count || 0} médias en attente sont supprimés</div>` : ''}
+        <div style="font-size:11px;color:var(--muted)">${t('si les')} ${q.reclaimable_count || 0} ${t('médias en attente sont supprimés')}</div>` : ''}
       </div>
       <button class="btn btn-ghost" style="font-size:12px;margin-top:10px" onclick="showPage('queue')">
-        <i class="fas fa-hourglass-half"></i>${_('Voir la file','View queue')}
+        <i class="fas fa-hourglass-half"></i>${t('Voir la file')}
       </button>
     </div>
   </div>`;

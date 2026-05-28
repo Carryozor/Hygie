@@ -197,9 +197,9 @@
         <th class="sortable" onclick="sortQueue('library_name')">Bibliothèque <span id="si-library_name"></span></th>
         <th class="sortable" onclick="sortQueue('seerr_username')">Demandé par <span id="si-seerr_username"></span></th>
         <th class="sortable" onclick="sortQueue('added_date')">Ajouté le <span id="si-added_date"></span></th>
-        <th class="sortable" onclick="sortQueue('last_played')">Vu le <span id="si-last_played"></span></th>
-        <th class="sortable" onclick="sortQueue('delete_at')">Suppression <span id="si-delete_at"></span></th>
-        <th class="sortable" onclick="sortQueue('status')">Statut <span id="si-status"></span></th>
+        <th class="sortable" onclick="sortQueue('last_played')"><span data-i18n="Vu le">Vu le</span> <span id="si-last_played"></span></th>
+        <th class="sortable" onclick="sortQueue('delete_at')"><span data-i18n="Suppression">Suppression</span> <span id="si-delete_at"></span></th>
+        <th class="sortable" onclick="sortQueue('status')"><span data-i18n="Statut">Statut</span> <span id="si-status"></span></th>
         <th>Actions</th>
       </tr></thead>
       <tbody id="queue-tbody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Chargement...</td></tr></tbody>
@@ -285,7 +285,7 @@
                 <input type="checkbox" id="backup_enabled" style="accent-color:var(--accent);width:14px;height:14px" onchange="onBackupEnabledChange()">
                 <span style="font-size:11px;color:var(--muted)">activée</span>
               </label>
-              <span id="backup-disabled-badge" style="display:none;font-size:11px;font-weight:600;color:#ef4444;background:#ef444420;border:1px solid #ef444440;padding:2px 8px;border-radius:4px">⚠️ Backup désactivé</span>
+              <span id="backup-disabled-badge" data-i18n="⚠️ Backup désactivé" style="display:none;font-size:11px;font-weight:600;color:#ef4444;background:#ef444420;border:1px solid #ef444440;padding:2px 8px;border-radius:4px">⚠️ Backup désactivé</span>
             </div>
             <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="triggerManualBackup()"><i class="fas fa-database"></i>Sauvegarder maintenant</button>
           </div>

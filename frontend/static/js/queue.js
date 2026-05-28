@@ -10,6 +10,7 @@ let _searchTimer = null;
 let queueViewMode = 'list';
 
 const SORT_COLS = ['title','library_name','seerr_username','added_date','last_played','delete_at','status'];
+const STATUS_LABELS = {pending:'En attente', deleted:'Supprimé', excluded:'Exclu', error:'Erreur'};
 
 function getPageCount() { return Math.max(1, Math.ceil(queueTotalItems/queuePageSize)); }
 function getCurrentPage() { return Math.floor(queueOffset/queuePageSize)+1; }
@@ -18,8 +19,8 @@ function toggleViewMode() {
   queueViewMode = queueViewMode === 'list' ? 'grid' : 'list';
   const btn = document.getElementById('view-toggle-btn');
   if (btn) btn.innerHTML = queueViewMode === 'grid'
-    ? '<i class="fas fa-list"></i>Vue liste'
-    : '<i class="fas fa-th-large"></i>Vue grille';
+    ? `<i class="fas fa-list"></i>${t('Vue liste')}`
+    : `<i class="fas fa-th-large"></i>${t('Vue grille')}`;
   loadQueue();
 }
 
@@ -31,9 +32,9 @@ function debounceSearch() {
 let _queueStatusFilter = '';
 function setQueueTab(status) {
   _queueStatusFilter = status;
-  ['all','pending','deleted','error'].forEach(t => {
-    const btn = document.getElementById('tab-'+t);
-    if (btn) btn.className = 'tab-btn' + (status === (t==='all'?'':t) ? ' tab-active' : '');
+  ['all','pending','deleted','error'].forEach(tabKey => {
+    const btn = document.getElementById('tab-'+tabKey);
+    if (btn) btn.className = 'tab-btn' + (status === (tabKey==='all'?'':tabKey) ? ' tab-active' : '');
   });
   queueOffset = 0;
   loadQueue();
@@ -64,7 +65,7 @@ async function loadQueue() {
     const data = await api(url);
     queueTotalItems = data.total;
     const pc = getPageCount(), cp = getCurrentPage();
-    document.getElementById('queue-count').innerHTML = `${data.total} entrée${data.total>1?'s':''} &nbsp;·&nbsp; Page ${cp}/${pc}`;
+    document.getElementById('queue-count').innerHTML = `${data.total} ${data.total>1?t('entrées'):t('entrée')} &nbsp;·&nbsp; Page ${cp}/${pc}`;
     document.getElementById('btn-prev').disabled = cp<=1;
     document.getElementById('btn-next').disabled = cp>=pc;
     SORT_COLS.forEach(col => {
@@ -104,7 +105,7 @@ async function loadQueue() {
           <div style="padding:8px">
             ${titleEl}${req}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-              <span class="badge badge-${m.status}" style="font-size:10px">${m.status}</span>
+              <span class="badge badge-${m.status}" style="font-size:10px">${t(STATUS_LABELS[m.status] || m.status)}</span>
               <span style="font-size:10px;${delCol};font-weight:600">${days<=0?t('Suppression aujourd\'hui'):days+'j'}</span>
             </div>
             ${m.status==='pending'?`<div style="display:flex;gap:4px;margin-top:6px">
@@ -120,7 +121,7 @@ async function loadQueue() {
       document.getElementById('queue-table-wrap').style.display = 'block';
       tbody.innerHTML = data.items.map(m => {
         const added = m.added_date ? new Date(m.added_date).toLocaleDateString('fr-FR') : '—';
-        const seen = m.last_played ? new Date(m.last_played).toLocaleDateString('fr-FR') : `<em style="color:#ef444480">Jamais</em>`;
+        const seen = m.last_played ? new Date(m.last_played).toLocaleDateString('fr-FR') : `<em style="color:#ef444480">${t('Jamais')}</em>`;
         const del = new Date(m.delete_at).toLocaleDateString('fr-FR');
         const _delDt3 = new Date(m.delete_at); const _now3 = new Date();
         const days = Math.max(0, Math.round((Date.UTC(_delDt3.getUTCFullYear(),_delDt3.getUTCMonth(),_delDt3.getUTCDate()) - Date.UTC(_now3.getUTCFullYear(),_now3.getUTCMonth(),_now3.getUTCDate())) / 86400000));
@@ -136,7 +137,7 @@ async function loadQueue() {
         const reqCell = m.seerr_username
           ? `<div style="display:flex;align-items:center;gap:5px"><div style="width:20px;height:20px;border-radius:50%;background:#6366f120;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-user" style="font-size:9px;color:var(--accent2)"></i></div><span style="font-size:12px;color:#e2e8f0">${escapeHtml(m.seerr_username)}</span></div>`
           : `<span style="color:var(--muted);font-size:12px;font-style:italic">—</span>`;
-        const badge = `<span class="badge badge-${m.status}">${m.status}</span>`;
+        const badge = `<span class="badge badge-${m.status}">${t(STATUS_LABELS[m.status] || m.status)}</span>`;
         const actions = m.status==='pending'
           ? `<div style="display:flex;gap:3px">
               <button class="btn btn-ghost" style="padding:4px 7px;font-size:11px" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="${escapeHtml(m.media_type)}" data-poster="${escapeHtml(m.poster_url||'')}" data-lib="${escapeHtml(m.library_name||'')}" onclick="openIgnoreModalFromEl(this)" title="Ignorer définitivement"><i class="fas fa-ban"></i></button>
@@ -150,14 +151,14 @@ async function loadQueue() {
           <td>${reqCell}</td>
           <td style="color:var(--muted);font-size:12px">${added}</td>
           <td style="font-size:12px">${seen}</td>
-          <td style="${delCol};font-weight:500;font-size:12px" title="${del}">${del}<br><span style="font-size:10px;opacity:.7">${days>0?days+'j':'aujourd\'hui'}</span></td>
+          <td style="${delCol};font-weight:500;font-size:12px" title="${del}">${del}<br><span style="font-size:10px;opacity:.7">${days>0?days+t('j'):t("aujourd'hui")}</span></td>
           <td>${badge}</td>
           <td onclick="event.stopPropagation()">${actions}</td>
         </tr>`;
       }).join('');
       document.getElementById('chk-all').checked = false;
     }
-  } catch(e) { toast('Erreur chargement file','error'); }
+  } catch(e) { toast(t('Erreur chargement file'),'error'); }
 }
 
 function toggleRow(e, id) {
@@ -204,11 +205,11 @@ function queuePage(dir) {
   if (np<1||np>getPageCount()) return;
   queueOffset=(np-1)*queuePageSize; loadQueue();
 }
-async function excludeMedia(id) { await api(`/api/media/${id}/remove`,'DELETE'); toast('Exclu','success'); loadQueue(); }
+async function excludeMedia(id) { await api(`/api/media/${id}/remove`,'DELETE'); toast(t('Exclu'),'success'); loadQueue(); }
 async function deleteNow(id) {
   try { await showConfirm({ title: 'Supprimer maintenant ?', body: 'Ce média sera supprimé immédiatement de tous vos services.', icon: 'trash', color: '#ef4444', okLabel: 'Supprimer' }); } catch(e) { return; }
-  try { await api(`/api/media/${id}/delete-now`,'POST'); toast('Supprimé','success'); loadQueue(); }
-  catch(e) { toast('Erreur suppression','error'); }
+  try { await api(`/api/media/${id}/delete-now`,'POST'); toast(t('Supprimé'),'success'); loadQueue(); }
+  catch(e) { toast(t('Erreur suppression'),'error'); }
 }
 async function removeFromQueue(id) { await api(`/api/media/${id}`,'DELETE'); loadQueue(); }
 async function purgeDeleted() {
@@ -218,16 +219,16 @@ async function purgeDeleted() {
   loadQueue(); loadDashboard();
 }
 async function regenPosters() {
-  toast('Régénération des affiches...', 'info');
+  toast(t('Régénération des affiches...'), 'info');
   try {
     await api('/api/media/regenerate-posters', 'POST');
-    toast('Affiches en cours de régénération (quelques minutes)', 'success');
+    toast(t('Affiches en cours de régénération (quelques minutes)'), 'success');
     setTimeout(() => loadQueue(), 10000);
-  } catch(e) { toast('Erreur régénération', 'error'); }
+  } catch(e) { toast(t('Erreur régénération'), 'error'); }
 }
 async function enrichSeerr() {
-  toast('Sync Seerr lancé...','info');
+  toast(t('Sync Seerr lancé...'),'info');
   await api('/api/media/enrich-seerr','POST');
-  toast('Sync Seerr démarré — rechargez dans quelques secondes','success');
+  toast(t('Sync Seerr démarré — rechargez dans quelques secondes'),'success');
   setTimeout(()=>loadQueue(), 4000);
 }

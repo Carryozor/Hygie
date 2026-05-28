@@ -105,12 +105,12 @@ jobs:
           image: ghcr.io/carryozor/hygie:${VERSION}
           \`\`\`
 
-          ## Changements
+          ## Changes
 
           ${CHANGES}
 
           ---
-          🐳 Image Docker : \`ghcr.io/carryozor/hygie:${VERSION}\`"
+          🐳 Docker image: \`ghcr.io/carryozor/hygie:${VERSION}\`"
 
           if gh release view "v${VERSION}" --repo ${{ github.repository }} &>/dev/null; then
             gh release edit "v${VERSION}" \

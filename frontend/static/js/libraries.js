@@ -96,11 +96,11 @@ function removeCondition(i) { conditions.splice(i,1); renderConditions(); }
 function renderSeerrConditions() {
   const box = document.getElementById('seerr-conditions-container');
   if (!availableSeerrUsers.length) {
-    box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px;background:#0a0c14;border-radius:6px">Configurez Seerr dans les paramètres pour activer le filtrage.</div>';
+    box.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:8px;background:#0a0c14;border-radius:6px">${t('Configurez Seerr dans les paramètres pour activer le filtrage.')}</div>`;
     return;
   }
   if (!seerrConditions.length) {
-    box.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:10px;background:#0a0c14;border-radius:8px;border:1px dashed var(--border)">Aucun filtre — tous les utilisateurs inclus</div>';
+    box.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:10px;background:#0a0c14;border-radius:8px;border:1px dashed var(--border)">${t('Aucun filtre — tous les utilisateurs inclus')}</div>`;
     return;
   }
   box.innerHTML = seerrConditions.map((c,i) => `
@@ -116,7 +116,7 @@ function renderSeerrConditions() {
     </div>`).join('');
 }
 function addSeerrCondition() {
-  if (!availableSeerrUsers.length) { toast('Aucun utilisateur Seerr disponible','warn'); return; }
+  if (!availableSeerrUsers.length) { toast(t('Aucun utilisateur Seerr disponible'),'warn'); return; }
   seerrConditions.push({type:'user_include',user_id:availableSeerrUsers[0].id,username:availableSeerrUsers[0].username});
   renderSeerrConditions();
 }
@@ -157,11 +157,11 @@ async function loadEmbyLibOptions(selected='') {
     const libs = await api('/api/libraries/emby');
     sel.innerHTML = libs.map(l=>`<option value="${l.id}">${l.name}${l.type?' ('+l.type+')':''}</option>`).join('');
     if (selected) { sel.value=selected; if (!sel.value) { const o=document.createElement('option'); o.value=selected; o.textContent=`(ID: ${selected})`; o.selected=true; sel.prepend(o); } }
-  } catch(e) { sel.innerHTML='<option value="">Erreur Emby</option>'; }
+  } catch(e) { sel.innerHTML=`<option value="">${t('Erreur Emby')}</option>`; }
 }
 async function saveLibrary() {
   const body = { name:document.getElementById('lib-name').value, emby_library_id:document.getElementById('lib-emby-id').value, grace_days:parseInt(document.getElementById('lib-grace').value)||7, logic:document.getElementById('lib-logic').value, deletion_unit:document.getElementById('lib-deletion-unit').value||'episode', conditions, seerr_conditions:seerrConditions, enabled:true };
-  if (!body.name||!body.emby_library_id) { toast('Remplissez tous les champs','warn'); return; }
+  if (!body.name||!body.emby_library_id) { toast(t('Remplissez tous les champs'),'warn'); return; }
   try {
     const savedId = editingLibId;
     if (editingLibId) await api(`/api/libraries/${editingLibId}`,'PUT',body);

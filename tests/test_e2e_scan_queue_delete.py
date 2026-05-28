@@ -30,12 +30,13 @@ async def isolated_db(tmp_path, monkeypatch):
     dbmod._ms_cache_ts = 0.0
     await init_db()
 
-    # scheduler/scanner import DB_PATH at module level — patch their local copies too
+    # scheduler/scanner/deletion import DB_PATH at module level — patch their local copies too
     import backend.scheduler as sched_mod
     import backend.scanner as scanner_mod
+    import backend.deletion as deletion_mod
     import backend.conditions as cond_mod
-    monkeypatch.setattr(sched_mod, "DB_PATH", db_path)
     monkeypatch.setattr(scanner_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(deletion_mod, "DB_PATH", db_path)
     monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
 
     # Seed required settings
@@ -230,14 +231,14 @@ async def test_delete_fires_after_grace(isolated_db):
         emby_deleted.append(emby_id_)
 
     with (
-        patch("backend.scheduler.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.scheduler._delete_from_arr", new_callable=AsyncMock),
-        patch("backend.scheduler._delete_from_seerr", new_callable=AsyncMock),
-        patch("backend.scheduler._find_torrent_hash", new_callable=AsyncMock, return_value=None),
-        patch("backend.scheduler.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
-        patch("backend.scheduler.send_notification", new_callable=AsyncMock),
-        patch("backend.scheduler.sync_emby_collection", new_callable=AsyncMock),
-        patch("backend.scheduler._send_pending_notifications", new_callable=AsyncMock),
+        patch("backend.deletion.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
+        patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
+        patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
+        patch("backend.deletion.send_notification", new_callable=AsyncMock),
+        patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
+        patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
     ):
         from backend.scheduler import run_deletion
         await run_deletion()
@@ -273,11 +274,11 @@ async def test_delete_skips_during_grace(isolated_db):
     emby_deleted = []
 
     with (
-        patch("backend.scheduler.delete_item", new_callable=AsyncMock,
+        patch("backend.deletion.delete_item", new_callable=AsyncMock,
               side_effect=lambda eid, **kw: emby_deleted.append(eid)),
-        patch("backend.scheduler.send_notification", new_callable=AsyncMock),
-        patch("backend.scheduler.sync_emby_collection", new_callable=AsyncMock),
-        patch("backend.scheduler._send_pending_notifications", new_callable=AsyncMock),
+        patch("backend.deletion.send_notification", new_callable=AsyncMock),
+        patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
+        patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
     ):
         from backend.scheduler import run_deletion
         await run_deletion()
@@ -322,14 +323,14 @@ async def test_full_scan_then_delete(isolated_db):
         emby_deleted.append(eid)
 
     with (
-        patch("backend.scheduler.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.scheduler._delete_from_arr", new_callable=AsyncMock),
-        patch("backend.scheduler._delete_from_seerr", new_callable=AsyncMock),
-        patch("backend.scheduler._find_torrent_hash", new_callable=AsyncMock, return_value=None),
-        patch("backend.scheduler.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
-        patch("backend.scheduler.send_notification", new_callable=AsyncMock),
-        patch("backend.scheduler.sync_emby_collection", new_callable=AsyncMock),
-        patch("backend.scheduler._send_pending_notifications", new_callable=AsyncMock),
+        patch("backend.deletion.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
+        patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
+        patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
+        patch("backend.deletion.send_notification", new_callable=AsyncMock),
+        patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
+        patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
     ):
         from backend.scheduler import run_deletion
         await run_deletion()
@@ -367,11 +368,11 @@ async def test_dry_run_prevents_deletion(isolated_db):
     emby_deleted = []
 
     with (
-        patch("backend.scheduler.delete_item", new_callable=AsyncMock,
+        patch("backend.deletion.delete_item", new_callable=AsyncMock,
               side_effect=lambda eid, **kw: emby_deleted.append(eid)),
-        patch("backend.scheduler.send_notification", new_callable=AsyncMock),
-        patch("backend.scheduler.sync_emby_collection", new_callable=AsyncMock),
-        patch("backend.scheduler._send_pending_notifications", new_callable=AsyncMock),
+        patch("backend.deletion.send_notification", new_callable=AsyncMock),
+        patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
+        patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
     ):
         from backend.scheduler import run_deletion
         await run_deletion()

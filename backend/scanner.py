@@ -190,7 +190,19 @@ async def run_scan_library(library_id: str):
 
             radarr_cache = await build_radarr_path_cache()
             sonarr_cache = await build_sonarr_path_cache()
-            seerr_cache  = await build_seerr_request_cache()
+            seerr_cache: dict = {}
+            try:
+                seerr_cache = await build_seerr_request_cache()
+            except ArrClientError as _seerr_err:
+                await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
+                if await get_bool_setting("discord_alert_seerr_failure"):
+                    _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+                    _msg = await get_setting("discord_alert_seerr_failure_msg") or ""
+                    await send_alert(
+                        "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                        mention=_mention, custom_msg=_msg,
+                        template_vars={"detail": str(_seerr_err)},
+                    )
             async with aiosqlite.connect(DB_PATH) as _db:
                 async with _db.execute("SELECT emby_id FROM media_queue") as _cur:
                     queued_ids = {r[0] async for r in _cur}

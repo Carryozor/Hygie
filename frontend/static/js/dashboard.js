@@ -25,14 +25,18 @@ async function loadDashboard() {
       const _lib = escapeHtml(m.library_name || m.library_id);
       const poster = m.poster_url ? `<img src="${escapeHtml(proxyImg(m.poster_url))}" style="width:28px;height:42px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">` : '';
       const req = m.seerr_username ? `<span style="font-size:11px;color:var(--muted)">👤 ${escapeHtml(m.seerr_username)}</span>` : '';
+      const titleEl = m.seerr_request_url
+        ? `<a href="${escapeHtml(m.seerr_request_url)}" target="_blank" style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;display:block" onclick="event.stopPropagation()">${icon} ${_title}</a>`
+        : `<div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${_title}</div>`;
+      const delLabel = days<=0 ? t('Suppression aujourd\'hui') : (_lang==='en' ? `in ${days}d` : `dans ${days}j`);
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
         ${poster}
         <div style="flex:1;min-width:0">
-          <div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon} ${_title}</div>
+          ${titleEl}
           <div style="display:flex;gap:8px;margin-top:2px">${req}<span style="font-size:11px;color:var(--muted)">📚 ${_lib}</span></div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="${col};font-weight:600;font-size:12px">${days<=0?'Imminent':`dans ${days}j`}</div>
+          <div style="${col};font-weight:600;font-size:12px">${delLabel}</div>
           <div style="color:var(--muted);font-size:10px">${new Date(m.delete_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</div>
         </div>
       </div>`;

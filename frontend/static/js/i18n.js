@@ -31,7 +31,7 @@ const TRANSLATIONS = {
     '12 derniers mois': 'Last 12 months',
     'Prochaines suppressions': 'Upcoming deletions',
     'Aucun média en attente': 'No media pending deletion',
-    'Imminent': 'Imminent',
+    'Suppression aujourd\'hui': 'Deletion today',
 
     // ── Queue ────────────────────────────────────────────────────────────────
     'Tous': 'All',
@@ -392,6 +392,11 @@ const TRANSLATIONS = {
     'Utilisation disque': 'Disk usage',
   }
 };
+
+function t(key) {
+  if (_lang === 'fr') return key;
+  return (TRANSLATIONS.en && TRANSLATIONS.en[key]) || key;
+}
 
 let _lang = 'en'; // Default to English
 try {

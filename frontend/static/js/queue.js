@@ -105,7 +105,7 @@ async function loadQueue() {
             ${titleEl}${req}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
               <span class="badge badge-${m.status}" style="font-size:10px">${m.status}</span>
-              <span style="font-size:10px;${delCol};font-weight:600">${days<=0?'Imminent':days+'j'}</span>
+              <span style="font-size:10px;${delCol};font-weight:600">${days<=0?t('Suppression aujourd\'hui'):days+'j'}</span>
             </div>
             ${m.status==='pending'?`<div style="display:flex;gap:4px;margin-top:6px">
               <button class="btn btn-ghost" style="flex:1;padding:3px;font-size:10px;justify-content:center" data-mid="${m.id}" data-title="${escapeHtml(m.title)}" data-type="${escapeHtml(m.media_type)}" data-poster="${escapeHtml(m.poster_url||'')}" data-lib="${escapeHtml(m.library_name||'')}" onclick="event.stopPropagation();openIgnoreModalFromEl(this)"><i class="fas fa-ban"></i></button>

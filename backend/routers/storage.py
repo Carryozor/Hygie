@@ -1,4 +1,4 @@
-"""Storage — disk metrics from Radarr/Sonarr, with 60-second TTL cache."""
+"""Storage — disk metrics from Radarr/Sonarr, with stale-while-revalidate cache."""
 import asyncio
 import logging
 import time
@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
 
 _storage_cache: dict = {"data": None, "ts": 0.0}
-_STORAGE_TTL = 60.0  # seconds
+_storage_refresh_task: asyncio.Task | None = None
+_STORAGE_TTL = 300.0  # 5 minutes — stale-while-revalidate makes this safe to extend
 
 
 def invalidate_storage_cache() -> None:
@@ -22,23 +23,8 @@ def invalidate_storage_cache() -> None:
     _storage_cache.update({"data": None, "ts": 0.0})
 
 
-@router.get("")
-async def get_storage(user: str = Depends(require_auth)):
-    """
-    Shape expected by frontend:
-    {
-      disks: [{path, label, source, total, free, accessible}],
-      movies: {total_in_library, count, monitored, unmonitored, size},
-      series: {count, monitored, unmonitored, episodes, size},
-      total_media_size: int,
-      queue: {pending, deleted, excluded, error, reclaimable_size, reclaimable_count},
-    }
-    Results are cached for 60 seconds to avoid hammering Radarr/Sonarr (~3.4 MB JSON each call).
-    Cache is invalidated by invalidate_storage_cache() after deletions/scans.
-    """
-    now = time.time()
-    if _storage_cache["data"] is not None and now - _storage_cache["ts"] < _STORAGE_TTL:
-        return _storage_cache["data"]
+async def _fetch_storage_data() -> dict:
+    """Fetch fresh storage data from Radarr/Sonarr + SQLite. Updates cache in place."""
 
     radarr_url = (await get_setting("radarr_url") or "").rstrip("/")
     radarr_key = await get_setting("radarr_api_key") or ""
@@ -184,3 +170,26 @@ async def get_storage(user: str = Depends(require_auth)):
     }
     _storage_cache.update({"data": result, "ts": time.time()})
     return result
+
+
+@router.get("")
+async def get_storage(user: str = Depends(require_auth)):
+    """
+    Stale-while-revalidate: if cache exists (even expired) return it immediately
+    and trigger a background refresh. Only blocks on the very first cold request.
+    Cache TTL is 5 minutes; invalidated by invalidate_storage_cache() after mutations.
+    """
+    global _storage_refresh_task
+    now = time.time()
+    fresh = _storage_cache["data"] is not None and now - _storage_cache["ts"] < _STORAGE_TTL
+    if fresh:
+        return _storage_cache["data"]
+
+    if _storage_cache["data"] is not None:
+        # Stale data available — return it instantly and refresh in background
+        if _storage_refresh_task is None or _storage_refresh_task.done():
+            _storage_refresh_task = asyncio.create_task(_fetch_storage_data())
+        return _storage_cache["data"]
+
+    # Cold start — no data at all, must wait
+    return await _fetch_storage_data()

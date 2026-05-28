@@ -170,16 +170,24 @@ async def lifespan(app: FastAPI):
         _internal_cleanup, "cron", hour=3, minute=0, id="overlay_daily", replace_existing=True
     )
 
-    # Backup job — interval from settings, default 24h
+    # Backup job — interval from settings, default 24h. 0 = disabled.
     try:
         from .backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
         backup_hours = await get_int_setting("backup_interval_hours", _DEFAULT_INTERVAL_HOURS)
-        scheduler.add_job(
-            _run_backup, "interval", hours=max(1, backup_hours),
-            id="backup_job", replace_existing=True,
-        )
+        if backup_hours > 0:
+            scheduler.add_job(
+                _run_backup, "interval", hours=backup_hours,
+                id="backup_job", replace_existing=True,
+            )
     except Exception as e:
         logger.warning(f"backup job setup: {e}")
+
+    # Pre-warm storage cache in background so first navigation is instant
+    try:
+        from .routers.storage import _fetch_storage_data
+        asyncio.create_task(_fetch_storage_data())
+    except Exception:
+        pass
 
     scheduler.start()
     app.state.scheduler = scheduler

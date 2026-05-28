@@ -104,9 +104,12 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
     incoming = body.model_dump(exclude_none=True)
 
     # Validate URL schemes — reject file://, ftp://, etc. to prevent SSRF
+    # Skip masked values (user didn't change the field, backend will ignore them anyway)
     for key in _URL_SETTINGS:
         value = incoming.get(key, "") or ""
-        if value and urlparse(value).scheme.lower() not in ("http", "https"):
+        if not value or (key in SENSITIVE_KEYS and value == _MASK):
+            continue
+        if urlparse(value).scheme.lower() not in ("http", "https"):
             raise HTTPException(status_code=422, detail=f"{key}: le schéma doit être http ou https")
 
     # Read current interval values BEFORE saving to detect real changes
@@ -144,6 +147,22 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
                     pass
                 except Exception:
                     pass
+        if "backup_interval_hours" in updated:
+            try:
+                from ..backup import run_backup as _run_backup
+                hours = int(incoming["backup_interval_hours"])
+                if hours <= 0:
+                    try:
+                        scheduler.remove_job("backup_job")
+                    except Exception:
+                        pass
+                else:
+                    scheduler.add_job(
+                        _run_backup, "interval", hours=hours,
+                        id="backup_job", replace_existing=True,
+                    )
+            except (ValueError, TypeError, Exception):
+                pass
 
     # Invalidate image proxy whitelist when service URLs change
     _url_keys = {"emby_url", "emby_external_url", "radarr_url", "sonarr_url"}

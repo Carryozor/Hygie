@@ -22,11 +22,11 @@ _DEFAULT_INTERVAL_HOURS = 24
 
 
 async def _backup_settings() -> tuple[str, int, int]:
-    """Return (backup_dir, interval_hours, retention_count)."""
+    """Return (backup_dir, interval_hours, retention_count). interval=0 means disabled."""
     backup_dir = (await get_setting("backup_path") or _DEFAULT_PATH).rstrip("/")
     interval = await get_int_setting("backup_interval_hours", _DEFAULT_INTERVAL_HOURS)
     retention = await get_int_setting("backup_retention_count", _DEFAULT_RETENTION)
-    return backup_dir, max(1, interval), max(1, retention)
+    return backup_dir, max(0, interval), max(1, retention)
 
 
 def _do_backup(src_path: str, dst_path: str) -> None:
@@ -41,13 +41,15 @@ def _do_backup(src_path: str, dst_path: str) -> None:
 
 
 async def run_backup() -> Optional[str]:
-    """Create a timestamped backup of the DB. Returns the backup filename or None on error."""
+    """Create a timestamped backup of the DB. Returns the backup filename or None on error/disabled."""
     import asyncio
 
     if DB_PATH == ":memory:":
         return None
 
-    backup_dir, _, retention = await _backup_settings()
+    backup_dir, interval, retention = await _backup_settings()
+    if interval == 0:
+        return None  # Backup disabled
 
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
 

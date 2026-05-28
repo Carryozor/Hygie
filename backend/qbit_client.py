@@ -124,39 +124,39 @@ async def _request(method: str, path: str, **kwargs) -> Optional[httpx.Response]
 
 
 async def test_qbit() -> tuple[bool, str]:
+    """Test each configured qBit URL independently and report both results."""
     proxy_url = (await get_setting("qbit_proxy_url") or "").rstrip("/")
     direct_url = (await get_setting("qbit_url") or "").rstrip("/")
 
     if not proxy_url and not direct_url:
         return False, "Non configuré"
 
-    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
-        user = await get_setting("qbit_user") or ""
-        password = await get_setting("qbit_password") or ""
+    user = await get_setting("qbit_user") or ""
+    password = await get_setting("qbit_password") or ""
+    parts: list[str] = []
+    any_ok = False
 
-        # Test proxy
+    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
         if proxy_url:
             r = await _try_url(client, proxy_url, "GET", "/api/v2/app/version", user, password)
             if r is not None and r.status_code == 200:
-                return True, f"qBittorrent {r.text.strip()} (via proxy QUI)"
-            proxy_status = f"proxy injoignable" if r is None else f"proxy HTTP {r.status_code}"
-        else:
-            proxy_status = None
+                parts.append(f"Proxy QUI ✅ v{r.text.strip()}")
+                any_ok = True
+            else:
+                detail = "injoignable" if r is None else f"HTTP {r.status_code}"
+                parts.append(f"Proxy QUI ❌ ({detail})")
 
-        # Test direct
         if direct_url and direct_url != proxy_url:
             r = await _try_url(client, direct_url, "GET", "/api/v2/app/version", user, password)
             if r is not None and r.status_code == 200:
-                via = f" (fallback direct — {proxy_status})" if proxy_status else " (direct)"
-                return True, f"qBittorrent {r.text.strip()}{via}"
-            direct_status = "direct injoignable" if r is None else f"direct HTTP {r.status_code}"
-            if proxy_status:
-                return False, f"{proxy_status} | {direct_status}"
-            return False, direct_status
+                parts.append(f"Direct ✅ v{r.text.strip()}")
+                any_ok = True
+            else:
+                detail = "injoignable" if r is None else f"HTTP {r.status_code}"
+                parts.append(f"Direct ❌ ({detail})")
 
-        if proxy_status:
-            return False, proxy_status
-        return False, "Connexion impossible"
+    msg = " | ".join(parts) if parts else "Connexion impossible"
+    return any_ok, msg
 
 
 async def qbit_find_by_path(file_path: str) -> Optional[str]:

@@ -274,8 +274,8 @@
           <div style="display:grid;grid-template-columns:1fr 100px 120px;gap:10px;margin-bottom:8px">
             <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Dossier</label>
               <input class="input" id="backup_path" placeholder="/app/data/backups"></div>
-            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h)</label>
-              <input class="input" id="backup_interval_hours" type="number" min="1" max="168" placeholder="24"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h) — <span style="font-style:italic">0 = désactivé</span></label>
+              <input class="input" id="backup_interval_hours" type="number" min="0" max="168" placeholder="24"></div>
             <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Backups conservés</label>
               <input class="input" id="backup_retention_count" type="number" min="1" max="90" placeholder="7"></div>
           </div>

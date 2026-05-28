@@ -8,7 +8,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..database import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, add_log, get_setting
+from ..db.utils import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
+from ..db.settings_store import get_setting
+from ..db.logs import add_log
 from ..deletion import _delete_media
 from ..conditions import _get_poster_url
 from ..arr_clients import seerr_find_request_by_tmdb

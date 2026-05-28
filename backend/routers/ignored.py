@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import require_auth
-from ..database import DB_PATH
+from ..db.utils import DB_PATH
 
 router = APIRouter(prefix="/api/ignored", tags=["ignored"])
 
@@ -103,9 +103,9 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
     so the item appears in the queue without waiting for the next scan.
     """
     from datetime import timedelta
-    from ..database import get_setting
+    from ..db.settings_store import get_setting
     from ..conditions import _get_poster_url
-    from ..database import now_utc
+    from ..db.utils import now_utc
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

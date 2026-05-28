@@ -5,7 +5,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
-from ..database import DB_PATH
+from ..db.utils import DB_PATH
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import require_auth
-from ..database import DB_PATH
+from ..db.utils import DB_PATH
 from ..arr_clients import seerr_get_users
 
 router = APIRouter(prefix="/api/seerr-rules", tags=["seerr_rules"])

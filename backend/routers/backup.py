@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import require_auth
 from ..backup import _DEFAULT_PATH, list_backups, run_backup
-from ..database import get_setting
+from ..db.settings_store import get_setting
 
 router = APIRouter(prefix="/api/backup", tags=["backup"])
 

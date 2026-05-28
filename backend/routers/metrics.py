@@ -3,7 +3,7 @@ import aiosqlite
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
-from ..database import DB_PATH
+from ..db.utils import DB_PATH
 
 router = APIRouter(tags=["metrics"])
 

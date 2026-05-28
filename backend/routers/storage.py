@@ -8,7 +8,8 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..database import DB_PATH, STATUS_PENDING, get_setting, TIMEOUT_MEDIUM
+from ..db.utils import DB_PATH, STATUS_PENDING, TIMEOUT_MEDIUM
+from ..db.settings_store import get_setting
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)

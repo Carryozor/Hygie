@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..database import DB_PATH, add_log
+from ..db.utils import DB_PATH
+from ..db.logs import add_log
 from ..emby_client import get_libraries as emby_get_libraries
 from ..scheduler import (
     is_scan_running,

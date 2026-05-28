@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
 import json
-from ..database import get_all_settings, set_setting, get_setting, get_media_servers, save_media_servers, SENSITIVE_KEYS
+from ..db.settings_store import get_all_settings, set_setting, get_setting
+from ..db.media_servers import get_media_servers, save_media_servers
+from ..db.encryption import SENSITIVE_KEYS
 from ..emby_client import test_connection as test_emby
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit
@@ -157,7 +159,7 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         if "backup_interval_hours" in updated or "backup_enabled" in updated:
             try:
                 from ..backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
-                from ..database import get_bool_setting as _get_bool, get_int_setting as _get_int
+                from ..db.settings_store import get_bool_setting as _get_bool, get_int_setting as _get_int
                 hours = int(incoming.get("backup_interval_hours") or await _get_int("backup_interval_hours", _DEFAULT_INTERVAL_HOURS))
                 enabled = (incoming.get("backup_enabled", "true") == "true")
                 if not enabled or hours <= 0:

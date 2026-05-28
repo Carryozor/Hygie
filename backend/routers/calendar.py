@@ -4,7 +4,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
-from ..database import DB_PATH, parse_iso_dt
+from ..db.utils import DB_PATH, parse_iso_dt
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 

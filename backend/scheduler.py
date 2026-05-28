@@ -69,6 +69,9 @@ from .collection import sync_emby_collection
 logger = logging.getLogger(__name__)
 
 # ─── Job locks (prevent concurrent runs of the same job) ─────────────────────
+# Pattern: check lock.locked() then async with lock.
+# Safe in asyncio: Lock.acquire() doesn't yield when free, so no coroutine can
+# interleave between the check and the acquisition (single-threaded event loop).
 _scan_lock = asyncio.Lock()
 _deletion_lock = asyncio.Lock()
 
@@ -143,7 +146,10 @@ async def run_scan():
                     async with _db.execute("SELECT emby_id FROM ignored_media") as _cur:
                         ignored_ids = {r[0] async for r in _cur}
 
-                max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
+                try:
+                    max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
+                except (ValueError, TypeError):
+                    max_parallel = 3
                 _lib_sem = asyncio.Semaphore(max(1, max_parallel))
 
                 async def _scan_lib_with_sem(lib):
@@ -581,7 +587,10 @@ async def run_deletion():
             # Semaphore limits concurrent deletions to avoid overwhelming external services
             _del_sem = asyncio.Semaphore(3)
             _alert_del_error = await get_bool_setting("discord_alert_deletion_error")
-            _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
+            try:
+                _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
+            except (ValueError, TypeError):
+                _alert_threshold = 3
             _error_count = 0
 
             async def _delete_one(row: dict) -> bool:
@@ -749,8 +758,8 @@ async def _delete_media(
                         lrow = await cur.fetchone()
                         if lrow and lrow[0]:
                             library_server_id = str(lrow[0])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"_delete_media: library_server_id lookup: {e}")
 
         torrent_hash = await _find_torrent_hash(row)
 
@@ -783,8 +792,8 @@ async def _delete_media(
                     (now_utc().isoformat(), month),
                 )
                 await _db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_delete_media: stats_history insert: {e}")
 
         return True
     except Exception as e:

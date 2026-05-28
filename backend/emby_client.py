@@ -211,7 +211,7 @@ async def delete_item(item_id: str, server_id: str = "0") -> bool:
         return False
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await client.delete(f"{url}/Items/{item_id}", headers=_auth(key))
+            r = await http_retry(lambda: client.delete(f"{url}/Items/{item_id}", headers=_auth(key)))
             return r.status_code in (200, 204)
     except Exception as e:
         logger.warning(f"delete_item error: {e}")

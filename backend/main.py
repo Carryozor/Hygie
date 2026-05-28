@@ -66,12 +66,12 @@ async def _internal_cleanup():
     """Run cleanup jobs silently — no job_history entry, no UI clutter."""
     try:
         await run_ignored_cleanup()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_internal_cleanup: run_ignored_cleanup: {e}")
     try:
         await sync_emby_collection()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"_internal_cleanup: sync_emby_collection: {e}")
 from .routers import (
     auth,
     backup,

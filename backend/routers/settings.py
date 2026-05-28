@@ -1,5 +1,6 @@
 """Settings — read/write configuration, test connections."""
 from typing import Optional
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
@@ -91,10 +92,22 @@ async def get_settings(user: str = Depends(require_auth)):
     return settings
 
 
+_URL_SETTINGS = frozenset({
+    "radarr_url", "sonarr_url", "seerr_url", "seerr_external_url",
+    "qbit_url", "qbit_proxy_url",
+})
+
+
 @router.post("")
 async def update_settings(body: SettingsUpdate, request: Request, user: str = Depends(require_auth)):
     """Update settings. Only sends non-None fields."""
     incoming = body.model_dump(exclude_none=True)
+
+    # Validate URL schemes — reject file://, ftp://, etc. to prevent SSRF
+    for key in _URL_SETTINGS:
+        value = incoming.get(key, "") or ""
+        if value and urlparse(value).scheme.lower() not in ("http", "https"):
+            raise HTTPException(status_code=422, detail=f"{key}: le schéma doit être http ou https")
 
     # Read current interval values BEFORE saving to detect real changes
     old_scan = await get_setting("scan_interval_minutes") or "360"

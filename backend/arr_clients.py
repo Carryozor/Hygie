@@ -577,7 +577,8 @@ async def build_seerr_request_cache() -> dict:
                     if not tmdb_id:
                         continue
                     user = req.get("requestedBy") or {}
-                    cache[tmdb_id] = {
+                    # setdefault: first request wins (oldest, most likely the primary requester)
+                    cache.setdefault(tmdb_id, {
                         "seerr_id": media.get("id"),
                         "user_id": user.get("id"),
                         "username": (
@@ -586,7 +587,7 @@ async def build_seerr_request_cache() -> dict:
                             or user.get("email")
                             or ""
                         ),
-                    }
+                    })
                 if skip + 100 >= total or not items:
                     break
                 skip += 100

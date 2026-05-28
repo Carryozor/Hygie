@@ -37,6 +37,7 @@ from .arr_clients import (
     build_seerr_request_cache,
     build_sonarr_path_cache,
 )
+from .exceptions import ArrClientError
 from .discord_client import send_alert, send_notification
 from .conditions import _evaluate_conditions, _evaluate_item
 from .notifications import _ensure_notif_columns, _send_pending_notifications
@@ -95,7 +96,7 @@ async def run_scan():
                 seerr_cache: dict = {}
                 try:
                     seerr_cache = await build_seerr_request_cache()
-                except RuntimeError as _seerr_err:
+                except ArrClientError as _seerr_err:
                     await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
                     if await get_bool_setting("discord_alert_seerr_failure"):
                         _mention = await get_setting("discord_alert_seerr_failure_mention") or ""

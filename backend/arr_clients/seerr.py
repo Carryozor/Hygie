@@ -6,6 +6,7 @@ import httpx
 
 from ..db.settings_store import get_setting
 from ..db.utils import DB_PATH, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from ..exceptions import ArrClientError
 import aiosqlite
 
 logger = logging.getLogger(__name__)
@@ -150,10 +151,10 @@ async def build_seerr_request_cache() -> dict:
                             or ""
                         ),
                     })
-    except RuntimeError:
-        raise   # propagate HTTP errors so callers can send Discord alert
+    except ArrClientError:
+        raise
     except Exception as e:
-        raise RuntimeError(f"Seerr inaccessible: {e}") from e
+        raise ArrClientError(f"Seerr inaccessible: {e}") from e
     return cache
 
 

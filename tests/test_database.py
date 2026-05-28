@@ -7,62 +7,12 @@ import backend.db.media_servers as _db_ms
 import backend.db.schema as _db_schema
 import backend.db.logs as _db_logs
 import backend.db.encryption as _db_enc
-from backend.db import (
-    get_setting, set_setting, get_bool_setting, get_int_setting, get_all_settings,
-    add_log, add_job_run, finish_job_run,
-    get_media_servers, save_media_servers,
-    init_db, parse_iso_dt, SENSITIVE_KEYS,
-)
-
-# Provide a unified namespace for tests that use dbmod.something
-class _DbMod:
-    """Lightweight facade pointing at the real submodule objects."""
-    # -- utils
-    @staticmethod
-    def parse_iso_dt(s): return parse_iso_dt(s)
-    SENSITIVE_KEYS = _db_enc.SENSITIVE_KEYS
-    # -- settings
-    @staticmethod
-    async def get_setting(k): return await _db_ss.get_setting(k)
-    @staticmethod
-    async def set_setting(k, v): return await _db_ss.set_setting(k, v)
-    @staticmethod
-    async def get_bool_setting(k, default=False): return await _db_ss.get_bool_setting(k, default)
-    @staticmethod
-    async def get_int_setting(k, default=0): return await _db_ss.get_int_setting(k, default)
-    @property
-    def _settings_cache(self): return _db_ss._settings_cache
-    @property
-    def _settings_cache_ts(self): return _db_ss._settings_cache_ts
-    @_settings_cache_ts.setter
-    def _settings_cache_ts(self, v): _db_ss._settings_cache_ts = v
-    @property
-    def DB_PATH(self): return _db_utils.DB_PATH
-    # -- media servers
-    @staticmethod
-    async def save_media_servers(s): return await _db_ms.save_media_servers(s)
-    @staticmethod
-    async def get_media_servers(): return await _db_ms.get_media_servers()
-    @property
-    def _ms_cache(self): return _db_ms._ms_cache
-    @_ms_cache.setter
-    def _ms_cache(self, v): _db_ms._ms_cache = v
-    @property
-    def _ms_cache_ts(self): return _db_ms._ms_cache_ts
-    @_ms_cache_ts.setter
-    def _ms_cache_ts(self, v): _db_ms._ms_cache_ts = v
-    # -- logs
-    @staticmethod
-    async def add_log(level, msg, src=""): return await _db_logs.add_log(level, msg, src)
-    @staticmethod
-    async def add_job_run(job_type): return await _db_logs.add_job_run(job_type)
-    @staticmethod
-    async def finish_job_run(run_id, status, msg=""): return await _db_logs.finish_job_run(run_id, status, msg)
-    # -- schema
-    @staticmethod
-    async def init_db(): return await _db_schema.init_db()
-
-dbmod = _DbMod()
+from backend.db.utils import parse_iso_dt
+from backend.db.encryption import SENSITIVE_KEYS
+from backend.db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting
+from backend.db.logs import add_log, add_job_run, finish_job_run
+from backend.db.media_servers import get_media_servers, save_media_servers
+from backend.db.schema import init_db
 
 
 @pytest.fixture(autouse=True)
@@ -100,17 +50,17 @@ async def test_init_db_creates_all_tables(fresh_db):
 
 
 async def test_init_db_seeds_default_settings(fresh_db):
-    assert await dbmod.get_setting("dry_run") == "false"
-    assert await dbmod.get_setting("scan_interval_minutes") == "360"
-    assert await dbmod.get_setting("deletion_check_interval_minutes") == "60"
-    assert await dbmod.get_setting("log_retention_days") == "14"
+    assert await get_setting("dry_run") == "false"
+    assert await get_setting("scan_interval_minutes") == "360"
+    assert await get_setting("deletion_check_interval_minutes") == "60"
+    assert await get_setting("log_retention_days") == "14"
 
 
 async def test_init_db_is_idempotent(fresh_db):
     """Calling init_db twice must not raise or corrupt existing data."""
-    await dbmod.set_setting("dry_run", "true")
-    await dbmod.init_db()
-    assert await dbmod.get_setting("dry_run") == "true"
+    await set_setting("dry_run", "true")
+    await init_db()
+    assert await get_setting("dry_run") == "true"
 
 
 async def test_init_db_creates_indexes(fresh_db):
@@ -127,23 +77,23 @@ async def test_init_db_creates_indexes(fresh_db):
 # ─── settings ────────────────────────────────────────────────────────────────
 
 async def test_get_set_plain_setting(fresh_db):
-    await dbmod.set_setting("log_level", "DEBUG")
-    assert await dbmod.get_setting("log_level") == "DEBUG"
+    await set_setting("log_level", "DEBUG")
+    assert await get_setting("log_level") == "DEBUG"
 
 
 async def test_get_missing_setting_returns_empty_string(fresh_db):
-    assert await dbmod.get_setting("nonexistent_key_xyz") == ""
+    assert await get_setting("nonexistent_key_xyz") == ""
 
 
 async def test_set_overwrites_existing_setting(fresh_db):
-    await dbmod.set_setting("log_level", "INFO")
-    await dbmod.set_setting("log_level", "DEBUG")
-    assert await dbmod.get_setting("log_level") == "DEBUG"
+    await set_setting("log_level", "INFO")
+    await set_setting("log_level", "DEBUG")
+    assert await get_setting("log_level") == "DEBUG"
 
 
 async def test_sensitive_setting_encrypted_at_rest(fresh_db):
     """Sensitive values must be stored as 'enc:...' in the DB."""
-    await dbmod.set_setting("emby_api_key", "secret-key-123")
+    await set_setting("emby_api_key", "secret-key-123")
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute(
@@ -157,20 +107,20 @@ async def test_sensitive_setting_encrypted_at_rest(fresh_db):
 
 async def test_sensitive_setting_decrypted_on_read(fresh_db):
     """get_setting must transparently decrypt sensitive values."""
-    await dbmod.set_setting("emby_api_key", "secret-key-123")
-    assert await dbmod.get_setting("emby_api_key") == "secret-key-123"
+    await set_setting("emby_api_key", "secret-key-123")
+    assert await get_setting("emby_api_key") == "secret-key-123"
 
 
 async def test_all_sensitive_keys_are_encrypted(fresh_db):
     """Every key in SENSITIVE_KEYS must be encrypted when stored."""
-    for key in dbmod.SENSITIVE_KEYS:
-        await dbmod.set_setting(key, f"value-for-{key}")
+    for key in SENSITIVE_KEYS:
+        await set_setting(key, f"value-for-{key}")
 
     async with aiosqlite.connect(fresh_db) as db:
-        placeholders = ",".join("?" * len(dbmod.SENSITIVE_KEYS))
+        placeholders = ",".join("?" * len(SENSITIVE_KEYS))
         async with db.execute(
             f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
-            list(dbmod.SENSITIVE_KEYS),
+            list(SENSITIVE_KEYS),
         ) as cur:
             rows = await cur.fetchall()
 
@@ -182,39 +132,39 @@ async def test_all_sensitive_keys_are_encrypted(fresh_db):
 
 async def test_get_bool_setting_true_values(fresh_db):
     for truthy in ("true", "1", "yes", "on"):
-        await dbmod.set_setting("dry_run", truthy)
-        assert await dbmod.get_bool_setting("dry_run") is True, f"Failed for {truthy!r}"
+        await set_setting("dry_run", truthy)
+        assert await get_bool_setting("dry_run") is True, f"Failed for {truthy!r}"
 
 
 async def test_get_bool_setting_false_values(fresh_db):
     for falsy in ("false", "0", "no", "off", ""):
-        await dbmod.set_setting("dry_run", falsy)
-        assert await dbmod.get_bool_setting("dry_run") is False, f"Failed for {falsy!r}"
+        await set_setting("dry_run", falsy)
+        assert await get_bool_setting("dry_run") is False, f"Failed for {falsy!r}"
 
 
 async def test_get_bool_setting_default(fresh_db):
-    assert await dbmod.get_bool_setting("nonexistent", default=True) is True
-    assert await dbmod.get_bool_setting("nonexistent", default=False) is False
+    assert await get_bool_setting("nonexistent", default=True) is True
+    assert await get_bool_setting("nonexistent", default=False) is False
 
 
 async def test_get_int_setting(fresh_db):
-    await dbmod.set_setting("scan_interval_minutes", "120")
-    assert await dbmod.get_int_setting("scan_interval_minutes") == 120
+    await set_setting("scan_interval_minutes", "120")
+    assert await get_int_setting("scan_interval_minutes") == 120
 
 
 async def test_get_int_setting_invalid_returns_default(fresh_db):
-    await dbmod.set_setting("scan_interval_minutes", "not-a-number")
-    assert await dbmod.get_int_setting("scan_interval_minutes", default=42) == 42
+    await set_setting("scan_interval_minutes", "not-a-number")
+    assert await get_int_setting("scan_interval_minutes", default=42) == 42
 
 
 async def test_get_int_setting_missing_returns_default(fresh_db):
-    assert await dbmod.get_int_setting("nonexistent_int", default=99) == 99
+    assert await get_int_setting("nonexistent_int", default=99) == 99
 
 
 # ─── logs ────────────────────────────────────────────────────────────────────
 
 async def test_add_log_persists_entry(fresh_db):
-    await dbmod.add_log("INFO", "test message", "tests")
+    await add_log("INFO", "test message", "tests")
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute(
@@ -226,9 +176,9 @@ async def test_add_log_persists_entry(fresh_db):
 
 
 async def test_add_log_multiple_entries(fresh_db):
-    await dbmod.add_log("INFO", "msg1", "src1")
-    await dbmod.add_log("ERROR", "msg2", "src2")
-    await dbmod.add_log("WARN", "msg3", "src3")
+    await add_log("INFO", "msg1", "src1")
+    await add_log("ERROR", "msg2", "src2")
+    await add_log("WARN", "msg3", "src3")
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute("SELECT COUNT(*) FROM logs") as cur:
@@ -240,10 +190,10 @@ async def test_add_log_multiple_entries(fresh_db):
 # ─── job history ─────────────────────────────────────────────────────────────
 
 async def test_job_run_lifecycle(fresh_db):
-    run_id = await dbmod.add_job_run("test_job")
+    run_id = await add_job_run("test_job")
     assert isinstance(run_id, int) and run_id > 0
 
-    await dbmod.finish_job_run(run_id, "success", "all good")
+    await finish_job_run(run_id, "success", "all good")
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute(
@@ -259,7 +209,7 @@ async def test_job_run_lifecycle(fresh_db):
 
 
 async def test_add_job_run_started_at_is_set(fresh_db):
-    run_id = await dbmod.add_job_run("scan")
+    run_id = await add_job_run("scan")
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute(
@@ -278,9 +228,9 @@ async def test_save_and_get_media_servers(fresh_db):
         "id": "0", "name": "Main", "url": "http://emby:8096",
         "api_key": "abc123", "ext_url": "", "type": "emby", "enabled": True,
     }]
-    await dbmod.save_media_servers(servers)
+    await save_media_servers(servers)
 
-    result = await dbmod.get_media_servers()
+    result = await get_media_servers()
     assert len(result) == 1
     assert result[0]["url"] == "http://emby:8096"
     assert result[0]["api_key"] == "abc123"
@@ -290,7 +240,7 @@ async def test_save_media_servers_encrypts_api_key(fresh_db):
     """media_servers JSON blob must be stored encrypted."""
     servers = [{"id": "0", "name": "Test", "url": "http://emby:8096",
                 "api_key": "supersecret", "type": "emby"}]
-    await dbmod.save_media_servers(servers)
+    await save_media_servers(servers)
 
     async with aiosqlite.connect(fresh_db) as db:
         async with db.execute(
@@ -303,15 +253,15 @@ async def test_save_media_servers_encrypts_api_key(fresh_db):
 
 async def test_media_servers_cache_invalidated_after_save(fresh_db):
     """After save_media_servers, subsequent get_media_servers must reflect new data."""
-    await dbmod.save_media_servers([{"id": "0", "name": "Old", "url": "http://old", "api_key": "k1", "type": "emby"}])
-    assert (await dbmod.get_media_servers())[0]["name"] == "Old"
+    await save_media_servers([{"id": "0", "name": "Old", "url": "http://old", "api_key": "k1", "type": "emby"}])
+    assert (await get_media_servers())[0]["name"] == "Old"
 
-    await dbmod.save_media_servers([{"id": "0", "name": "New", "url": "http://new", "api_key": "k2", "type": "emby"}])
-    assert (await dbmod.get_media_servers())[0]["name"] == "New"
+    await save_media_servers([{"id": "0", "name": "New", "url": "http://new", "api_key": "k2", "type": "emby"}])
+    assert (await get_media_servers())[0]["name"] == "New"
 
 
 async def test_get_media_servers_empty_returns_empty_list(fresh_db):
-    result = await dbmod.get_media_servers()
+    result = await get_media_servers()
     assert result == []
 
 
@@ -319,20 +269,20 @@ async def test_get_media_servers_empty_returns_empty_list(fresh_db):
 
 def test_parse_iso_dt_with_z_suffix():
     from datetime import timezone
-    dt = dbmod.parse_iso_dt("2026-06-20T20:20:51Z")
+    dt = parse_iso_dt("2026-06-20T20:20:51Z")
     assert dt is not None
     assert dt.tzinfo == timezone.utc
 
 
 def test_parse_iso_dt_with_offset():
-    dt = dbmod.parse_iso_dt("2026-06-20T20:20:51+00:00")
+    dt = parse_iso_dt("2026-06-20T20:20:51+00:00")
     assert dt is not None
 
 
 def test_parse_iso_dt_none_returns_none():
-    assert dbmod.parse_iso_dt(None) is None
-    assert dbmod.parse_iso_dt("") is None
+    assert parse_iso_dt(None) is None
+    assert parse_iso_dt("") is None
 
 
 def test_parse_iso_dt_invalid_returns_none():
-    assert dbmod.parse_iso_dt("not-a-date") is None
+    assert parse_iso_dt("not-a-date") is None

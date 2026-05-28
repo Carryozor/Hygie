@@ -78,5 +78,7 @@ __all__ = [
     "get_media_servers", "save_media_servers", "_invalidate_media_servers_cache",
     "_ws_clients", "register_ws", "unregister_ws", "_broadcast",
     "add_log", "add_job_run", "finish_job_run",
+    "get_pending_queue", "get_queued_and_ignored_ids", "get_enabled_libraries",
+    "insert_queue_entry", "mark_notified_detected", "update_queue_status",
     "init_db",
 ]

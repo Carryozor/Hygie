@@ -56,6 +56,8 @@ from .logs import (
     finish_job_run,
 )
 
+from .schema import init_db
+
 __all__ = [
     "DB_PATH", "STATUS_PENDING", "STATUS_DELETED", "STATUS_ERROR",
     "TIMEOUT_SHORT", "TIMEOUT_MEDIUM", "TIMEOUT_LONG",
@@ -67,4 +69,5 @@ __all__ = [
     "get_media_servers", "save_media_servers", "_invalidate_media_servers_cache",
     "_ws_clients", "register_ws", "unregister_ws", "_broadcast",
     "add_log", "add_job_run", "finish_job_run",
+    "init_db",
 ]

@@ -24,7 +24,7 @@ from argon2.exceptions import VerifyMismatchError
 import jwt as _pyjwt
 from jwt.exceptions import InvalidTokenError as JWTError
 
-from .database import DB_PATH
+from .db.utils import DB_PATH
 
 logger = logging.getLogger(__name__)
 

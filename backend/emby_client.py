@@ -14,7 +14,9 @@ from typing import Optional, Tuple, List
 
 import httpx
 
-from .database import get_setting, set_setting, get_media_servers, save_media_servers, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
+from .db.settings_store import get_setting, set_setting
+from .db.media_servers import get_media_servers, save_media_servers
+from .db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
     """Return (url, api_key) for the given server_id.
     Falls back to legacy emby_url/emby_api_key if media_servers is empty.
     """
-    from .database import _decrypt_value
+    from .db.encryption import _decrypt_value
     servers = await get_media_servers()
     for s in servers:
         if str(s.get("id", "")) == str(server_id):
@@ -47,7 +49,7 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
 
 async def get_client_ext_url(server_id: str = "0") -> str:
     """Return the external URL for the given server."""
-    from .database import _decrypt_value
+    from .db.encryption import _decrypt_value
     servers = await get_media_servers()
     for s in servers:
         if str(s.get("id", "")) == str(server_id):

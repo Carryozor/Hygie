@@ -14,7 +14,8 @@ from typing import Optional
 
 import httpx
 
-from .database import get_setting, TIMEOUT_MEDIUM
+from .db.settings_store import get_setting
+from .db.utils import TIMEOUT_MEDIUM
 
 logger = logging.getLogger(__name__)
 

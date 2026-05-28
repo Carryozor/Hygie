@@ -12,7 +12,9 @@ from datetime import timedelta
 
 import aiosqlite
 
-from .database import DB_PATH, add_log, get_bool_setting, get_setting, now_utc
+from .db.utils import DB_PATH, now_utc
+from .db.settings_store import get_setting, get_bool_setting
+from .db.logs import add_log
 from .discord_client import send_notification
 
 logger = logging.getLogger(__name__)

@@ -17,7 +17,8 @@ from typing import List, Optional
 import aiosqlite
 import httpx
 
-from .database import DB_PATH, get_setting, parse_iso_dt, http_retry
+from .db.utils import DB_PATH, parse_iso_dt, http_retry
+from .db.settings_store import get_setting
 
 logger = logging.getLogger(__name__)
 

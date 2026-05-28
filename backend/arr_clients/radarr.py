@@ -4,7 +4,8 @@ from typing import Optional
 
 import httpx
 
-from ..database import get_setting, TIMEOUT_SHORT, TIMEOUT_MEDIUM
+from ..db.settings_store import get_setting
+from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM
 from .shared import _arr_auth, _path_matches
 
 logger = logging.getLogger(__name__)

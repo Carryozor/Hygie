@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .database import DB_PATH, add_log, get_bool_setting, get_int_setting, get_setting
+from .db.utils import DB_PATH
+from .db.settings_store import get_setting, get_bool_setting, get_int_setting
+from .db.logs import add_log
 
 logger = logging.getLogger(__name__)
 

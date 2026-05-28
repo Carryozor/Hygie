@@ -4,7 +4,8 @@ from typing import Optional, List
 
 import httpx
 
-from ..database import get_setting, DB_PATH, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from ..db.settings_store import get_setting
+from ..db.utils import DB_PATH, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 import aiosqlite
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,7 @@
 """Shared helpers used by Radarr, Sonarr, and Seerr clients."""
 import logging
 
-from ..database import get_setting
+from ..db.settings_store import get_setting
 
 logger = logging.getLogger(__name__)
 

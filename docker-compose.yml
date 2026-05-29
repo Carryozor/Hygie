@@ -14,8 +14,8 @@ services:
       # 2. Generate a key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # Never hardcode the key here — use the .env file instead.
       - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
-    mem_limit: 512m
-    cpus: '1.0'
+    mem_limit: 1g     # 512m is too tight for large libraries; 1-2g recommended in production
+    cpus: '2.0'
     healthcheck:
       test: ["CMD", "python3", "/app/backend/healthcheck.py"]
       interval: 30s

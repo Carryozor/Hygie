@@ -22,13 +22,32 @@ async def client(tmp_path_factory):
     import backend.db.media_servers as _db_ms
     import backend.db.schema as _db_schema
     import backend.db.logs as _db_logs
+    import backend.db.repositories as _db_repos
+    import backend.routers.stats as _r_stats
+    import backend.routers.metrics as _r_metrics
+    import backend.routers.calendar as _r_calendar
+    import backend.routers.expert_rules as _r_expert_rules
+    import backend.routers.ignored as _r_ignored
+    import backend.routers.libraries as _r_libraries
+    import backend.routers.logs as _r_logs
+    import backend.routers.media as _r_media
+    import backend.routers.seerr_rules as _r_seerr
+    import backend.routers.storage as _r_storage
+    import backend.routers.unmonitored as _r_unmonitored
+
     db_path = str(tmp_path_factory.mktemp("routes") / "route_test.db")
     _orig_db = _db_utils.DB_PATH
-    _db_utils.DB_PATH = db_path
-    _db_ss.DB_PATH = db_path
-    _db_ms.DB_PATH = db_path
-    _db_schema.DB_PATH = db_path
-    _db_logs.DB_PATH = db_path
+
+    # Patch every module that holds its own DB_PATH binding (from ..db.utils import DB_PATH
+    # creates a local copy; patching _db_utils alone is not enough after other tests have
+    # already imported those modules).
+    _all_db_modules = [
+        _db_utils, _db_ss, _db_ms, _db_schema, _db_logs, _db_repos,
+        _r_stats, _r_metrics, _r_calendar, _r_expert_rules, _r_ignored,
+        _r_libraries, _r_logs, _r_media, _r_seerr, _r_storage, _r_unmonitored,
+    ]
+    for mod in _all_db_modules:
+        mod.DB_PATH = db_path
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
     _db_ss._settings_cache.clear()
@@ -40,11 +59,9 @@ async def client(tmp_path_factory):
     importlib.reload(main_mod)
     # Fast Argon2 params — correct output, ~10 ms instead of ~170 ms per hash
     auth_mod._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
-    _db_utils.DB_PATH = db_path  # reload may re-bind DB_PATH from env
-    _db_ss.DB_PATH = db_path
-    _db_ms.DB_PATH = db_path
-    _db_schema.DB_PATH = db_path
-    _db_logs.DB_PATH = db_path
+    # Re-patch after reload (reload may re-bind from env)
+    for mod in _all_db_modules:
+        mod.DB_PATH = db_path
 
     app = main_mod.app
     async with main_mod.lifespan(app):
@@ -52,11 +69,8 @@ async def client(tmp_path_factory):
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
 
-    _db_utils.DB_PATH = _orig_db
-    _db_ss.DB_PATH = _orig_db
-    _db_ms.DB_PATH = _orig_db
-    _db_schema.DB_PATH = _orig_db
-    _db_logs.DB_PATH = _orig_db
+    for mod in _all_db_modules:
+        mod.DB_PATH = _orig_db
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

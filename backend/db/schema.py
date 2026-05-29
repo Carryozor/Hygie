@@ -451,27 +451,31 @@ async def _init_db_sqlite():
                 )
                 await db.commit()
 
-        # 8. Migrate interval settings: hours → minutes (idempotent)
+        # 8. Migrate interval settings: hours → minutes — runs once, then deletes the old key.
+        # The old condition `existing[0] == "60"` was a bug: it matched the default value and
+        # overwrote a user-set "60" (1h) with hours*60 on every restart.
         async with db.execute("SELECT value FROM settings WHERE key='scan_interval_hours'") as cur:
             row = await cur.fetchone()
         if row and row[0] and row[0].strip().isdigit():
             async with db.execute("SELECT value FROM settings WHERE key='scan_interval_minutes'") as cur2:
                 existing = await cur2.fetchone()
-            if not existing or existing[0] == "360":
+            if not existing:
                 await db.execute(
                     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                     ("scan_interval_minutes", str(int(row[0]) * 60))
                 )
+            await db.execute("DELETE FROM settings WHERE key='scan_interval_hours'")
         async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_hours'") as cur:
             row = await cur.fetchone()
         if row and row[0] and row[0].strip().isdigit():
             async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_minutes'") as cur2:
                 existing = await cur2.fetchone()
-            if not existing or existing[0] == "60":
+            if not existing:
                 await db.execute(
                     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                     ("deletion_check_interval_minutes", str(int(row[0]) * 60))
                 )
+            await db.execute("DELETE FROM settings WHERE key='deletion_check_interval_hours'")
         await db.commit()
 
         # 9a. One-time: purge per-item "Ignoré (non demandé sur Seerr)" log spam

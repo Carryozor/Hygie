@@ -1,8 +1,9 @@
-"""Prometheus /metrics endpoint (no auth — scrape-friendly)."""
+"""Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
 import aiosqlite
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
+from ..auth import require_auth
 from ..db.utils import DB_PATH
 
 router = APIRouter(tags=["metrics"])
@@ -55,3 +56,32 @@ async def prometheus_metrics():
         "",
     ]
     return "\n".join(lines)
+
+
+@router.get("/api/metrics")
+async def api_metrics(user: str = Depends(require_auth)):
+    """JSON metrics endpoint with per-library breakdown for the current month."""
+    from datetime import datetime, timezone
+
+    current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT library_id, SUM(total_deleted), SUM(space_freed_bytes) "
+            "FROM stats_history "
+            "WHERE month = ? "
+            "GROUP BY library_id",
+            (current_month,),
+        )
+        rows = await cur.fetchall()
+
+    by_library = [
+        {
+            "library_id": row[0],
+            "deleted": row[1] or 0,
+            "space_freed_bytes": row[2] or 0,
+        }
+        for row in rows
+    ]
+
+    return {"by_library": by_library}

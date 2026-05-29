@@ -200,9 +200,12 @@ _TABLES = [
             total_deleted INTEGER DEFAULT 0,
             total_scanned INTEGER DEFAULT 0,
             space_freed_bytes INTEGER DEFAULT 0,
-            month TEXT NOT NULL
+            month TEXT NOT NULL,
+            library_id INTEGER
         )""",
-        [],
+        [
+            ("library_id", "INTEGER"),
+        ],
     ),
     (
         "rate_limit",

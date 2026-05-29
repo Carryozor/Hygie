@@ -256,11 +256,13 @@ async def _delete_media(
 
         try:
             month = now_utc().strftime("%Y-%m")
+            lib_id = row.get("library_id") or None
             async with aiosqlite.connect(DB_PATH) as _db:
                 await _db.execute(
-                    "INSERT INTO stats_history (ts, total_deleted, total_scanned, space_freed_bytes, month) "
-                    "VALUES (?, 1, 0, 0, ?)",
-                    (now_utc().isoformat(), month),
+                    "INSERT INTO stats_history "
+                    "(ts, total_deleted, total_scanned, space_freed_bytes, month, library_id) "
+                    "VALUES (?, 1, 0, 0, ?, ?)",
+                    (now_utc().isoformat(), month, lib_id),
                 )
                 await _db.commit()
         except Exception as e:

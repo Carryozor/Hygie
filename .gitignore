@@ -38,3 +38,4 @@ Thumbs.db
 # Frontend build output and dependencies
 frontend/dist/
 frontend/vue/node_modules/
+data-local/

@@ -1,0 +1,29 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const routes = [
+  { path: '/setup',       name: 'setup',     component: () => import('@/views/SetupView.vue'),    meta: { public: true } },
+  { path: '/login',       name: 'login',     component: () => import('@/views/LoginView.vue'),    meta: { public: true } },
+  { path: '/',            name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+  { path: '/library/:id', name: 'library',   component: () => import('@/views/LibraryView.vue')  },
+  { path: '/queue',       name: 'queue',     component: () => import('@/views/QueueView.vue')     },
+  { path: '/rules',       name: 'rules',     component: () => import('@/views/RulesView.vue')     },
+  { path: '/settings',    name: 'settings',  component: () => import('@/views/SettingsView.vue')  },
+  { path: '/logs',        name: 'logs',      component: () => import('@/views/LogsView.vue')      },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+})
+
+router.beforeEach(async to => {
+  if (to.meta.public) return true
+  const auth = useAuthStore()
+  const setup = await auth.checkSetup()
+  if (!setup) return { name: 'setup' }
+  if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
+  return true
+})
+
+export default router

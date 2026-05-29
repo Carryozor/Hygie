@@ -6,7 +6,7 @@
       <h2 class="font-semibold">Règles</h2>
       <button
         class="bg-[var(--accent)] hover:opacity-90 rounded-lg px-4 py-2 text-sm font-medium transition-opacity"
-        @click="showCreate = true"
+        disabled
       >
         + Nouvelle règle
       </button>
@@ -18,6 +18,4 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-const showCreate = ref(false)
 </script>

@@ -1,7 +1,7 @@
 <!-- frontend/vue/src/views/SettingsView.vue -->
 <template>
   <div class="max-w-2xl space-y-8">
-    <div v-if="saved" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm">
+    <div v-if="saved" role="status" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm">
       Paramètres sauvegardés.
     </div>
 

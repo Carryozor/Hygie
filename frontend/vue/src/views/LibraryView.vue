@@ -1,6 +1,10 @@
 <!-- frontend/vue/src/views/LibraryView.vue -->
 <template>
-  <div class="space-y-6" v-if="library">
+  <div v-if="loading" class="text-[var(--muted)] text-sm p-8">Chargement...</div>
+  <div v-else-if="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
+    {{ error }}
+  </div>
+  <div v-else-if="library" class="space-y-6">
     <div class="flex items-center gap-4">
       <h2 class="font-bold text-xl">{{ library.name }}</h2>
       <span class="text-xs text-[var(--muted)] bg-[var(--bg3)] px-2 py-1 rounded">{{ library.deletion_unit }}</span>
@@ -27,14 +31,24 @@ import MediaTable from '@/components/media/MediaTable.vue'
 const route   = useRoute()
 const servers = useServersStore()
 const items   = ref([])
+const loading = ref(false)
+const error   = ref('')
 
 const library = computed(() => servers.libraries.find(l => String(l.id) === String(route.params.id)))
 const queueCount   = computed(() => items.value.filter(i => i.status === 'pending').length)
 const deletedCount = computed(() => items.value.filter(i => i.status === 'deleted').length)
 
 onMounted(async () => {
-  if (!servers.libraries.length) await servers.fetch()
-  const { data } = await api.get('/media', { params: { library_id: route.params.id, limit: 200 } })
-  items.value = data.items || data || []
+  loading.value = true
+  error.value = ''
+  try {
+    if (!servers.libraries.length) await servers.fetch()
+    const { data } = await api.get('/media', { params: { library_id: route.params.id, limit: 200 } })
+    items.value = data.items || data || []
+  } catch {
+    error.value = 'Impossible de charger la bibliothèque.'
+  } finally {
+    loading.value = false
+  }
 })
 </script>

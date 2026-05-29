@@ -92,6 +92,19 @@ async def test_notifications_insert_and_query(db_path):
             row = await cur.fetchone()
         assert row is None
 
+        # Verify INSERT OR IGNORE prevents duplicates
+        await db.execute(
+            "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+            (media_id, "7d")
+        )
+        await db.commit()
+        async with db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE media_id=? AND threshold=?",
+            (media_id, "7d")
+        ) as cur:
+            count_row = await cur.fetchone()
+        assert count_row[0] == 1
+
 
 @pytest.mark.asyncio
 async def test_notifications_cascade_delete(db_path):

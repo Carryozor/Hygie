@@ -81,16 +81,17 @@ async def mark_notified_detected(emby_id: str, *, db_path: str) -> None:
 
 
 async def update_queue_status(item_id: int, status: str, *, db_path: str) -> None:
-    """Update status and record a 'now' notification for a media_queue row."""
+    """Update status and record a 'now' notification only for deletion statuses."""
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "UPDATE media_queue SET status=? WHERE id=?",
             (status, item_id),
         )
-        await db.execute(
-            "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
-            (item_id, "now"),
-        )
+        if status in ("deleted", "deleting"):
+            await db.execute(
+                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                (item_id, "now"),
+            )
         await db.commit()
 
 

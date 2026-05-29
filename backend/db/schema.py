@@ -233,7 +233,8 @@ _TABLES = [
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             media_id    INTEGER NOT NULL REFERENCES media_queue(id) ON DELETE CASCADE,
             threshold   TEXT    NOT NULL,
-            sent_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+            sent_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            UNIQUE (media_id, threshold)
         )""",
         [],
     ),

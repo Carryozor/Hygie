@@ -227,13 +227,23 @@ _TABLES = [
         )""",
         [],
     ),
+    (
+        "notifications",
+        """CREATE TABLE IF NOT EXISTS notifications (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            media_id    INTEGER NOT NULL REFERENCES media_queue(id) ON DELETE CASCADE,
+            threshold   TEXT    NOT NULL,
+            sent_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )""",
+        [],
+    ),
 ]
 
 
 _KNOWN_TABLES = frozenset({
     "settings", "users", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
-    "rate_limit", "expert_rules",
+    "rate_limit", "expert_rules", "notifications",
     # Legacy names used during migration
     "logs_legacy", "job_history_legacy",
 })
@@ -386,6 +396,9 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)"
         )
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)

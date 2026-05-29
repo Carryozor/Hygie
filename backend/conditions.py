@@ -141,12 +141,16 @@ async def _update_delete_at_if_pending(emby_id: str, lib: dict, grace_days: int,
                     new_delete_at = detected_at_dt + timedelta(days=effective_grace)
                     old_dt = parse_iso_dt(row_delete_at) if row_delete_at else None
                     changed = old_dt is None or abs((new_delete_at - old_dt).total_seconds()) > 3600
-                    sql = (
-                        "UPDATE media_queue SET delete_at=?, notified_thresholds='[]' WHERE id=?"
-                        if changed else
-                        "UPDATE media_queue SET delete_at=? WHERE id=?"
+                    await db.execute(
+                        "UPDATE media_queue SET delete_at=? WHERE id=?",
+                        (new_delete_at.isoformat(), row_id),
                     )
-                    await db.execute(sql, (new_delete_at.isoformat(), row_id))
+                    if changed:
+                        # Reset threshold notifications so they fire again at the new deadline
+                        await db.execute(
+                            "DELETE FROM notifications WHERE media_id=? AND threshold NOT IN ('detected','now')",
+                            (row_id,),
+                        )
                     await db.commit()
                     if changed:
                         logger.debug(

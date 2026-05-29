@@ -66,21 +66,30 @@ async def insert_queue_entry(entry: dict, *, db_path: str) -> None:
 
 
 async def mark_notified_detected(emby_id: str, *, db_path: str) -> None:
-    """Set notified_detected=1 for the pending queue row with this emby_id."""
+    """Record a 'detected' notification for the pending queue row with this emby_id."""
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "UPDATE media_queue SET notified_detected=1 WHERE emby_id=? AND status='pending'",
-            (emby_id,),
-        )
-        await db.commit()
+        async with db.execute(
+            "SELECT id FROM media_queue WHERE emby_id=? AND status='pending'", (emby_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row is not None:
+            await db.execute(
+                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                (row[0], "detected"),
+            )
+            await db.commit()
 
 
 async def update_queue_status(item_id: int, status: str, *, db_path: str) -> None:
-    """Update status and set notified_now=1 for a media_queue row."""
+    """Update status and record a 'now' notification for a media_queue row."""
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            "UPDATE media_queue SET status=?, notified_now=1 WHERE id=?",
+            "UPDATE media_queue SET status=? WHERE id=?",
             (status, item_id),
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+            (item_id, "now"),
         )
         await db.commit()
 

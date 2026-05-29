@@ -63,10 +63,15 @@ async def test_mark_notified_detected(db_path):
     await mark_notified_detected("e1", db_path=db_path)
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
-            "SELECT notified_detected FROM media_queue WHERE emby_id=?", ("e1",)
+            "SELECT id FROM media_queue WHERE emby_id=?", ("e1",)
         ) as cur:
-            row = await cur.fetchone()
-    assert row[0] == 1
+            mq_row = await cur.fetchone()
+        async with db.execute(
+            "SELECT 1 FROM notifications WHERE media_id=? AND threshold='detected'",
+            (mq_row[0],),
+        ) as cur:
+            notif_row = await cur.fetchone()
+    assert notif_row is not None
 
 
 @pytest.mark.asyncio
@@ -77,11 +82,16 @@ async def test_update_queue_status(db_path):
     await update_queue_status(item_id, "deleted", db_path=db_path)
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
-            "SELECT status, notified_now FROM media_queue WHERE id=?", (item_id,)
+            "SELECT status FROM media_queue WHERE id=?", (item_id,)
         ) as cur:
             row = await cur.fetchone()
+        async with db.execute(
+            "SELECT 1 FROM notifications WHERE media_id=? AND threshold='now'",
+            (item_id,),
+        ) as cur:
+            notif_row = await cur.fetchone()
     assert row[0] == "deleted"
-    assert row[1] == 1
+    assert notif_row is not None
 
 
 @pytest.mark.asyncio

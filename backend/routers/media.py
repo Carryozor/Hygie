@@ -120,8 +120,12 @@ async def delete_now(
     if ok:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
-                "UPDATE media_queue SET status='deleted', notified_now=1 WHERE id=?",
+                "UPDATE media_queue SET status='deleted' WHERE id=?",
                 (media_id,),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                (media_id, "now"),
             )
             await db.commit()
         return {"status": "deleted"}
@@ -179,8 +183,12 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
             if await _delete_media(row, dry_run):
                 async with aiosqlite.connect(DB_PATH) as db:
                     await db.execute(
-                        "UPDATE media_queue SET status='deleted', notified_now=1 WHERE id=?",
+                        "UPDATE media_queue SET status='deleted' WHERE id=?",
                         (row["id"],),
+                    )
+                    await db.execute(
+                        "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                        (row["id"], "now"),
                     )
                     await db.commit()
                 success += 1

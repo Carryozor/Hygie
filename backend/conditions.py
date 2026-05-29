@@ -15,9 +15,8 @@ import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional
 
-import aiosqlite
-
 from .db.utils import DB_PATH, now_utc, parse_iso_dt
+from .db.engine import get_db
 from .db.settings_store import get_bool_setting
 from .db.logs import add_log
 from .arr_clients import (
@@ -113,28 +112,29 @@ async def _get_seerr_grace(
     """Per-user grace days override (from seerr_user_rules)."""
     if not seerr_user_id:
         return default_grace
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
+    async with get_db() as db:
+        row = await db.fetch_one(
             "SELECT grace_days FROM seerr_user_rules "
             "WHERE seerr_user_id=? AND library_id=? AND enabled=1",
             (seerr_user_id, library_id),
-        ) as cur:
-            row = await cur.fetchone()
-            return row[0] if row else default_grace
+        )
+        return row["grace_days"] if row else default_grace
 
 
 async def _update_delete_at_if_pending(emby_id: str, lib: dict, grace_days: int, title: str):
     """Recalculate delete_at = detected_at + grace_days for an item already in queue."""
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
+        async with get_db() as db:
+            row = await db.fetch_one(
                 "SELECT id, detected_at, seerr_user_id, delete_at FROM media_queue "
                 "WHERE emby_id=? AND status='pending'",
                 (emby_id,),
-            ) as cur:
-                row = await cur.fetchone()
+            )
             if row:
-                row_id, row_detected_at, row_seerr_user_id, row_delete_at = row
+                row_id = row["id"]
+                row_detected_at = row["detected_at"]
+                row_seerr_user_id = row["seerr_user_id"]
+                row_delete_at = row["delete_at"]
                 detected_at_dt = parse_iso_dt(row_detected_at) if row_detected_at else None
                 if detected_at_dt:
                     effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
@@ -274,21 +274,23 @@ async def _evaluate_item(
             await _update_delete_at_if_pending(emby_id, lib, grace_days, title)
             return None
     else:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
+        async with get_db() as db:
+            existing = await db.fetch_one(
                 "SELECT id, status, detected_at, seerr_user_id FROM media_queue WHERE emby_id=?",
                 (emby_id,),
-            ) as cur:
-                existing = await cur.fetchone()
+            )
         if existing:
-            row_id, row_status, row_detected_at, row_seerr_user_id = existing
+            row_id = existing["id"]
+            row_status = existing["status"]
+            row_detected_at = existing["detected_at"]
+            row_seerr_user_id = existing["seerr_user_id"]
             if row_status == "pending" and row_detected_at:
                 try:
                     detected_at_dt = parse_iso_dt(row_detected_at)
                     if detected_at_dt:
                         effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
                         new_delete_at = detected_at_dt + timedelta(days=effective_grace)
-                        async with aiosqlite.connect(DB_PATH) as db2:
+                        async with get_db() as db2:
                             await db2.execute(
                                 "UPDATE media_queue SET delete_at=? WHERE id=?",
                                 (new_delete_at.isoformat(), row_id),
@@ -302,10 +304,9 @@ async def _evaluate_item(
         if emby_id in ignored_ids:
             return None
     else:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)) as cur:
-                if await cur.fetchone():
-                    return None
+        async with get_db() as db:
+            if await db.fetch_one("SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)):
+                return None
 
     # Seerr lookup
     if seerr_cache is not None:

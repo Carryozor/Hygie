@@ -1,11 +1,11 @@
 """Logs — list with filters."""
 from typing import Optional
 
-import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
@@ -31,19 +31,17 @@ async def list_logs(
         params.append(f"%{search}%")
     where_clause = f"WHERE {' AND '.join(where)}" if where else ""
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        rows = await db.fetch_all(
             f"SELECT * FROM logs {where_clause} ORDER BY ts DESC LIMIT ?",
             params + [limit],
-        ) as cur:
-            rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+        )
+    return rows
 
 
 @router.delete("")
 async def clear_logs(user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute("DELETE FROM logs")
         await db.commit()
     return {"status": "cleared"}

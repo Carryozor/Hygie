@@ -2,12 +2,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/ignored", tags=["ignored"])
 
@@ -35,14 +35,12 @@ async def list_ignored(
         where = "WHERE title LIKE ? OR reason LIKE ?"
         params = [f"%{search}%", f"%{search}%"]
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        rows = await db.fetch_all(
             f"SELECT * FROM ignored_media {where} ORDER BY ignored_at DESC LIMIT ?",
             params + [limit],
-        ) as cur:
-            rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+        )
+    return rows
 
 
 @router.post("")
@@ -57,7 +55,7 @@ async def add_ignored(
             datetime.now(timezone.utc) + timedelta(days=body.expire_days)
         ).isoformat()
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO ignored_media
                (emby_id, title, media_type, library_id, library_name, poster_url,
@@ -90,7 +88,7 @@ async def add_ignored(
 
 @router.delete("/{ignored_id}")
 async def remove_ignored(ignored_id: int, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute("DELETE FROM ignored_media WHERE id=?", (ignored_id,))
         await db.commit()
     return {"status": "removed"}
@@ -107,21 +105,17 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
     from ..conditions import _get_poster_url
     from ..db.utils import now_utc
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        item = await db.fetch_one(
             "SELECT * FROM ignored_media WHERE id=?", (ignored_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Entrée introuvable")
-        item = dict(row)
+        )
+        if not item:
+            raise HTTPException(404, "Entrée introuvable")
 
         # Check if already in queue (by emby_id)
-        async with db.execute(
+        existing = await db.fetch_one(
             "SELECT id FROM media_queue WHERE emby_id=?", (item["emby_id"],)
-        ) as cur:
-            existing = await cur.fetchone()
+        )
 
         if existing:
             # Just remove from ignored, already in queue
@@ -132,12 +126,11 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
         # Find default grace days from any matching library
         grace_days = 7
         if item.get("library_id"):
-            async with db.execute(
+            lib_row = await db.fetch_one(
                 "SELECT grace_days FROM libraries WHERE id=?", (item["library_id"],)
-            ) as cur:
-                lib_row = await cur.fetchone()
-                if lib_row:
-                    grace_days = lib_row[0]
+            )
+            if lib_row:
+                grace_days = lib_row["grace_days"]
 
         delete_at = (now_utc() + timedelta(days=grace_days)).isoformat()
         detected_at = now_utc().isoformat()

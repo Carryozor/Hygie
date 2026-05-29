@@ -3,12 +3,12 @@ import asyncio
 import logging
 import time
 
-import aiosqlite
 import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH, STATUS_PENDING, TIMEOUT_MEDIUM
+from ..db.engine import get_db
 from ..db.settings_store import get_setting
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
@@ -124,27 +124,26 @@ async def _fetch_storage_data() -> dict:
         "reclaimable_count": 0,
     }
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with get_db() as db:
             # Status counts
-            async with db.execute(
-                "SELECT status, COUNT(*) FROM media_queue GROUP BY status"
-            ) as cur:
-                for status, cnt in await cur.fetchall():
-                    if status in queue:
-                        queue[status] = cnt
+            status_rows = await db.fetch_all(
+                "SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status"
+            )
+            for r in status_rows:
+                if r["status"] in queue:
+                    queue[r["status"]] = r["cnt"]
 
             # Excluded (ignored)
-            async with db.execute("SELECT COUNT(*) FROM ignored_media") as cur:
-                row = await cur.fetchone()
-                queue["excluded"] = row[0] if row else 0
+            excl_row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
+            queue["excluded"] = excl_row["cnt"] if excl_row else 0
 
             # Reclaimable: sum sizeOnDisk for pending movies still in Radarr
             if radarr_movies_by_id:
-                async with db.execute(
+                radarr_rows = await db.fetch_all(
                     "SELECT radarr_id FROM media_queue "
                     "WHERE status='pending' AND radarr_id IS NOT NULL"
-                ) as cur:
-                    pending_radarr_ids = [row[0] for row in await cur.fetchall()]
+                )
+                pending_radarr_ids = [r["radarr_id"] for r in radarr_rows]
 
                 reclaimable = 0
                 count_reclaimable = 0

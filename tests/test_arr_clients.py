@@ -16,12 +16,14 @@ async def mock_arr_config(monkeypatch, tmp_path):
     import backend.db.media_servers as _db_ms
     import backend.db.schema as _db_schema
     import backend.db.logs as _db_logs
+    import backend.db.engine as _db_engine
     db_path = str(tmp_path / "arr_test.db")
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
     monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
     _db_ss._settings_cache.clear()

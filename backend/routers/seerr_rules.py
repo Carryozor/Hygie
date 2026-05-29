@@ -3,12 +3,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 from ..arr_clients import seerr_get_users
 
 router = APIRouter(prefix="/api/seerr-rules", tags=["seerr_rules"])
@@ -39,19 +39,17 @@ async def get_seerr_users(user: str = Depends(require_auth)):
 
 @router.get("")
 async def list_rules(user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        rows = await db.fetch_all(
             "SELECT * FROM seerr_user_rules ORDER BY seerr_username, library_id"
-        ) as cur:
-            rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+        )
+    return rows
 
 
 @router.post("")
 async def create_rule(body: RuleBody, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
+    async with get_db() as db:
+        new_id = await db.execute(
             """INSERT INTO seerr_user_rules
                (seerr_user_id, seerr_username, library_id, grace_days, enabled,
                 discord_id)
@@ -66,12 +64,12 @@ async def create_rule(body: RuleBody, user: str = Depends(require_auth)):
             ),
         )
         await db.commit()
-        return {"id": cur.lastrowid}
+        return {"id": new_id}
 
 
 @router.put("/{rule_id}")
 async def update_rule(rule_id: int, body: RuleBody, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "UPDATE seerr_user_rules SET grace_days=?, enabled=?, discord_id=? WHERE id=?",
             (body.grace_days, int(body.enabled), body.discord_id, rule_id),
@@ -82,7 +80,7 @@ async def update_rule(rule_id: int, body: RuleBody, user: str = Depends(require_
 
 @router.delete("/{rule_id}")
 async def delete_rule(rule_id: int, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute("DELETE FROM seerr_user_rules WHERE id=?", (rule_id,))
         await db.commit()
     return {"status": "deleted"}
@@ -92,14 +90,12 @@ async def delete_rule(rule_id: int, user: str = Depends(require_auth)):
 @router.get("/discord-mappings")
 async def get_discord_mappings(user: str = Depends(require_auth)):
     """List all known Seerr user → Discord ID mappings (one per user)."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        rows = await db.fetch_all(
             "SELECT DISTINCT seerr_user_id, seerr_username, discord_id "
             "FROM seerr_user_rules ORDER BY seerr_username"
-        ) as cur:
-            rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+        )
+    return rows
 
 
 @router.post("/discord-mappings")
@@ -107,13 +103,13 @@ async def save_discord_mapping(
     body: DiscordMappingBody, user: str = Depends(require_auth)
 ):
     """Set the Discord ID for a Seerr user (applies to all libraries)."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         # Check if rows already exist for this user
-        async with db.execute(
-            "SELECT COUNT(*) FROM seerr_user_rules WHERE CAST(seerr_user_id AS TEXT)=CAST(? AS TEXT)",
+        count_row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM seerr_user_rules WHERE CAST(seerr_user_id AS TEXT)=CAST(? AS TEXT)",
             (body.seerr_user_id,),
-        ) as cur:
-            count = (await cur.fetchone())[0]
+        )
+        count = count_row["cnt"] if count_row else 0
 
         if count > 0:
             # Update discord_id on all existing rows for this user

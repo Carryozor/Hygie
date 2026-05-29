@@ -10,10 +10,10 @@ import logging
 from datetime import timedelta
 from typing import Optional
 
-import aiosqlite
 import httpx
 
 from .db.utils import DB_PATH, now_utc, parse_iso_dt
+from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_log
@@ -111,15 +111,13 @@ async def _restore_posters_for_removed(
     """Restore original TMDB poster for items removed from the collection."""
     if not removed_ids:
         return
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with get_db() as db:
         for emby_id in removed_ids:
             try:
-                async with db.execute(
+                row = await db.fetch_one(
                     "SELECT poster_url FROM media_queue WHERE emby_id=?", (emby_id,)
-                ) as cur:
-                    row = await cur.fetchone()
-                poster_url = dict(row)["poster_url"] if row else ""
+                )
+                poster_url = row["poster_url"] if row else ""
                 if not poster_url or not poster_url.startswith("http"):
                     continue
                 pr = await client.get(poster_url, follow_redirects=True)
@@ -234,14 +232,12 @@ async def sync_emby_collection():
 
     cutoff = now_utc() + timedelta(days=days)
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        wanted = await db.fetch_all(
             "SELECT emby_id, title, delete_at, poster_url FROM media_queue "
             "WHERE status='pending' AND delete_at <= ?",
             (cutoff.isoformat(),),
-        ) as cur:
-            wanted = [dict(r) for r in await cur.fetchall()]
+        )
 
     wanted_ids = {w["emby_id"] for w in wanted}
 

@@ -16,7 +16,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import aiosqlite
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from argon2 import PasswordHasher
@@ -25,6 +24,7 @@ import jwt as _pyjwt
 from jwt.exceptions import InvalidTokenError as JWTError
 
 from .db.utils import DB_PATH
+from .db.engine import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -119,14 +119,13 @@ async def require_auth(
 
 # ─── User management ──────────────────────────────────────────────────────────
 async def user_exists() -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM users") as cur:
-            row = await cur.fetchone()
-            return (row[0] or 0) > 0
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM users")
+        return (row["cnt"] or 0) > 0
 
 
 async def create_user(username: str, password: str):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
             (username, hash_password(password), datetime.now(timezone.utc).isoformat()),
@@ -135,17 +134,14 @@ async def create_user(username: str, password: str):
 
 
 async def get_user(username: str) -> Optional[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        return await db.fetch_one(
             "SELECT * FROM users WHERE username=?", (username,)
-        ) as cur:
-            row = await cur.fetchone()
-            return dict(row) if row else None
+        )
 
 
 async def update_password(username: str, new_password: str):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "UPDATE users SET password_hash=? WHERE username=?",
             (hash_password(new_password), username),

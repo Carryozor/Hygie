@@ -1,10 +1,10 @@
 """Calendar — upcoming deletions grouped by date."""
 from collections import defaultdict
-import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH, parse_iso_dt
+from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -15,18 +15,16 @@ async def calendar(
     days_ahead: int = Query(90, ge=1, le=365),
 ):
     """Return pending deletions grouped by day."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        rows = await db.fetch_all(
             "SELECT id, title, media_type, library_name, delete_at, poster_url, "
             "seerr_username FROM media_queue WHERE status='pending' "
             "ORDER BY delete_at ASC"
-        ) as cur:
-            rows = await cur.fetchall()
+        )
 
     grouped: dict = defaultdict(list)
-    for row in rows:
-        d = dict(row)
+    for d in rows:
+        d = dict(d)
         dt = parse_iso_dt(d.get("delete_at"))
         if not dt:
             continue

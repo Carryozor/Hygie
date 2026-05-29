@@ -362,10 +362,11 @@ async def _ensure_columns(db, table: str, expected: list):
 # ─── Schema & migrations ──────────────────────────────────────────────────────
 async def _init_db_sqlite():
     """SQLite schema init — original implementation."""
-    db_dir = os.path.dirname(DB_PATH)
+    from .engine import SQLITE_PATH as _SQLITE_PATH
+    db_dir = os.path.dirname(_SQLITE_PATH)
     if db_dir:  # skip for in-memory (:memory:) or bare filenames
         os.makedirs(db_dir, exist_ok=True)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(_SQLITE_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -495,7 +496,7 @@ async def _init_db_sqlite():
                 logger.info(f"Marked {cur.rowcount} orphaned job(s) as interrupted")
         await db.commit()
 
-    logger.info(f"Database initialized: {DB_PATH}")
+    logger.info(f"Database initialized: {_SQLITE_PATH}")
 
 
 async def _init_db_mariadb() -> None:

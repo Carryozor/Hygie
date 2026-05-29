@@ -1,9 +1,9 @@
 """Global statistics endpoint."""
-import aiosqlite
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -11,36 +11,36 @@ router = APIRouter(prefix="/api/stats", tags=["stats"])
 @router.get("/global")
 async def global_stats(user: str = Depends(require_auth)):
     """Global lifetime statistics for the dashboard."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT COALESCE(SUM(total_deleted),0) FROM stats_history")
-        from_history = (await cur.fetchone())[0]
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT COALESCE(SUM(total_deleted),0) AS s FROM stats_history")
+        from_history = row["s"] if row else 0
 
-        cur = await db.execute("SELECT COUNT(*) FROM media_queue WHERE status='deleted'")
-        in_queue = (await cur.fetchone())[0]
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'")
+        in_queue = row["cnt"] if row else 0
 
         total_deleted = max(from_history, in_queue)
 
-        cur = await db.execute(
-            "SELECT month, SUM(total_deleted) FROM stats_history "
+        by_month_rows = await db.fetch_all(
+            "SELECT month, SUM(total_deleted) AS deleted FROM stats_history "
             "GROUP BY month ORDER BY month DESC LIMIT 12"
         )
-        by_month = [{"month": r[0], "deleted": r[1]} for r in await cur.fetchall()]
+        by_month = [{"month": r["month"], "deleted": r["deleted"]} for r in by_month_rows]
 
-        cur = await db.execute("SELECT status, COUNT(*) FROM media_queue GROUP BY status")
-        queue_counts = {r[0]: r[1] for r in await cur.fetchall()}
+        queue_rows = await db.fetch_all("SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status")
+        queue_counts = {r["status"]: r["cnt"] for r in queue_rows}
 
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type IN ('scan','scan_library')"
+        row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM job_history WHERE job_type IN ('scan','scan_library')"
         )
-        total_scans = (await cur.fetchone())[0]
+        total_scans = row["cnt"] if row else 0
 
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type='deletion_check'"
+        row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM job_history WHERE job_type='deletion_check'"
         )
-        total_checks = (await cur.fetchone())[0]
+        total_checks = row["cnt"] if row else 0
 
-        cur = await db.execute("SELECT COUNT(*) FROM ignored_media")
-        total_ignored = (await cur.fetchone())[0]
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
+        total_ignored = row["cnt"] if row else 0
 
     return {
         "total_deleted": total_deleted,

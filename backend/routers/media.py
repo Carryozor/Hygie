@@ -3,12 +3,12 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
+from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 from ..deletion import _delete_media
@@ -43,12 +43,9 @@ class BulkAction(BaseModel):
 
 @router.get("/stats")
 async def stats(user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT status, COUNT(*) FROM media_queue GROUP BY status"
-        ) as cur:
-            rows = await cur.fetchall()
-    counts = {status: c for status, c in rows}
+    async with get_db() as db:
+        rows = await db.fetch_all("SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status")
+    counts = {r["status"]: r["cnt"] for r in rows}
     return {
         "pending": counts.get(STATUS_PENDING, 0),
         "deleted": counts.get(STATUS_DELETED, 0),
@@ -82,19 +79,17 @@ async def list_queue(
 
     where_clause = f"WHERE {' AND '.join(where)}" if where else ""
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"SELECT COUNT(*) FROM media_queue {where_clause}", params
-        ) as cur:
-            total = (await cur.fetchone())[0]
+    async with get_db() as db:
+        count_row = await db.fetch_one(
+            f"SELECT COUNT(*) AS cnt FROM media_queue {where_clause}", params
+        )
+        total = count_row["cnt"] if count_row else 0
 
-        async with db.execute(
+        items = await db.fetch_all(
             f"SELECT * FROM media_queue {where_clause} "
             f"ORDER BY {sort_col} {dir} LIMIT ? OFFSET ?",
             params + [limit, offset],
-        ) as cur:
-            items = [dict(r) for r in await cur.fetchall()]
+        )
 
     return {"items": items, "total": total}
 
@@ -104,21 +99,18 @@ async def delete_now(
     media_id: int, user: str = Depends(require_auth)
 ):
     """Manually trigger deletion of a single item."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        row = await db.fetch_one(
             "SELECT * FROM media_queue WHERE id=?", (media_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Média introuvable")
-            row = dict(row)
+        )
+        if not row:
+            raise HTTPException(404, "Média introuvable")
 
     dry_run = (await get_setting("dry_run") or "false").lower() == "true"
     ok = await _delete_media(row, dry_run)
 
     if ok:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with get_db() as db:
             await db.execute(
                 "UPDATE media_queue SET status='deleted' WHERE id=?",
                 (media_id,),
@@ -146,14 +138,12 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
                 datetime.now(timezone.utc) + timedelta(days=body.expire_days)
             ).isoformat()
 
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
+        async with get_db() as db:
+            rows = await db.fetch_all(
                 f"SELECT id, emby_id, title, media_type, library_id, library_name, poster_url "
                 f"FROM media_queue WHERE id IN ({placeholders})",
                 body.ids,
-            ) as cur:
-                rows = await cur.fetchall()
+            )
             for row in rows:
                 await db.execute(
                     """INSERT OR REPLACE INTO ignored_media
@@ -172,16 +162,14 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
     if body.action == "delete":
         dry_run = (await get_setting("dry_run") or "false").lower() == "true"
         success = 0
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
+        async with get_db() as db:
+            rows = await db.fetch_all(
                 f"SELECT * FROM media_queue WHERE id IN ({placeholders})",
                 body.ids,
-            ) as cur:
-                rows = [dict(r) for r in await cur.fetchall()]
+            )
         for row in rows:
             if await _delete_media(row, dry_run):
-                async with aiosqlite.connect(DB_PATH) as db:
+                async with get_db() as db:
                     await db.execute(
                         "UPDATE media_queue SET status='deleted' WHERE id=?",
                         (row["id"],),
@@ -209,15 +197,12 @@ async def ignore_one(
     if expire_days and expire_days > 0:
         expire_at = (datetime.now(timezone.utc) + timedelta(days=expire_days)).isoformat()
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        row = await db.fetch_one(
             "SELECT * FROM media_queue WHERE id=?", (media_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Média introuvable")
-        row = dict(row)
+        )
+        if not row:
+            raise HTTPException(404, "Média introuvable")
         await db.execute(
             "INSERT OR REPLACE INTO ignored_media "
             "(emby_id, title, media_type, library_id, library_name, file_path, "
@@ -246,11 +231,11 @@ async def ignore_one(
 @router.delete("/purge/deleted")
 async def purge_deleted(user: str = Depends(require_auth)):
     """Remove all entries with status='deleted' from the queue."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT COUNT(*) FROM media_queue WHERE status='deleted'"
-        ) as cur:
-            count = (await cur.fetchone())[0]
+    async with get_db() as db:
+        count_row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'"
+        )
+        count = count_row["cnt"] if count_row else 0
         await db.execute("DELETE FROM media_queue WHERE status='deleted'")
         await db.commit()
     await add_log("INFO", f"Purgé : {count} entrée(s) supprimée(s)", "system")
@@ -263,13 +248,11 @@ async def enrich_seerr(
 ):
     """Re-fetch Seerr requester info AND regenerate poster URLs for all items."""
     async def _enrich():
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
+        async with get_db() as db:
+            rows = await db.fetch_all(
                 "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id, "
                 "seerr_username FROM media_queue"
-            ) as cur:
-                rows = [dict(r) for r in await cur.fetchall()]
+            )
 
         enriched = 0
         for row in rows:
@@ -302,7 +285,7 @@ async def enrich_seerr(
 
             if updates:
                 set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-                async with aiosqlite.connect(DB_PATH) as db:
+                async with get_db() as db:
                     await db.execute(
                         f"UPDATE media_queue SET {set_clause} WHERE id=?",
                         list(updates.values()) + [row["id"]],
@@ -324,12 +307,10 @@ async def regenerate_posters(
 ):
     """Regenerate poster URLs for all queue items (using Radarr/Sonarr TMDB)."""
     async def _regen():
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
+        async with get_db() as db:
+            rows = await db.fetch_all(
                 "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id FROM media_queue"
-            ) as cur:
-                rows = [dict(r) for r in await cur.fetchall()]
+            )
 
         updated = 0
         for row in rows:
@@ -341,7 +322,7 @@ async def regenerate_posters(
                 sonarr_id=row.get("sonarr_id"),
             )
             if new_url:
-                async with aiosqlite.connect(DB_PATH) as db:
+                async with get_db() as db:
                     await db.execute(
                         "UPDATE media_queue SET poster_url=? WHERE id=?",
                         (new_url, row["id"]),
@@ -360,7 +341,7 @@ async def regenerate_posters(
 @router.delete("/{media_id}")
 async def remove_from_queue(media_id: int, user: str = Depends(require_auth)):
     """Remove an entry from the queue without deleting the media itself."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute("DELETE FROM media_queue WHERE id=?", (media_id,))
         await db.commit()
     return {"status": "removed"}

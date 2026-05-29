@@ -27,12 +27,14 @@ from backend.rules.models import (
 
 @pytest.fixture(autouse=True)
 async def isolated_db(tmp_path, monkeypatch):
+    import backend.db.engine as _db_engine
     db_path = str(tmp_path / "integration_test.db")
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
     monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ss._settings_cache.clear()
     _db_ss._settings_cache_ts = 0.0
     _db_ms._ms_cache = None
@@ -169,7 +171,7 @@ async def test_expert_rule_queues_unwatched(isolated_db):
         enabled=True,
         priority=0,
     )
-    await save_expert_rule(rule, db_path=isolated_db)
+    await save_expert_rule(rule)
 
     emby_items = [_make_unwatched_item()]
 
@@ -201,7 +203,7 @@ async def test_disabled_expert_rule_skipped(isolated_db):
         enabled=False,
         priority=0,
     )
-    await save_expert_rule(rule, db_path=isolated_db)
+    await save_expert_rule(rule)
 
     emby_items = [_make_unwatched_item()]
 
@@ -230,7 +232,7 @@ async def test_expert_rule_notify_only_does_not_queue(isolated_db):
         enabled=True,
         priority=0,
     )
-    await save_expert_rule(rule, db_path=isolated_db)
+    await save_expert_rule(rule)
 
     emby_items = [_make_unwatched_item()]
 
@@ -274,7 +276,7 @@ async def test_expert_rule_does_not_double_queue(isolated_db):
         enabled=True,
         priority=0,
     )
-    await save_expert_rule(rule, db_path=isolated_db)
+    await save_expert_rule(rule)
 
     emby_items = [_make_unwatched_item()]
 

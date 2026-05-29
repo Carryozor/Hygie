@@ -35,8 +35,10 @@ async def client(tmp_path_factory):
     import backend.routers.storage as _r_storage
     import backend.routers.unmonitored as _r_unmonitored
 
+    import backend.db.engine as _db_engine
     db_path = str(tmp_path_factory.mktemp("routes") / "route_test.db")
     _orig_db = _db_utils.DB_PATH
+    _orig_engine_path = _db_engine.SQLITE_PATH
 
     # Patch every module that holds its own DB_PATH binding (from ..db.utils import DB_PATH
     # creates a local copy; patching _db_utils alone is not enough after other tests have
@@ -48,6 +50,7 @@ async def client(tmp_path_factory):
     ]
     for mod in _all_db_modules:
         mod.DB_PATH = db_path
+    _db_engine.SQLITE_PATH = db_path
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
     _db_ss._settings_cache.clear()
@@ -62,6 +65,7 @@ async def client(tmp_path_factory):
     # Re-patch after reload (reload may re-bind from env)
     for mod in _all_db_modules:
         mod.DB_PATH = db_path
+    _db_engine.SQLITE_PATH = db_path
 
     app = main_mod.app
     async with main_mod.lifespan(app):
@@ -71,6 +75,7 @@ async def client(tmp_path_factory):
 
     for mod in _all_db_modules:
         mod.DB_PATH = _orig_db
+    _db_engine.SQLITE_PATH = _orig_engine_path
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

@@ -7,9 +7,11 @@ from backend.db.schema import init_db
 
 @pytest_asyncio.fixture
 async def db_path(monkeypatch, tmp_path):
+    import backend.db.engine as _db_engine
     path = str(tmp_path / "migration.db")
     monkeypatch.setattr("backend.db.schema.DB_PATH", path)
     monkeypatch.setattr("backend.db.utils.DB_PATH", path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", path)
     await init_db()
     return path
 

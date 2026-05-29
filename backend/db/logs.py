@@ -2,9 +2,8 @@
 """Structured log persistence and job-history tracking."""
 import logging
 
-import aiosqlite
-
 from .utils import DB_PATH, now_utc
+from .engine import get_db
 from .settings_store import get_setting
 from .websocket import _broadcast
 
@@ -30,7 +29,7 @@ async def add_log(level: str, message: str, source: str = "system"):
 
     ts = now_utc().isoformat()
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
+        async with get_db() as db:
             await db.execute(
                 "INSERT INTO logs (ts, level, source, message) VALUES (?, ?, ?, ?)",
                 (ts, level, source, message),
@@ -55,18 +54,18 @@ async def add_log(level: str, message: str, source: str = "system"):
 # ─── Job history ──────────────────────────────────────────────────────────────
 async def add_job_run(job_type: str) -> int:
     ts = now_utc().isoformat()
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
+    async with get_db() as db:
+        new_id = await db.execute(
             "INSERT INTO job_history (job_type, started_at) VALUES (?, ?)",
             (job_type, ts),
         )
         await db.commit()
-        return cur.lastrowid
+        return new_id
 
 
 async def finish_job_run(run_id: int, status: str, message: str = ""):
     ts = now_utc().isoformat()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "UPDATE job_history SET finished_at=?, status=?, message=? WHERE id=?",
             (ts, status, message, run_id),

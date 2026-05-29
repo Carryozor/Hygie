@@ -23,8 +23,11 @@ async def client_with_data(monkeypatch, tmp_path):
     import backend.deletion as _deletion
     import backend.routers.metrics as _metrics_router
 
+    import backend.db.engine as _db_engine
+
     for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _db_logs, _deletion, _metrics_router):
         monkeypatch.setattr(mod, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 
     import backend.auth as auth_mod
     import backend.main as main_mod
@@ -35,6 +38,7 @@ async def client_with_data(monkeypatch, tmp_path):
     # Re-patch after reload
     for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _db_logs, _deletion, _metrics_router):
         monkeypatch.setattr(mod, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 
     app = main_mod.app
     async with main_mod.lifespan(app):
@@ -124,10 +128,12 @@ async def test_metrics_by_library_space_freed(client_with_data):
 @pytest.mark.asyncio
 async def test_stats_history_has_library_id_column(tmp_path, monkeypatch):
     """stats_history table has library_id column after init_db."""
+    import backend.db.engine as _db_engine
     db_path = str(tmp_path / "schema_check.db")
     import backend.db.schema as _schema
     monkeypatch.setattr(_schema, "DB_PATH", db_path)
     monkeypatch.setattr("backend.db.utils.DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     await _schema.init_db()
     async with aiosqlite.connect(db_path) as db:
         async with db.execute("PRAGMA table_info(stats_history)") as cur:

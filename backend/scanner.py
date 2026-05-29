@@ -17,10 +17,10 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
 
-import aiosqlite
 import httpx
 
 from .db.utils import DB_PATH, STATUS_PENDING, now_utc, parse_iso_dt
+from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_job_run, add_log, finish_job_run
@@ -103,13 +103,13 @@ def _build_item_data(
     }
 
 
-async def _evaluate_expert_rules(item_data: dict, library_id=None, *, db_path: str) -> str | None:
+async def _evaluate_expert_rules(item_data: dict, library_id=None) -> str | None:
     """Return action string ('queue'/'notify_only') if any enabled expert rule matches, else None.
 
     # library_id scoping deferred — all rules apply globally until library ID type is unified
     # (int vs TEXT UUID).  The library_id parameter is accepted but not used.
     """
-    rules = await _get_expert_rules(db_path=db_path, enabled_only=True)
+    rules = await _get_expert_rules(enabled_only=True)
     for rule in rules:
         if _evaluate_rule(rule, item_data):
             return rule.action.value
@@ -145,7 +145,7 @@ async def run_scan():
                     await add_log("INFO", f"Serveur {server_id} ignoré (type: {server_type})", "scan")
                     continue
 
-                libraries = await get_enabled_libraries(server_id, db_path=DB_PATH)
+                libraries = await get_enabled_libraries(server_id)
 
                 if not libraries:
                     continue
@@ -171,7 +171,7 @@ async def run_scan():
                         )
 
                 # Pre-load queued/ignored sets — eliminates 2 DB opens per item
-                queued_ids, ignored_ids = await get_queued_and_ignored_ids(db_path=DB_PATH)
+                queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 
                 try:
                     max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
@@ -229,14 +229,11 @@ async def run_scan_library(library_id: str):
         await add_log("INFO", f"Scan bibliothèque : {library_id}", "job")
         _sl_status, _sl_msg = "error", ""
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
+            async with get_db() as db:
+                lib = await db.fetch_one(
                     "SELECT * FROM libraries WHERE id=? AND enabled=1",
                     (library_id,),
-                ) as cur:
-                    row = await cur.fetchone()
-                lib = dict(row) if row else None
+                )
 
             if not lib:
                 await add_log("WARN", f"Bibliothèque {library_id} introuvable", "scan")
@@ -262,11 +259,11 @@ async def run_scan_library(library_id: str):
                         mention=_mention, custom_msg=_msg,
                         template_vars={"detail": str(_seerr_err)},
                     )
-            async with aiosqlite.connect(DB_PATH) as _db:
-                async with _db.execute("SELECT emby_id FROM media_queue") as _cur:
-                    queued_ids = {r[0] async for r in _cur}
-                async with _db.execute("SELECT emby_id FROM ignored_media") as _cur:
-                    ignored_ids = {r[0] async for r in _cur}
+            async with get_db() as _db:
+                _qrows = await _db.fetch_all("SELECT emby_id FROM media_queue")
+                queued_ids = {r["emby_id"] for r in _qrows}
+                _irows = await _db.fetch_all("SELECT emby_id FROM ignored_media")
+                ignored_ids = {r["emby_id"] for r in _irows}
 
             added = await _scan_library(
                 lib, user_ids, server_id=server_id,
@@ -386,7 +383,7 @@ async def _scan_library(
                         lib["id"], deletion_unit,
                     )
                     continue
-                action = await _evaluate_expert_rules(item_data, lib["id"], db_path=DB_PATH)
+                action = await _evaluate_expert_rules(item_data, lib["id"])
                 if action == _RuleAction.QUEUE.value:
                     detect_at = now_utc()
                     delete_at = detect_at + timedelta(days=lib.get("grace_days") or 7)
@@ -437,7 +434,7 @@ async def _scan_library(
 
 async def _insert_queue_entry(entry: dict, queued_ids: Optional[set], dry_run: bool) -> None:
     """Insert one eligible item into media_queue and send detected notification."""
-    await insert_queue_entry(entry, db_path=DB_PATH)
+    await insert_queue_entry(entry)
     if queued_ids is not None:
         queued_ids.add(entry["emby_id"])
     item_notif = {k: entry[k] for k in ("title", "media_type", "library_name",
@@ -446,7 +443,7 @@ async def _insert_queue_entry(entry: dict, queued_ids: Optional[set], dry_run: b
     try:
         sent = await send_notification([item_notif], "detected", dry_run=dry_run)
         if sent:
-            await mark_notified_detected(entry["emby_id"], db_path=DB_PATH)
+            await mark_notified_detected(entry["emby_id"])
     except Exception as e:
         logger.warning(f"Detected notification failed for {entry['title']}: {e}")
 
@@ -549,20 +546,16 @@ async def _consolidate_and_insert(
 # ═══ Reevaluate library queue (when conditions change) ════════════════════════
 async def reevaluate_library_queue(library_id: str) -> int:
     """Recheck conditions for pending items in a library. Remove those no longer matching."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        lib = await db.fetch_one(
             "SELECT * FROM libraries WHERE id=?", (library_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            if not row:
-                return 0
-            lib = dict(row)
-        async with db.execute(
+        )
+        if not lib:
+            return 0
+        pending = await db.fetch_all(
             "SELECT * FROM media_queue WHERE library_id=? AND status='pending'",
             (library_id,),
-        ) as cur:
-            pending = [dict(r) for r in await cur.fetchall()]
+        )
 
     if not pending:
         return 0
@@ -625,7 +618,7 @@ async def reevaluate_library_queue(library_id: str) -> int:
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")
 
-            async with aiosqlite.connect(DB_PATH) as db:
+            async with get_db() as db:
                 await db.execute(
                     "DELETE FROM media_queue WHERE id=?", (row["id"],)
                 )

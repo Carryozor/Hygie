@@ -4,12 +4,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 from ..db.logs import add_log
 from ..emby_client import get_libraries as emby_get_libraries
 from ..scheduler import (
@@ -65,16 +65,12 @@ async def list_emby_libraries(user: str = Depends(require_auth)):
 
 @router.get("")
 async def list_libraries(user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM libraries ORDER BY name"
-        ) as cur:
-            rows = await cur.fetchall()
+    async with get_db() as db:
+        rows = await db.fetch_all("SELECT * FROM libraries ORDER BY name")
 
     result = []
-    for row in rows:
-        d = dict(row)
+    for d in rows:
+        d = dict(d)
         d["conditions"] = json.loads(d.get("conditions") or "[]")
         d["seerr_conditions"] = json.loads(d.get("seerr_conditions") or "[]")
         d["enabled"] = bool(d.get("enabled", 1))
@@ -85,7 +81,7 @@ async def list_libraries(user: str = Depends(require_auth)):
 @router.post("")
 async def create_library(body: LibraryCreate, user: str = Depends(require_auth)):
     lib_id = str(uuid.uuid4())
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             """INSERT INTO libraries
                (id, name, emby_library_id, conditions, logic, grace_days,
@@ -141,7 +137,7 @@ async def update_library(
         return {"status": "no_changes"}
 
     params.append(library_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             f"UPDATE libraries SET {', '.join(updates)} WHERE id=?", params
         )
@@ -156,7 +152,7 @@ async def update_library(
 
 @router.delete("/{library_id}")
 async def delete_library(library_id: str, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute("DELETE FROM libraries WHERE id=?", (library_id,))
         await db.commit()
     await add_log("INFO", f"Bibliothèque supprimée : {library_id}", "library")
@@ -165,15 +161,12 @@ async def delete_library(library_id: str, user: str = Depends(require_auth)):
 
 @router.post("/{library_id}/clone")
 async def clone_library(library_id: str, user: str = Depends(require_auth)):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with get_db() as db:
+        src = await db.fetch_one(
             "SELECT * FROM libraries WHERE id=?", (library_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Bibliothèque introuvable")
-            src = dict(row)
+        )
+        if not src:
+            raise HTTPException(404, "Bibliothèque introuvable")
 
         new_id = str(uuid.uuid4())
         try:

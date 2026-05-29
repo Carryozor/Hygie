@@ -5,9 +5,8 @@ import logging
 from datetime import timedelta
 from typing import Optional
 
-import aiosqlite
-
 from .db.utils import DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc
+from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run
 from .db.repositories import get_pending_queue, update_queue_status
@@ -45,7 +44,7 @@ async def run_deletion():
             await _send_pending_notifications()
 
             # ── Deletions ────────────────────────────────────────────────────
-            to_delete = await get_pending_queue(db_path=DB_PATH)
+            to_delete = await get_pending_queue()
 
             # Read qbit settings once for the whole batch
             _qbit_action = await get_setting("qbit_action") or "tag_only"
@@ -67,7 +66,7 @@ async def run_deletion():
                 async with _del_sem:
                     ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id)
                     status_val = STATUS_DELETED if ok else STATUS_ERROR
-                    await update_queue_status(row["id"], status_val, db_path=DB_PATH)
+                    await update_queue_status(row["id"], status_val)
                     if not ok:
                         _error_count += 1
                         if _alert_del_error:
@@ -222,13 +221,12 @@ async def _delete_media(
         library_server_id = "0"
         if row.get("library_id"):
             try:
-                async with aiosqlite.connect(DB_PATH) as _db:
-                    async with _db.execute(
+                async with get_db() as _db:
+                    lrow = await _db.fetch_one(
                         "SELECT server_id FROM libraries WHERE id=?", (row["library_id"],)
-                    ) as cur:
-                        lrow = await cur.fetchone()
-                        if lrow and lrow[0]:
-                            library_server_id = str(lrow[0])
+                    )
+                    if lrow and lrow["server_id"]:
+                        library_server_id = str(lrow["server_id"])
             except Exception as e:
                 logger.debug(f"_delete_media: library_server_id lookup: {e}")
 
@@ -257,7 +255,7 @@ async def _delete_media(
         try:
             month = now_utc().strftime("%Y-%m")
             lib_id = row.get("library_id") or None
-            async with aiosqlite.connect(DB_PATH) as _db:
+            async with get_db() as _db:
                 await _db.execute(
                     "INSERT INTO stats_history "
                     "(ts, total_deleted, total_scanned, space_freed_bytes, month, library_id) "
@@ -282,13 +280,12 @@ async def run_ignored_cleanup():
     purged_rows = 0
 
     # Expire ignored items
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
+    async with get_db() as db:
+        expired = await db.fetch_all(
             "SELECT title FROM ignored_media "
             "WHERE expire_at IS NOT NULL AND expire_at <= ?",
             (now,),
-        ) as cur:
-            expired = await cur.fetchall()
+        )
         if expired:
             await db.execute(
                 "DELETE FROM ignored_media WHERE expire_at IS NOT NULL AND expire_at <= ?",
@@ -306,13 +303,13 @@ async def run_ignored_cleanup():
         retention_days = await get_int_setting("deleted_retention_days", 90)
         if retention_days > 0:
             cutoff = (now_utc() - timedelta(days=retention_days)).isoformat()
-            async with aiosqlite.connect(DB_PATH) as db:
-                async with db.execute(
-                    "SELECT COUNT(*) FROM media_queue "
+            async with get_db() as db:
+                row = await db.fetch_one(
+                    "SELECT COUNT(*) AS cnt FROM media_queue "
                     "WHERE status='deleted' AND detected_at < ?",
                     (cutoff,),
-                ) as cur:
-                    count = (await cur.fetchone())[0]
+                )
+                count = row["cnt"] if row else 0
                 if count:
                     await db.execute(
                         "DELETE FROM media_queue WHERE status='deleted' AND detected_at < ?",
@@ -333,11 +330,11 @@ async def run_ignored_cleanup():
         log_retention = await get_int_setting("log_retention_days", 14)
         if log_retention > 0:
             cutoff = (now_utc() - timedelta(days=log_retention)).isoformat()
-            async with aiosqlite.connect(DB_PATH) as db:
-                async with db.execute(
-                    "SELECT COUNT(*) FROM logs WHERE ts < ?", (cutoff,)
-                ) as cur:
-                    count = (await cur.fetchone())[0]
+            async with get_db() as db:
+                row = await db.fetch_one(
+                    "SELECT COUNT(*) AS cnt FROM logs WHERE ts < ?", (cutoff,)
+                )
+                count = row["cnt"] if row else 0
                 if count:
                     await db.execute("DELETE FROM logs WHERE ts < ?", (cutoff,))
                     await db.commit()
@@ -355,11 +352,11 @@ async def run_ignored_cleanup():
         jh_retention = await get_int_setting("job_history_retention_days", 90)
         if jh_retention > 0:
             cutoff = (now_utc() - timedelta(days=jh_retention)).isoformat()
-            async with aiosqlite.connect(DB_PATH) as db:
-                async with db.execute(
-                    "SELECT COUNT(*) FROM job_history WHERE started_at < ?", (cutoff,)
-                ) as cur:
-                    count = (await cur.fetchone())[0]
+            async with get_db() as db:
+                row = await db.fetch_one(
+                    "SELECT COUNT(*) AS cnt FROM job_history WHERE started_at < ?", (cutoff,)
+                )
+                count = row["cnt"] if row else 0
                 if count:
                     await db.execute(
                         "DELETE FROM job_history WHERE started_at < ?", (cutoff,)

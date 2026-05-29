@@ -2,9 +2,8 @@
 """Settings cache and CRUD — all reads are served from an in-process TTL cache."""
 import time as _time
 
-import aiosqlite
-
 from .utils import DB_PATH
+from .engine import get_db
 from .encryption import SENSITIVE_KEYS, _decrypt_value, _encrypt_value
 
 # Default settings — written ONCE at first init (INSERT OR IGNORE)
@@ -74,9 +73,9 @@ async def get_setting(key: str) -> str:
     global _settings_cache, _settings_cache_ts
     now = _time.monotonic()
     if not _settings_cache or now - _settings_cache_ts >= _SETTINGS_CACHE_TTL:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT key, value FROM settings") as cur:
-                _settings_cache = {r[0]: r[1] for r in await cur.fetchall()}
+        async with get_db() as db:
+            rows = await db.fetch_all("SELECT key, value FROM settings")
+            _settings_cache = {r["key"]: r["value"] for r in rows}
         _settings_cache_ts = now
     raw = _settings_cache.get(key, "")
     return _decrypt_value(raw) if key in SENSITIVE_KEYS else raw
@@ -84,7 +83,7 @@ async def get_setting(key: str) -> str:
 
 async def set_setting(key: str, value: str) -> None:
     stored = _encrypt_value(value) if key in SENSITIVE_KEYS else value
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, stored)
         )
@@ -110,9 +109,6 @@ async def get_int_setting(key: str, default: int = 0) -> int:
 
 
 async def get_all_settings() -> dict:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT key, value FROM settings") as cur:
-            result = {}
-            for k, v in await cur.fetchall():
-                result[k] = _decrypt_value(v) if k in SENSITIVE_KEYS else v
-            return result
+    async with get_db() as db:
+        rows = await db.fetch_all("SELECT key, value FROM settings")
+        return {r["key"]: (_decrypt_value(r["value"]) if r["key"] in SENSITIVE_KEYS else r["value"]) for r in rows}

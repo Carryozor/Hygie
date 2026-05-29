@@ -1,40 +1,40 @@
 """Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
 from datetime import datetime, timezone
 
-import aiosqlite
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 
 router = APIRouter(tags=["metrics"])
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics():
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT COUNT(*) FROM media_queue WHERE status='pending'")
-        pending = (await cur.fetchone())[0]
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='pending'")
+        pending = row["cnt"] if row else 0
 
-        cur = await db.execute("SELECT COUNT(*) FROM media_queue WHERE status='deleted'")
-        deleted = (await cur.fetchone())[0]
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'")
+        deleted = row["cnt"] if row else 0
 
-        cur = await db.execute("SELECT COUNT(*) FROM media_queue WHERE status='error'")
-        errors = (await cur.fetchone())[0]
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='error'")
+        errors = row["cnt"] if row else 0
 
-        cur = await db.execute("SELECT COUNT(*) FROM ignored_media")
-        ignored = (await cur.fetchone())[0]
+        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
+        ignored = row["cnt"] if row else 0
 
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type IN ('scan','scan_library')"
+        row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM job_history WHERE job_type IN ('scan','scan_library')"
         )
-        scans = (await cur.fetchone())[0]
+        scans = row["cnt"] if row else 0
 
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM job_history WHERE job_type='deletion_check'"
+        row = await db.fetch_one(
+            "SELECT COUNT(*) AS cnt FROM job_history WHERE job_type='deletion_check'"
         )
-        checks = (await cur.fetchone())[0]
+        checks = row["cnt"] if row else 0
 
     lines = [
         "# HELP hygie_media_pending Media items pending deletion decision",
@@ -65,21 +65,20 @@ async def api_metrics(user: str = Depends(require_auth)):
     """JSON metrics endpoint with per-library breakdown for the current month."""
     current_month = datetime.now(timezone.utc).strftime("%Y-%m")
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "SELECT library_id, SUM(total_deleted), SUM(space_freed_bytes) "
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            "SELECT library_id, SUM(total_deleted) AS deleted, SUM(space_freed_bytes) AS freed "
             "FROM stats_history "
             "WHERE month = ? "
             "GROUP BY library_id",
             (current_month,),
         )
-        rows = await cur.fetchall()
 
     by_library = [
         {
-            "library_id": row[0],
-            "deleted": row[1] or 0,
-            "space_freed_bytes": row[2] or 0,
+            "library_id": row["library_id"],
+            "deleted": row["deleted"] or 0,
+            "space_freed_bytes": row["freed"] or 0,
         }
         for row in rows
     ]

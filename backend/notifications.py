@@ -10,9 +10,8 @@ import json
 import logging
 from datetime import timedelta
 
-import aiosqlite
-
 from .db.utils import DB_PATH, now_utc
+from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting
 from .db.logs import add_log
 from .discord_client import send_notification
@@ -31,7 +30,7 @@ def _parse_thresholds(raw: str) -> list:
 
 async def _ensure_notif_columns():
     """Migrate legacy notified_* rows into the notifications table (idempotent)."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         # Migrate items already notified under the old notified_30d/7d/1d columns
         # into the new notifications table (one-time, idempotent via INSERT OR IGNORE).
         for col, threshold in [
@@ -51,12 +50,12 @@ async def _ensure_notif_columns():
                 pass  # column may not exist on very old DBs
         # Also migrate items that were marked via the intermediate notified_thresholds JSON
         try:
-            async with db.execute(
+            rows = await db.fetch_all(
                 "SELECT id, notified_thresholds FROM media_queue"
                 " WHERE notified_thresholds IS NOT NULL AND notified_thresholds != '[]'"
-            ) as cur:
-                rows = await cur.fetchall()
-            for media_id, raw in rows:
+            )
+            for row in rows:
+                media_id, raw = row["id"], row["notified_thresholds"]
                 for entry in json.loads(raw or "[]"):
                     if entry == "migrated":
                         continue
@@ -84,25 +83,23 @@ async def _send_pending_notifications():
         for days in threshold_days:
             threshold_key = f"{days}d"
             cutoff = now_utc() + timedelta(days=days, hours=1)
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
+            async with get_db() as db:
+                candidates = await db.fetch_all(
                     "SELECT * FROM media_queue WHERE status='pending' AND delete_at <= ?",
                     (cutoff.isoformat(),),
-                ) as cur:
-                    candidates = [dict(r) for r in await cur.fetchall()]
+                )
 
                 # Filter out items already notified for this threshold
                 already_notified_ids = set()
                 if candidates:
                     placeholders = ",".join("?" * len(candidates))
                     candidate_ids = [item["id"] for item in candidates]
-                    async with db.execute(
+                    notif_rows = await db.fetch_all(
                         f"SELECT media_id FROM notifications"
                         f" WHERE threshold=? AND media_id IN ({placeholders})",
                         [threshold_key] + candidate_ids,
-                    ) as cur:
-                        already_notified_ids = {r[0] async for r in cur}
+                    )
+                    already_notified_ids = {r["media_id"] for r in notif_rows}
 
             to_notify = [
                 item for item in candidates
@@ -114,7 +111,7 @@ async def _send_pending_notifications():
 
             sent = await send_notification(to_notify, threshold_key, dry_run=dry_run)
             if sent:
-                async with aiosqlite.connect(DB_PATH) as db:
+                async with get_db() as db:
                     for item in to_notify:
                         await db.execute(
                             "INSERT OR IGNORE INTO notifications (media_id, threshold)"

@@ -6,8 +6,8 @@ import httpx
 
 from ..db.settings_store import get_setting
 from ..db.utils import DB_PATH, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from ..db.engine import get_db
 from ..exceptions import ArrClientError
-import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +74,13 @@ async def seerr_get_users() -> List[dict]:
     try:
         hygie_mappings: dict = {}
         try:
-            async with aiosqlite.connect(DB_PATH) as db:
-                async with db.execute(
-                    "SELECT CAST(seerr_user_id AS TEXT), discord_id FROM seerr_user_rules "
+            async with get_db() as db:
+                rows = await db.fetch_all(
+                    "SELECT CAST(seerr_user_id AS TEXT) AS uid, discord_id FROM seerr_user_rules "
                     "WHERE discord_id IS NOT NULL AND TRIM(discord_id) != ''"
-                ) as cur:
-                    async for row in cur:
-                        hygie_mappings[str(row[0])] = row[1].strip()
+                )
+                for row in rows:
+                    hygie_mappings[str(row["uid"])] = row["discord_id"].strip()
         except Exception:
             pass
 

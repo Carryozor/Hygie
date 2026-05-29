@@ -4,9 +4,8 @@ import json
 import logging
 import time
 
-import aiosqlite
-
 from .utils import DB_PATH
+from .engine import get_db
 from .encryption import _decrypt_value, _encrypt_value
 from .settings_store import _invalidate_settings_cache
 
@@ -33,16 +32,15 @@ async def get_media_servers() -> list:
     if _ms_cache is not None and now - _ms_cache_ts < _MS_CACHE_TTL:
         return _ms_cache
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
-                row = await cur.fetchone()
-                if not row or not row[0]:
-                    _ms_cache, _ms_cache_ts = [], now
-                    return []
-                raw = _decrypt_value(row[0])
-                result = json.loads(raw) if raw else []
-                _ms_cache, _ms_cache_ts = result, now
-                return result
+        async with get_db() as db:
+            row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+            if not row or not row["value"]:
+                _ms_cache, _ms_cache_ts = [], now
+                return []
+            raw = _decrypt_value(row["value"])
+            result = json.loads(raw) if raw else []
+            _ms_cache, _ms_cache_ts = result, now
+            return result
     except Exception:
         return _ms_cache if _ms_cache is not None else []
 
@@ -52,7 +50,7 @@ async def save_media_servers(servers: list) -> None:
     global _ms_cache, _ms_cache_ts
     raw = json.dumps(servers)
     stored = _encrypt_value(raw)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with get_db() as db:
         await db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
             ("media_servers", stored)

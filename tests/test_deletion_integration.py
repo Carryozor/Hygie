@@ -21,12 +21,14 @@ async def deletion_db(tmp_path, monkeypatch):
     """Isolated SQLite DB for deletion integration tests, with required settings seeded."""
     db_path = str(tmp_path / "deletion_test.db")
 
+    import backend.db.engine as _db_engine
     # Patch DB_PATH in every module that uses it directly
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
     monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_deletion_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 
     # Reset settings cache so it re-reads from the fresh DB
     _db_ss._settings_cache.clear()

@@ -14,10 +14,10 @@ import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
-import aiosqlite
 import httpx
 
 from .db.utils import DB_PATH, parse_iso_dt, http_retry
+from .db.engine import get_db
 from .db.settings_store import get_setting
 
 logger = logging.getLogger(__name__)
@@ -56,18 +56,17 @@ async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
 
     # 1. Check Hygie's own mapping table
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
+        async with get_db() as db:
+            row = await db.fetch_one(
                 "SELECT discord_id FROM seerr_user_rules "
                 "WHERE CAST(seerr_user_id AS TEXT) = CAST(? AS TEXT) "
                 "AND discord_id IS NOT NULL AND TRIM(discord_id) != '' "
                 "ORDER BY CASE WHEN library_id='*' THEN 0 ELSE 1 END ASC "
                 "LIMIT 1",
                 (seerr_user_id,),
-            ) as cur:
-                row = await cur.fetchone()
-                if row and row[0] and row[0].strip():
-                    return row[0].strip()
+            )
+            if row and row["discord_id"] and row["discord_id"].strip():
+                return row["discord_id"].strip()
     except Exception as e:
         logger.debug(f"_resolve_discord_id DB lookup: {e}")
 

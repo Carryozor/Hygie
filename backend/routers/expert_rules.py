@@ -17,15 +17,15 @@ router = APIRouter(prefix="/api/expert-rules", tags=["expert-rules"])
 
 @router.get("")
 async def list_expert_rules(user: str = Depends(require_auth)):
-    rules = await get_expert_rules(db_path=DB_PATH)
+    rules = await get_expert_rules()
     return [r.model_dump() for r in rules]
 
 
 @router.post("", status_code=201)
 async def create_expert_rule(rule: ExpertRule, user: str = Depends(require_auth)):
     rule.id = None  # force INSERT
-    rule_id = await save_expert_rule(rule, db_path=DB_PATH)
-    created = await get_expert_rule_by_id(rule_id, db_path=DB_PATH)
+    rule_id = await save_expert_rule(rule)
+    created = await get_expert_rule_by_id(rule_id)
     return created.model_dump()
 
 
@@ -33,20 +33,20 @@ async def create_expert_rule(rule: ExpertRule, user: str = Depends(require_auth)
 async def update_expert_rule(
     rule_id: int, rule: ExpertRule, user: str = Depends(require_auth)
 ):
-    existing = await get_expert_rule_by_id(rule_id, db_path=DB_PATH)
+    existing = await get_expert_rule_by_id(rule_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Rule not found")
     rule.id = rule_id
-    await save_expert_rule(rule, db_path=DB_PATH)
-    return (await get_expert_rule_by_id(rule_id, db_path=DB_PATH)).model_dump()
+    await save_expert_rule(rule)
+    return (await get_expert_rule_by_id(rule_id)).model_dump()
 
 
 @router.delete("/{rule_id}", status_code=204)
 async def delete_expert_rule_endpoint(
     rule_id: int, user: str = Depends(require_auth)
 ):
-    existing = await get_expert_rule_by_id(rule_id, db_path=DB_PATH)
+    existing = await get_expert_rule_by_id(rule_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Rule not found")
-    await delete_expert_rule(rule_id, db_path=DB_PATH)
+    await delete_expert_rule(rule_id)
     return Response(status_code=204)

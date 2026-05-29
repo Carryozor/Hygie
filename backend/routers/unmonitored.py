@@ -8,12 +8,12 @@ or delete them outright.
 import logging
 from typing import Optional
 
-import aiosqlite
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 
@@ -34,17 +34,17 @@ async def list_unmonitored(
 
     # Get list of emby_ids already in queue or ignored (to skip)
     tracked: set = set()
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
+    async with get_db() as db:
+        radarr_rows = await db.fetch_all(
             "SELECT radarr_id FROM media_queue WHERE radarr_id IS NOT NULL"
-        ) as cur:
-            for row in await cur.fetchall():
-                tracked.add(("movie", row[0]))
-        async with db.execute(
+        )
+        for row in radarr_rows:
+            tracked.add(("movie", row["radarr_id"]))
+        sonarr_rows = await db.fetch_all(
             "SELECT sonarr_id FROM media_queue WHERE sonarr_id IS NOT NULL"
-        ) as cur:
-            for row in await cur.fetchall():
-                tracked.add(("series", row[0]))
+        )
+        for row in sonarr_rows:
+            tracked.add(("series", row["sonarr_id"]))
 
     movies = []
     series = []

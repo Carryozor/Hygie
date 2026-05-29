@@ -15,10 +15,12 @@ from backend.auth import require_auth
 
 @pytest_asyncio.fixture(autouse=True)
 async def patch_db(monkeypatch, tmp_path):
+    import backend.db.engine as _db_engine
     path = str(tmp_path / "test.db")
     monkeypatch.setattr(_db_utils, "DB_PATH", path)
     monkeypatch.setattr(_db_schema, "DB_PATH", path)
     monkeypatch.setattr(_er_router, "DB_PATH", path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", path)
     await init_db()
 
 

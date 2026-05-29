@@ -26,12 +26,14 @@ from backend.db.schema import init_db
 
 @pytest.fixture(autouse=True)
 async def isolated_db(tmp_path, monkeypatch):
+    import backend.db.engine as _db_engine
     db_path = str(tmp_path / "e2e_test.db")
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
     monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ss._settings_cache.clear()
     _db_ss._settings_cache_ts = 0.0
     _db_ms._ms_cache = None

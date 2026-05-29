@@ -1,3 +1,13 @@
+# ── Stage 1: Build Vue frontend ────────────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
+WORKDIR /build
+COPY frontend/vue/package*.json ./
+RUN npm ci --prefer-offline
+COPY frontend/vue/ ./
+RUN npm run build
+# Output: /build/../dist = /dist  (vite outDir: '../dist')
+
+# ── Stage 2: Python backend ───────────────────────────────────────────────────
 FROM python:3.12-slim@sha256:9d3abd9fc11d06998ccdbdd93b4dd49b5ad7d67fcbbc11c016eb0eb2c2194891
 
 ARG VERSION=dev
@@ -32,7 +42,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code — copied with explicit ownership to hygie user
 COPY --chown=hygie:hygie backend/ /app/backend/
-COPY --chown=hygie:hygie frontend/ /app/frontend/
+COPY --chown=hygie:hygie frontend/static/ /app/frontend/static/
+COPY --chown=hygie:hygie frontend/templates/ /app/frontend/templates/
+
+# Copy Vue dist from builder stage
+COPY --from=frontend-builder --chown=hygie:hygie /dist/ /app/frontend/dist/
 
 # Bundle frontend dependencies locally — no CDN needed at runtime
 # Font Awesome CSS and webfonts (hygie.css is shipped directly in the image)
@@ -53,7 +67,6 @@ RUN mkdir -p /app/frontend/static/css /app/frontend/static/webfonts \
     && chown -R hygie:hygie /app/frontend/static/img/icons
 
 # Defensive permissions — readable by all users, writable only by owner
-# (covers cases where bind mounts or umask quirks would block access)
 RUN chmod -R a+rX /app/backend /app/frontend && \
     chmod 755 /app && \
     chmod 700 /app/data

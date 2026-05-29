@@ -14,13 +14,14 @@ import hashlib
 import json
 import logging
 import os
+import os as _os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -264,10 +265,19 @@ app.mount(
 )
 templates = Jinja2Templates(directory="frontend/templates")
 
+_DIST = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "frontend", "dist")
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "version": STATIC_VERSION})
+# Serve Vue built assets
+if _os.path.isdir(_os.path.join(_DIST, "assets")):
+    app.mount("/assets", StaticFiles(directory=_os.path.join(_DIST, "assets")), name="vue-assets")
+
+# SPA fallback — serve index.html for all non-API routes
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(full_path: str):
+    index = _os.path.join(_DIST, "index.html")
+    if _os.path.isfile(index):
+        return FileResponse(index)
+    return FileResponse("frontend/templates/index.html")
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────

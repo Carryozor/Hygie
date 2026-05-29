@@ -453,6 +453,9 @@ async def _init_db_sqlite():
                 )
                 await db.commit()
 
+        # 7b. v2 → v3 data migration (idempotent, runs once)
+        await _migrate_v2_to_v3(db)
+
         # 8. Migrate interval settings: hours → minutes — runs once, then deletes the old key.
         # The old condition `existing[0] == "60"` was a bug: it matched the default value and
         # overwrote a user-set "60" (1h) with hours*60 on every restart.
@@ -503,6 +506,56 @@ async def _init_db_sqlite():
         await db.commit()
 
     logger.info(f"Database initialized: {_SQLITE_PATH}")
+
+
+async def _migrate_v2_to_v3(db) -> None:
+    """One-time data migrations when upgrading from v2.x to v3.x.
+
+    Idempotent — safe to call on every startup; each step is guarded.
+    """
+    # Guard: skip if already migrated
+    async with db.execute("SELECT value FROM settings WHERE key='v3_migration_done'") as cur:
+        if await cur.fetchone():
+            return
+
+    logger.info("Running v2 → v3 data migration…")
+
+    # 1. Backfill server_id='0' on libraries that predate multi-server support.
+    if await _table_exists(db, "libraries"):
+        cols = await _table_columns(db, "libraries")
+        if "server_id" in cols:
+            async with db.execute(
+                "UPDATE libraries SET server_id='0' WHERE server_id IS NULL OR server_id=''"
+            ) as cur:
+                if cur.rowcount:
+                    logger.info(f"v2→v3: backfilled server_id='0' on {cur.rowcount} library row(s)")
+
+    # 2. Backfill deletion_unit='episode' on libraries missing it.
+    if await _table_exists(db, "libraries"):
+        cols = await _table_columns(db, "libraries")
+        if "deletion_unit" in cols:
+            async with db.execute(
+                "UPDATE libraries SET deletion_unit='episode' WHERE deletion_unit IS NULL OR deletion_unit=''"
+            ) as cur:
+                if cur.rowcount:
+                    logger.info(f"v2→v3: backfilled deletion_unit on {cur.rowcount} library row(s)")
+
+    # 3. Remove standalone emby_url / emby_api_key / emby_external_url settings once
+    #    media_servers has been populated (step 7 above does the conversion).
+    async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
+        ms_row = await cur.fetchone()
+    if ms_row and ms_row[0] not in (None, "", "[]", "null"):
+        for old_key in ("emby_url", "emby_api_key", "emby_external_url", "media_server_type"):
+            async with db.execute("DELETE FROM settings WHERE key=?", (old_key,)) as cur:
+                if cur.rowcount:
+                    logger.info(f"v2→v3: removed legacy setting '{old_key}'")
+
+    # Mark migration complete
+    await db.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('v3_migration_done', '1')"
+    )
+    await db.commit()
+    logger.info("v2 → v3 migration complete")
 
 
 async def _init_db_mariadb() -> None:

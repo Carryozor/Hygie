@@ -63,6 +63,10 @@ from .repositories import (
     insert_queue_entry,
     mark_notified_detected,
     update_queue_status,
+    save_expert_rule,
+    get_expert_rules,
+    get_expert_rule_by_id,
+    delete_expert_rule,
 )
 
 from .schema import init_db
@@ -80,5 +84,6 @@ __all__ = [
     "add_log", "add_job_run", "finish_job_run",
     "get_pending_queue", "get_queued_and_ignored_ids", "get_enabled_libraries",
     "insert_queue_entry", "mark_notified_detected", "update_queue_status",
+    "save_expert_rule", "get_expert_rules", "get_expert_rule_by_id", "delete_expert_rule",
     "init_db",
 ]

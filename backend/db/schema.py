@@ -212,13 +212,28 @@ _TABLES = [
         )""",
         [],
     ),
+    (
+        "expert_rules",
+        """CREATE TABLE IF NOT EXISTS expert_rules (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT    NOT NULL,
+            library_id  INTEGER,
+            conditions  TEXT    NOT NULL DEFAULT '[]',
+            operator    TEXT    NOT NULL DEFAULT 'AND',
+            action      TEXT    NOT NULL DEFAULT 'queue',
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            priority    INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )""",
+        [],
+    ),
 ]
 
 
 _KNOWN_TABLES = frozenset({
     "settings", "users", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
-    "rate_limit",
+    "rate_limit", "expert_rules",
     # Legacy names used during migration
     "logs_legacy", "job_history_legacy",
 })

@@ -79,3 +79,72 @@ async def update_queue_status(item_id: int, status: str, *, db_path: str) -> Non
             (status, item_id),
         )
         await db.commit()
+
+
+# ─── Expert rules ──────────────────────────────────────────────────────────────
+async def save_expert_rule(rule: "ExpertRule", *, db_path: str) -> int:
+    """Insert or update an expert rule. Returns the rule id."""
+    import json
+    from ..rules.models import ExpertRule as _ExpertRule
+    conditions_json = json.dumps([c.model_dump() for c in rule.conditions])
+    async with aiosqlite.connect(db_path) as db:
+        if rule.id:
+            await db.execute(
+                "UPDATE expert_rules SET name=?, library_id=?, conditions=?, operator=?, "
+                "action=?, enabled=?, priority=? WHERE id=?",
+                (rule.name, rule.library_id, conditions_json, rule.operator.value,
+                 rule.action.value, int(rule.enabled), rule.priority, rule.id),
+            )
+            await db.commit()
+            return rule.id
+        cursor = await db.execute(
+            "INSERT INTO expert_rules (name, library_id, conditions, operator, action, enabled, priority) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (rule.name, rule.library_id, conditions_json, rule.operator.value,
+             rule.action.value, int(rule.enabled), rule.priority),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_expert_rules(*, db_path: str, enabled_only: bool = False) -> list:
+    """Return all expert rules ordered by priority then id."""
+    import json
+    from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, RuleOperator, RuleAction
+    where = "WHERE enabled=1" if enabled_only else ""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM expert_rules {where} ORDER BY priority ASC, id ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        try:
+            conditions = [_Condition(**c) for c in json.loads(d.get("conditions") or "[]")]
+        except Exception:
+            conditions = []
+        result.append(_ExpertRule(
+            id=d["id"], name=d["name"], library_id=d.get("library_id"),
+            conditions=conditions,
+            operator=RuleOperator(d["operator"]),
+            action=RuleAction(d["action"]),
+            enabled=bool(d["enabled"]),
+            priority=d["priority"],
+            created_at=d.get("created_at"),
+        ))
+    return result
+
+
+async def get_expert_rule_by_id(rule_id: int, *, db_path: str):
+    """Return a single ExpertRule by id, or None if not found."""
+    rules = await get_expert_rules(db_path=db_path)
+    return next((r for r in rules if r.id == rule_id), None)
+
+
+async def delete_expert_rule(rule_id: int, *, db_path: str) -> None:
+    """Delete an expert rule by id."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM expert_rules WHERE id=?", (rule_id,))
+        await db.commit()

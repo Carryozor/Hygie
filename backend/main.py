@@ -258,6 +258,9 @@ app.include_router(metrics.router)
 app.include_router(backup.router)
 app.include_router(proxy.router)
 
+from .routers import plex_webhook
+app.include_router(plex_webhook.router)
+
 
 # ─── Static & templates ───────────────────────────────────────────────────────
 app.mount(

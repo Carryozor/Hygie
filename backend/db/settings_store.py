@@ -52,6 +52,8 @@ DEFAULT_SETTINGS = {
     "backup_interval_hours": "24",
     "backup_retention_count": "7",
     "backup_enabled": "true",
+    "plex_webhook_secret": "",
+    "plex_tv_token": "",
 }
 
 # ─── Settings cache ───────────────────────────────────────────────────────────

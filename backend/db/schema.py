@@ -107,6 +107,8 @@ _TABLES = [
             ("notified_thresholds", "TEXT DEFAULT '[]'"),
             ("sonarr_series_id", "INTEGER"),
             ("season_number", "INTEGER"),
+            ("plex_rating_key", "TEXT DEFAULT ''"),
+            ("view_count", "INTEGER DEFAULT 0"),
         ],
     ),
     (

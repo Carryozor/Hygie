@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Union
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 class ConditionField(str, Enum):
     DAYS_NOT_WATCHED = "days_not_watched"
@@ -31,7 +31,7 @@ class RuleAction(str, Enum):
 class Condition(BaseModel):
     field: ConditionField
     op:    ConditionOp
-    value: Union[int, float, str, list]
+    value: Union[int, float, str, list[int | float | str]]
 
     @field_validator("value")
     @classmethod
@@ -39,15 +39,17 @@ class Condition(BaseModel):
         op = info.data.get("op")
         if op in (ConditionOp.IN, ConditionOp.NOT_IN) and not isinstance(v, list):
             raise ValueError(f"op={op} requires a list value, got {type(v).__name__}")
+        if op not in (ConditionOp.IN, ConditionOp.NOT_IN) and op is not None and isinstance(v, list):
+            raise ValueError(f"op={op} does not accept a list value")
         return v
 
 class ExpertRule(BaseModel):
     id:          int | None     = None
     name:        str
     library_id:  int | None     = None
-    conditions:  list[Condition]
+    conditions:  list[Condition] = Field(..., min_length=1)
     operator:    RuleOperator   = RuleOperator.AND
     action:      RuleAction     = RuleAction.QUEUE
     enabled:     bool           = True
     priority:    int            = 0
-    created_at:  str | None     = None
+    created_at:  str | None     = None  # ISO-8601 string; kept as str for SQLite compatibility

@@ -10,7 +10,7 @@ def test_condition_valid():
     assert c.field == ConditionField.DAYS_NOT_WATCHED
     assert c.value == 365
 
-def test_condition_invalid_op_for_list_field():
+def test_in_op_requires_list_value():
     with pytest.raises(ValidationError):
         Condition(field=ConditionField.SEERR_USER_ID, op=ConditionOp.IN, value=42)
 
@@ -48,3 +48,19 @@ def test_rule_with_multiple_conditions():
         ],
     )
     assert len(rule.conditions) == 2
+
+def test_scalar_op_rejects_list_value():
+    with pytest.raises(ValidationError):
+        Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=[1, 2])
+
+def test_not_in_op_requires_list():
+    with pytest.raises(ValidationError):
+        Condition(field=ConditionField.SEERR_USER_ID, op=ConditionOp.NOT_IN, value=42)
+
+def test_not_in_op_accepts_list():
+    c = Condition(field=ConditionField.SEERR_USER_ID, op=ConditionOp.NOT_IN, value=[1, 2, 3])
+    assert isinstance(c.value, list)
+
+def test_rule_empty_conditions_rejected():
+    with pytest.raises(ValidationError):
+        ExpertRule(name="bad", conditions=[])

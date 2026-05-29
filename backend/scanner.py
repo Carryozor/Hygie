@@ -71,8 +71,6 @@ def _build_item_data(
       days_not_watched, play_count, rating, file_size_gb, added_days_ago,
       media_type, seerr_user_id.
     """
-    from .db.utils import now_utc
-
     now = now_utc()
 
     if last_played is not None:
@@ -105,23 +103,14 @@ def _build_item_data(
     }
 
 
-async def _evaluate_expert_rules(item_data: dict, library_id, db_path: str):
+async def _evaluate_expert_rules(item_data: dict, library_id=None, *, db_path: str) -> str | None:
     """Return action string ('queue'/'notify_only') if any enabled expert rule matches, else None.
 
-    library_id: the library's id value (string UUID from libraries table).
-    Rules whose rule.library_id is set are skipped when they don't match
-    the provided library_id.  Since library_id in expert_rules is an INTEGER
-    and libraries.id is a TEXT UUID they can only match when rule.library_id is None.
+    # library_id scoping deferred — all rules apply globally until library ID type is unified
+    # (int vs TEXT UUID).  The library_id parameter is accepted but not used.
     """
     rules = await _get_expert_rules(db_path=db_path, enabled_only=True)
     for rule in rules:
-        if rule.library_id is not None:
-            # Integer library scoping — skip if mismatch (type-safe compare)
-            try:
-                if str(rule.library_id) != str(library_id):
-                    continue
-            except Exception:
-                continue
         if _evaluate_rule(rule, item_data):
             return rule.action.value
     return None
@@ -368,7 +357,6 @@ async def _scan_library(
                     continue
 
                 # Compute play_count and last_played from user_data_cache
-                from .db.utils import parse_iso_dt
                 play_count = 0
                 last_played = None
                 added_date = parse_iso_dt(item.get("DateCreated") or "")
@@ -392,10 +380,14 @@ async def _scan_library(
                 item_data = _build_item_data(
                     item, play_count, last_played, added_date, seerr_user_id
                 )
-                action = await _evaluate_expert_rules(item_data, lib["id"], DB_PATH)
+                if deletion_unit != "episode":
+                    logger.debug(
+                        "Expert rules skipped for library %s (deletion_unit=%s)",
+                        lib["id"], deletion_unit,
+                    )
+                    continue
+                action = await _evaluate_expert_rules(item_data, lib["id"], db_path=DB_PATH)
                 if action == _RuleAction.QUEUE.value:
-                    from .db.utils import now_utc
-                    from datetime import timedelta
                     detect_at = now_utc()
                     delete_at = detect_at + timedelta(days=lib.get("grace_days") or 7)
                     expert_entry = {
@@ -472,8 +464,6 @@ async def _consolidate_and_insert(
     Only groups where ALL episode files in that season/series are eligible get inserted.
     Returns count of consolidated entries added.
     """
-    from collections import defaultdict
-
     # Count total episode files per (series_id, season) and per series_id from cache
     season_totals: dict = defaultdict(int)
     series_totals: dict = defaultdict(int)

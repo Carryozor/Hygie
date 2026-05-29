@@ -5,16 +5,10 @@ import api from '@/api/client'
 export const useStatsStore = defineStore('stats', () => {
   const global = ref({ total_deleted: 0, total_ignored: 0, total_scans: 0, queue: {}, by_month: [] })
   const storage = ref({ disks: [], movies: {}, series: {}, total_media_size: 0, queue: {} })
-  const loading = ref(false)
 
   async function fetchGlobal() {
-    loading.value = true
-    try {
-      const { data } = await api.get('/stats/global')
-      global.value = data
-    } finally {
-      loading.value = false
-    }
+    const { data } = await api.get('/stats/global')
+    global.value = data
   }
 
   async function fetchStorage() {
@@ -22,5 +16,5 @@ export const useStatsStore = defineStore('stats', () => {
     storage.value = data
   }
 
-  return { global, storage, loading, fetchGlobal, fetchStorage }
+  return { global, storage, fetchGlobal, fetchStorage }
 })

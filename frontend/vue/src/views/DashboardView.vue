@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <div v-if="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
+      {{ error }}
+    </div>
     <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
       <StatCard
         label="File d'attente"
@@ -44,6 +47,7 @@ import api from '@/api/client'
 
 const stats   = useStatsStore()
 const loading = ref(false)
+const error   = ref('')
 const recentQueue = ref([])
 
 const currentMonthDeleted = computed(() => {
@@ -55,10 +59,13 @@ const currentMonthDeleted = computed(() => {
 
 onMounted(async () => {
   loading.value = true
+  error.value = ''
   try {
     await Promise.all([stats.fetchGlobal(), stats.fetchStorage()])
     const { data } = await api.get('/media', { params: { status: 'pending', limit: 10 } })
     recentQueue.value = data?.items || data || []
+  } catch {
+    error.value = 'Impossible de charger les données du tableau de bord.'
   } finally {
     loading.value = false
   }

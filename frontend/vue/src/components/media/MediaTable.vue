@@ -1,4 +1,5 @@
 <template>
+  <div>
   <div v-if="!items.length" class="py-8 text-center text-[var(--muted)] text-sm">
     Aucun élément.
   </div>
@@ -32,6 +33,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
 </template>
 <script setup>
 defineProps({

@@ -237,10 +237,28 @@ async def _delete_media(
         except Exception as e:
             await add_log("WARN", f"{job_tag}Discord (non bloquant) : {e}", "deletion")
 
-        # Skip Emby deletion for consolidated season/series entries (synthetic IDs)
+        # Resolve server type to route Plex vs Emby/Jellyfin deletion
+        _server_type = ""
+        try:
+            from .db.media_servers import get_media_servers as _gms
+            _all_servers = await _gms()
+            _srv = next((s for s in _all_servers if str(s.get("id")) == library_server_id), None)
+            _server_type = (_srv or {}).get("type", "")
+        except Exception:
+            pass
+
+        # Skip deletion for consolidated season/series entries (synthetic IDs)
         if emby_id and not str(emby_id).startswith("sonarr-"):
-            await delete_item(emby_id, server_id=library_server_id)
-            await add_log("DEBUG", f"{job_tag}Emby : hardlink retiré pour {title}", "deletion")
+            if _server_type == "plex":
+                from .plex_client import build_plex_client as _bpc
+                _plex_client = _bpc(_srv or {})
+                if _plex_client:
+                    rating_key = row.get("plex_rating_key") or emby_id
+                    await _plex_client.delete_item(rating_key)
+                    await add_log("DEBUG", f"{job_tag}Plex : élément supprimé {rating_key}", "deletion")
+            else:
+                await delete_item(emby_id, server_id=library_server_id)
+                await add_log("DEBUG", f"{job_tag}Emby : hardlink retiré pour {title}", "deletion")
 
         await _delete_from_arr(row)
         await _delete_from_seerr(row)
@@ -380,3 +398,30 @@ async def run_ignored_cleanup():
             await add_log("INFO", f"VACUUM exécuté — {purged_rows} entrées purgées, espace disque libéré", "system")
         except Exception as e:
             logger.debug(f"VACUUM: {e}")
+
+
+async def _delete_single_item(*, item: dict, server: dict, dry_run: bool = False) -> bool:
+    """Delete one item via the appropriate client based on server type.
+
+    Thin wrapper used for testing and manual single-item deletion.
+    For Plex servers, uses PlexClient.delete_item().
+    For Emby/Jellyfin servers, calls emby_client.delete_item().
+    """
+    if server.get("type") == "plex":
+        from .plex_client import build_plex_client
+        plex = build_plex_client(server)
+        if plex is None:
+            return False
+        rating_key = item.get("plex_rating_key") or item.get("emby_id", "")
+        if dry_run:
+            logger.info("[DRY RUN] Plex: would delete ratingKey=%s", rating_key)
+            return True
+        return await plex.delete_item(rating_key)
+    else:
+        emby_id = item.get("emby_id", "")
+        server_id = str(server.get("id", "0"))
+        if dry_run:
+            logger.info("[DRY RUN] Emby: would delete emby_id=%s", emby_id)
+            return True
+        await delete_item(emby_id, server_id=server_id)
+        return True

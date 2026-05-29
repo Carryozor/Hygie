@@ -13,9 +13,10 @@ _NUMERIC_OPS = {
 
 def evaluate_condition(condition: Condition, item: dict) -> bool:
     """Return True if item satisfies condition. Missing field = False."""
-    raw = item.get(condition.field.value)
-    if raw is None:
+    key = condition.field.value
+    if key not in item:
         return False
+    raw = item[key]
     try:
         op = condition.op
         val = condition.value

@@ -69,6 +69,7 @@ from .routers import (
     auth,
     backup,
     calendar,
+    expert_rules,
     ignored,
     libraries,
     logs,
@@ -247,6 +248,7 @@ app.include_router(logs.router)
 app.include_router(stats.router)
 app.include_router(storage.router)
 app.include_router(seerr_rules.router)
+app.include_router(expert_rules.router)
 app.include_router(calendar.router)
 app.include_router(unmonitored.router)
 app.include_router(metrics.router)

@@ -1,6 +1,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 aiosqlite==0.20.0
+aiomysql==0.2.0
 httpx==0.28.1
 apscheduler==3.11.0
 PyJWT==2.10.1

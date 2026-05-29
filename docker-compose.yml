@@ -14,6 +14,8 @@ services:
       # 2. Generate a key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # Never hardcode the key here — use the .env file instead.
       - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
+      # Optional: set DATABASE_URL to use MariaDB instead of SQLite (requires mariadb profile)
+      - DATABASE_URL=${DATABASE_URL:-}
     mem_limit: 1g     # 512m is too tight for large libraries; 1-2g recommended in production
     cpus: '2.0'
     healthcheck:
@@ -22,3 +24,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    depends_on:
+      mariadb:
+        condition: service_healthy
+        required: false
+
+  mariadb:
+    image: mariadb:11
+    profiles: [mariadb]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: hygie
+      MYSQL_USER: hygie
+      MYSQL_PASSWORD: ${DB_MARIADB_PASSWORD:-hygie_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_MARIADB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - hygie_mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "hygie", "-phygie_secret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  hygie_mariadb:

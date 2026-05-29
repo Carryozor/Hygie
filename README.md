@@ -526,6 +526,51 @@ pytest tests/ -v
 
 174 tests couvrant : chiffrement de la base, cache des settings, authentification (JWT/Argon2id/rate limiting), évaluation des conditions, rendu des overlays, client Emby (auth par header) et routes FastAPI (auth, proxy SSRF, scheduler).
 
+### 🗄️ Base de données
+
+Hygie supporte **SQLite** (défaut) et **MariaDB**.
+
+| Configuration | Recommandé pour |
+|---------------|----------------|
+| SQLite (défaut) | Usage personnel, < 200 000 médias, zéro configuration |
+| MariaDB | > 200 000 médias, ou serveur MySQL/MariaDB déjà disponible |
+
+#### SQLite (défaut)
+
+Aucune configuration requise. Les données sont stockées dans `/app/data/hygie.db`.
+
+#### MariaDB via Docker Compose
+
+```bash
+# Lancer avec le profil mariadb :
+DB_MARIADB_PASSWORD=mon_mot_de_passe \
+DATABASE_URL=mysql+aiomysql://hygie:mon_mot_de_passe@mariadb:3306/hygie \
+docker compose --profile mariadb up -d
+```
+
+#### MariaDB externe
+
+Définir `DATABASE_URL` dans votre commande ou fichier compose :
+
+```
+DATABASE_URL=mysql+aiomysql://user:pass@votre-serveur-mariadb:3306/hygie
+```
+
+#### Migration SQLite → MariaDB
+
+```bash
+# Vérification sans écriture (dry-run) :
+docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
+  --sqlite-path /app/data/hygie.db \
+  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie" \
+  --dry-run
+
+# Migration réelle (arrêter Hygie avant) :
+docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
+  --sqlite-path /app/data/hygie.db \
+  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie"
+```
+
 ### 📋 Migrations automatiques
 
 Hygie applique automatiquement les migrations de schéma au démarrage. La mise à jour depuis n'importe quelle version antérieure (y compris v1.x et v2.0) préserve toutes vos données, règles de bibliothèques et historique.

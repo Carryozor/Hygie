@@ -147,6 +147,8 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     # Startup
     await init_db()
+    from .db.engine import init_db_pool, close_db_pool
+    await init_db_pool()  # no-op for SQLite; creates aiomysql pool if DATABASE_URL is set
 
     # Configure log level from settings
     try:
@@ -214,6 +216,7 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown(wait=True)
     except Exception:
         scheduler.shutdown(wait=False)
+    await close_db_pool()
     logger.info("Hygie shutdown")
 
 

@@ -3,6 +3,7 @@ import importlib
 import pytest
 import pytest_asyncio
 import aiosqlite
+from datetime import datetime, timezone
 from httpx import AsyncClient, ASGITransport
 
 
@@ -38,14 +39,15 @@ async def client_with_data(monkeypatch, tmp_path):
     app = main_mod.app
     async with main_mod.lifespan(app):
         # Seed stats_history with known per-library data
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
         async with aiosqlite.connect(db_path) as db:
             await db.executemany(
                 "INSERT INTO stats_history "
                 "(ts, total_deleted, total_scanned, space_freed_bytes, month, library_id) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    ("2026-05-01T10:00:00Z", 3, 100, 10_000_000_000, "2026-05", 1),
-                    ("2026-05-02T10:00:00Z", 1, 50,  5_000_000_000,  "2026-05", 2),
+                    ("2026-05-01T10:00:00Z", 3, 100, 10_000_000_000, current_month, "lib1"),
+                    ("2026-05-02T10:00:00Z", 1, 50,  5_000_000_000,  current_month, "lib2"),
                 ],
             )
             await db.commit()
@@ -93,8 +95,8 @@ async def test_metrics_by_library_contains_both_libraries(client_with_data):
     r = await c.get("/api/metrics", headers={"Authorization": f"Bearer {token}"})
     data = r.json()
     lib_ids = {item["library_id"] for item in data["by_library"]}
-    assert 1 in lib_ids
-    assert 2 in lib_ids
+    assert "lib1" in lib_ids
+    assert "lib2" in lib_ids
 
 
 @pytest.mark.asyncio
@@ -104,8 +106,8 @@ async def test_metrics_by_library_deleted_counts(client_with_data):
     r = await c.get("/api/metrics", headers={"Authorization": f"Bearer {token}"})
     data = r.json()
     by_lib = {item["library_id"]: item for item in data["by_library"]}
-    assert by_lib[1]["deleted"] == 3
-    assert by_lib[2]["deleted"] == 1
+    assert by_lib["lib1"]["deleted"] == 3
+    assert by_lib["lib2"]["deleted"] == 1
 
 
 @pytest.mark.asyncio
@@ -115,8 +117,8 @@ async def test_metrics_by_library_space_freed(client_with_data):
     r = await c.get("/api/metrics", headers={"Authorization": f"Bearer {token}"})
     data = r.json()
     by_lib = {item["library_id"]: item for item in data["by_library"]}
-    assert by_lib[1]["space_freed_bytes"] == 10_000_000_000
-    assert by_lib[2]["space_freed_bytes"] == 5_000_000_000
+    assert by_lib["lib1"]["space_freed_bytes"] == 10_000_000_000
+    assert by_lib["lib2"]["space_freed_bytes"] == 5_000_000_000
 
 
 @pytest.mark.asyncio

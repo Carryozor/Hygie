@@ -1,4 +1,6 @@
 """Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
+from datetime import datetime, timezone
+
 import aiosqlite
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
@@ -61,8 +63,6 @@ async def prometheus_metrics():
 @router.get("/api/metrics")
 async def api_metrics(user: str = Depends(require_auth)):
     """JSON metrics endpoint with per-library breakdown for the current month."""
-    from datetime import datetime, timezone
-
     current_month = datetime.now(timezone.utc).strftime("%Y-%m")
 
     async with aiosqlite.connect(DB_PATH) as db:

@@ -201,10 +201,10 @@ _TABLES = [
             total_scanned INTEGER DEFAULT 0,
             space_freed_bytes INTEGER DEFAULT 0,
             month TEXT NOT NULL,
-            library_id INTEGER
+            library_id TEXT
         )""",
         [
-            ("library_id", "INTEGER"),
+            ("library_id", "TEXT"),
         ],
     ),
     (

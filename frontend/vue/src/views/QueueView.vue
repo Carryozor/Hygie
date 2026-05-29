@@ -16,19 +16,34 @@
       <span class="text-sm text-[var(--muted)] ml-auto">{{ total }} éléments</span>
     </div>
 
-    <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden">
-      <MediaTable :items="items" />
+    <div v-if="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
+      {{ error }}
     </div>
 
-    <!-- Pagination -->
-    <div v-if="totalPages > 1" class="flex items-center justify-center gap-2">
+    <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden">
+      <div v-if="loading" class="p-8 text-center text-[var(--muted)] text-sm">Chargement...</div>
+      <MediaTable v-else :items="items" />
+    </div>
+
+    <!-- Windowed pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-center gap-1">
       <button
-        v-for="p in totalPages"
+        @click="page = 1"
+        :disabled="page === 1"
+        class="w-8 h-8 rounded text-sm text-[var(--muted)] hover:bg-[var(--bg3)] disabled:opacity-30"
+      >«</button>
+      <button
+        v-for="p in visiblePages"
         :key="p"
-        @click="page = p"
+        @click="typeof p === 'number' && (page = p)"
         class="w-8 h-8 rounded text-sm transition-colors"
-        :class="p === page ? 'bg-[var(--accent)] text-white' : 'text-[var(--muted)] hover:bg-[var(--bg3)]'"
+        :class="p === page ? 'bg-[var(--accent)] text-white' : p === '…' ? 'cursor-default text-[var(--muted)]' : 'text-[var(--muted)] hover:bg-[var(--bg3)]'"
       >{{ p }}</button>
+      <button
+        @click="page = totalPages"
+        :disabled="page === totalPages"
+        class="w-8 h-8 rounded text-sm text-[var(--muted)] hover:bg-[var(--bg3)] disabled:opacity-30"
+      >»</button>
     </div>
   </div>
 </template>
@@ -43,17 +58,38 @@ const total        = ref(0)
 const page         = ref(1)
 const statusFilter = ref('')
 const search       = ref('')
+const loading      = ref(false)
+const error        = ref('')
 const perPage      = 50
 
 const totalPages = computed(() => Math.ceil(total.value / perPage))
 
+const visiblePages = computed(() => {
+  const n = totalPages.value
+  const p = page.value
+  if (n <= 7) return Array.from({ length: n }, (_, i) => i + 1)
+  const pages = []
+  if (p > 3) pages.push(1, '…')
+  for (let i = Math.max(1, p - 2); i <= Math.min(n, p + 2); i++) pages.push(i)
+  if (p < n - 2) pages.push('…', n)
+  return pages
+})
+
 async function load() {
-  const params = { limit: perPage, offset: (page.value - 1) * perPage }
-  if (statusFilter.value) params.status = statusFilter.value
-  if (search.value)        params.search = search.value
-  const { data } = await api.get('/media', { params })
-  items.value = data.items || data || []
-  total.value = data.total || items.value.length
+  loading.value = true
+  error.value = ''
+  try {
+    const params = { limit: perPage, offset: (page.value - 1) * perPage }
+    if (statusFilter.value) params.status = statusFilter.value
+    if (search.value)        params.search = search.value
+    const { data } = await api.get('/media', { params })
+    items.value = data.items || data || []
+    total.value = data.total || items.value.length
+  } catch {
+    error.value = 'Impossible de charger la file d\'attente.'
+  } finally {
+    loading.value = false
+  }
 }
 
 watch([statusFilter, search], () => { page.value = 1; load() })

@@ -49,8 +49,82 @@ from .conditions import _evaluate_conditions, _evaluate_item
 from .notifications import _ensure_notif_columns, _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _scan_lock
+from .db.repositories import get_expert_rules as _get_expert_rules
+from .rules.engine import evaluate_rule as _evaluate_rule
+from .rules.models import RuleAction as _RuleAction
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Expert rules helpers ──────────────────────────────────────────────────────
+
+def _build_item_data(
+    item: dict,
+    play_count: int,
+    last_played,  # Optional[datetime]
+    added_date,   # Optional[datetime]
+    seerr_user_id=None,
+) -> dict:
+    """Build the item_data dict expected by evaluate_rule / ConditionField keys.
+
+    Keys must match ConditionField enum values:
+      days_not_watched, play_count, rating, file_size_gb, added_days_ago,
+      media_type, seerr_user_id.
+    """
+    from .db.utils import now_utc
+
+    now = now_utc()
+
+    if last_played is not None:
+        days_not_watched = (now - last_played).days
+    elif added_date is not None:
+        days_not_watched = (now - added_date).days
+    else:
+        days_not_watched = 0
+
+    added_days_ago = (now - added_date).days if added_date is not None else 0
+
+    # Rating: Emby items carry CommunityRating
+    rating = float(item.get("CommunityRating") or 0.0)
+
+    # File size: Emby MediaSources[0].Size is bytes
+    size_bytes = 0
+    media_sources = item.get("MediaSources") or []
+    if media_sources and isinstance(media_sources[0], dict):
+        size_bytes = int(media_sources[0].get("Size") or 0)
+    file_size_gb = round(size_bytes / (1024 ** 3), 4) if size_bytes else 0.0
+
+    return {
+        "days_not_watched": days_not_watched,
+        "play_count": play_count,
+        "rating": rating,
+        "file_size_gb": file_size_gb,
+        "added_days_ago": added_days_ago,
+        "media_type": item.get("Type") or "Movie",
+        "seerr_user_id": seerr_user_id,
+    }
+
+
+async def _evaluate_expert_rules(item_data: dict, library_id, db_path: str):
+    """Return action string ('queue'/'notify_only') if any enabled expert rule matches, else None.
+
+    library_id: the library's id value (string UUID from libraries table).
+    Rules whose rule.library_id is set are skipped when they don't match
+    the provided library_id.  Since library_id in expert_rules is an INTEGER
+    and libraries.id is a TEXT UUID they can only match when rule.library_id is None.
+    """
+    rules = await _get_expert_rules(db_path=db_path, enabled_only=True)
+    for rule in rules:
+        if rule.library_id is not None:
+            # Integer library scoping — skip if mismatch (type-safe compare)
+            try:
+                if str(rule.library_id) != str(library_id):
+                    continue
+            except Exception:
+                continue
+        if _evaluate_rule(rule, item_data):
+            return rule.action.value
+    return None
 
 
 # ═══ Scan ════════════════════════════════════════════════════════════════════
@@ -280,6 +354,78 @@ async def _scan_library(
             )
             if entry is not None:
                 eligible.append(entry)
+            else:
+                # Expert rules — additive path: evaluate only when library
+                # conditions did not already pick this item up.
+                emby_id = item.get("Id")
+                file_path = item.get("Path") or ""
+                if not emby_id or not file_path:
+                    continue
+                # Skip items already queued or ignored
+                if queued_ids is not None and emby_id in queued_ids:
+                    continue
+                if ignored_ids is not None and emby_id in ignored_ids:
+                    continue
+
+                # Compute play_count and last_played from user_data_cache
+                from .db.utils import parse_iso_dt
+                play_count = 0
+                last_played = None
+                added_date = parse_iso_dt(item.get("DateCreated") or "")
+                for uid in user_ids:
+                    ud = (user_data_cache.get(uid) or {}).get(emby_id) or {}
+                    pc = ud.get("PlayCount") or 0
+                    play_count = max(play_count, pc)
+                    lp_str = ud.get("LastPlayedDate") or ""
+                    if lp_str:
+                        lp = parse_iso_dt(lp_str)
+                        if lp and (last_played is None or lp > last_played):
+                            last_played = lp
+
+                seerr_user_id = None
+                if seerr_cache is not None:
+                    tmdb_id = str(item.get("ProviderIds", {}).get("Tmdb") or "")
+                    seerr_data = seerr_cache.get(tmdb_id) if tmdb_id else None
+                    if seerr_data:
+                        seerr_user_id = seerr_data.get("user_id")
+
+                item_data = _build_item_data(
+                    item, play_count, last_played, added_date, seerr_user_id
+                )
+                action = await _evaluate_expert_rules(item_data, lib["id"], DB_PATH)
+                if action == _RuleAction.QUEUE.value:
+                    from .db.utils import now_utc
+                    from datetime import timedelta
+                    detect_at = now_utc()
+                    delete_at = detect_at + timedelta(days=lib.get("grace_days") or 7)
+                    expert_entry = {
+                        "emby_id": emby_id,
+                        "title": item.get("Name") or "?",
+                        "media_type": item.get("Type") or "Movie",
+                        "library_id": lib["id"],
+                        "library_name": lib["name"],
+                        "file_path": file_path,
+                        "poster_url": "",
+                        "tmdb_id": str(item.get("ProviderIds", {}).get("Tmdb") or ""),
+                        "seerr_id": None,
+                        "seerr_user_id": seerr_user_id,
+                        "seerr_username": "",
+                        "seerr_request_url": "",
+                        "radarr_id": None,
+                        "sonarr_id": None,
+                        "sonarr_series_id": None,
+                        "season_number": None,
+                        "detected_at": detect_at.isoformat(),
+                        "delete_at": delete_at.isoformat(),
+                        "added_date": added_date.isoformat() if added_date else detect_at.isoformat(),
+                        "last_played": last_played.isoformat() if last_played else None,
+                    }
+                    eligible.append(expert_entry)
+                    await add_log(
+                        "INFO",
+                        f"Expert rule match (queue) : {item.get('Name') or emby_id}",
+                        "scan",
+                    )
         start += 500
         if start >= total:
             break

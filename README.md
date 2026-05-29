@@ -4,13 +4,13 @@
 
 # Hygie
 
-**Smart media library manager for Emby & Jellyfin**
-**Gestionnaire intelligent de bibliothèque média pour Emby & Jellyfin**
+**Smart media library manager for Emby, Jellyfin & Plex**
+**Gestionnaire intelligent de bibliothèque média pour Emby, Jellyfin & Plex**
 
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/carryozor/hygie/releases)
 [![CI](https://github.com/carryozor/hygie/actions/workflows/ci.yml/badge.svg)](https://github.com/carryozor/hygie/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-264%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -28,13 +28,16 @@
 
 ### What is Hygie?
 
-Hygie automatically scans your **Emby or Jellyfin** media libraries, identifies unused media based on configurable rules, and orchestrates their deletion across your entire *arr stack — Emby/Jellyfin, Radarr, Sonarr, Seerr, and qBittorrent — while keeping your users informed via Discord.
+Hygie automatically scans your **Emby, Jellyfin or Plex** media libraries, identifies unused media based on configurable rules, and orchestrates their deletion across your entire *arr stack — Emby/Jellyfin/Plex, Radarr, Sonarr, Seerr, and qBittorrent — while keeping your users informed via Discord.
 
 ### ✨ Features
 
-#### 🖥️ Multi-Server Support (Emby & Jellyfin)
+#### 🖥️ Multi-Server Support (Emby, Jellyfin & Plex)
 - **Automatic detection** of Emby and Jellyfin via API (`ProductName` + version heuristics)
-- **Multiple servers** — configure and activate several Emby/Jellyfin servers simultaneously
+- **Plex support** — scan libraries, detect unwatched media, delete via Plex local API
+- **Plex.tv integration** — discover your servers and friends via `plex_tv_token`
+- **Plex webhooks** — receive play/scrobble events at `/api/plex/webhook` (optional secret)
+- **Multiple servers** — configure and activate several Emby/Jellyfin/Plex servers simultaneously
 - **Fusion icon** when both server types are active (split half-and-half design)
 - Per-server enable/disable toggle with real-time type detection
 - All operations (scan, delete, collection sync, overlay) routed to the correct server
@@ -304,13 +307,16 @@ Hygie automatically migrates the database schema on startup. Upgrading from any 
 
 ### Qu'est-ce que Hygie ?
 
-Hygie scanne automatiquement vos bibliothèques **Emby ou Jellyfin**, identifie les médias inutilisés selon des règles configurables, et orchestre leur suppression sur toute votre stack *arr — Emby/Jellyfin, Radarr, Sonarr, Seerr et qBittorrent — tout en tenant vos utilisateurs informés via Discord.
+Hygie scanne automatiquement vos bibliothèques **Emby, Jellyfin ou Plex**, identifie les médias inutilisés selon des règles configurables, et orchestre leur suppression sur toute votre stack *arr — Emby/Jellyfin/Plex, Radarr, Sonarr, Seerr et qBittorrent — tout en tenant vos utilisateurs informés via Discord.
 
 ### ✨ Fonctionnalités
 
-#### 🖥️ Support Multi-Serveurs (Emby & Jellyfin)
+#### 🖥️ Support Multi-Serveurs (Emby, Jellyfin & Plex)
 - **Détection automatique** d'Emby et Jellyfin via l'API (`ProductName` + heuristique de version)
-- **Plusieurs serveurs** — configurez et activez plusieurs serveurs Emby/Jellyfin simultanément
+- **Support Plex** — scan des bibliothèques, détection des médias non-vus, suppression via l'API locale Plex
+- **Intégration Plex.tv** — découverte de vos serveurs et amis via `plex_tv_token`
+- **Webhooks Plex** — réception des événements lecture/scrobble sur `/api/plex/webhook` (secret optionnel)
+- **Plusieurs serveurs** — configurez et activez plusieurs serveurs Emby/Jellyfin/Plex simultanément
 - **Icône fusion** quand les deux types de serveurs sont actifs (split moitié-moitié)
 - Toggle activer/désactiver par serveur avec détection de type en temps réel
 - Toutes les opérations (scan, suppression, sync collection, overlay) routées vers le bon serveur

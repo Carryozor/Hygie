@@ -360,8 +360,8 @@ async def _ensure_columns(db, table: str, expected: list):
 
 
 # ─── Schema & migrations ──────────────────────────────────────────────────────
-async def init_db():
-    """Create tables, run migrations, seed defaults."""
+async def _init_db_sqlite():
+    """SQLite schema init — original implementation."""
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:  # skip for in-memory (:memory:) or bare filenames
         os.makedirs(db_dir, exist_ok=True)
@@ -496,3 +496,29 @@ async def init_db():
         await db.commit()
 
     logger.info(f"Database initialized: {DB_PATH}")
+
+
+async def _init_db_mariadb() -> None:
+    """MariaDB schema init: create tables + indexes + seed defaults."""
+    from .engine import get_db
+    from .schema_mariadb import MARIADB_TABLES, MARIADB_INDEXES
+    async with get_db() as db:
+        for _table_name, ddl in MARIADB_TABLES:
+            await db.execute(ddl)
+        for idx_sql in MARIADB_INDEXES:
+            await db.execute(idx_sql)
+        for k, v in DEFAULT_SETTINGS.items():
+            existing = await db.fetch_one("SELECT 1 FROM settings WHERE `key`=?", (k,))
+            if not existing:
+                await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", (k, v))
+        await db.commit()
+    logger.info("MariaDB schema initialized")
+
+
+async def init_db() -> None:
+    """Initialize database — SQLite (default) or MariaDB based on DATABASE_URL."""
+    from .engine import DIALECT
+    if DIALECT == "mariadb":
+        await _init_db_mariadb()
+    else:
+        await _init_db_sqlite()

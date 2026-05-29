@@ -68,10 +68,14 @@ const visiblePages = computed(() => {
   const n = totalPages.value
   const p = page.value
   if (n <= 7) return Array.from({ length: n }, (_, i) => i + 1)
+  const start = Math.max(1, p - 2)
+  const end   = Math.min(n, p + 2)
   const pages = []
-  if (p > 3) pages.push(1, '…')
-  for (let i = Math.max(1, p - 2); i <= Math.min(n, p + 2); i++) pages.push(i)
-  if (p < n - 2) pages.push('…', n)
+  if (start > 2)      pages.push(1, '…')
+  else if (start === 2) pages.push(1)
+  for (let i = start; i <= end; i++) pages.push(i)
+  if (end < n - 1)    pages.push('…', n)
+  else if (end === n - 1) pages.push(n)
   return pages
 })
 

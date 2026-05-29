@@ -2,6 +2,20 @@
 
 All notable changes to Hygie are documented here.
 
+## [3.0.1] — 2026-05-29
+
+### Added
+- **Plex poster overlays** — applies the "Supprimé dans Xj" banner to Plex item posters (`plex_overlay_enabled` setting, off by default)
+  - `PlexClient.upload_poster()` — uploads custom poster via `POST /library/metadata/{ratingKey}/posters`
+  - `PlexClient.restore_poster()` — restores original poster via Plex metadata refresh from agents
+  - `sync_plex_overlays()` — runs alongside `sync_emby_collection` every 12h and nightly
+  - Toggle in Settings → Plex section
+
+### Fixed
+- **Emby collection thumbnail not updating** — after re-applying overlays (day count changes), the collection mosaic was stale. Fixed by deleting the collection's cached primary image (`DELETE /Items/{id}/Images/Primary`) before the refresh, and using `ReplaceAllImages=true` to force a full mosaic rebuild from the updated item posters.
+
+---
+
 ## [3.0.0] — 2026-05-29
 
 ### Added

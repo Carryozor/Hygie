@@ -20,7 +20,8 @@ const router = createRouter({
 router.beforeEach(async to => {
   if (to.meta.public) return true
   const auth = useAuthStore()
-  const setup = await auth.checkSetup()
+  // Only call the API once — setupComplete is null until first check
+  const setup = auth.setupComplete !== null ? auth.setupComplete : await auth.checkSetup()
   if (!setup) return { name: 'setup' }
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
   return true

@@ -249,10 +249,19 @@ function updateMediaServerIcon(type) {
   }
 }
 
-function onBackupEnabledChange() {
-  const enabled = document.getElementById('backup_enabled')?.checked;
+function onBackupEnabledChange(enabled) {
+  if (enabled === undefined) enabled = document.getElementById('backup_enabled')?.checked;
   const badge = document.getElementById('backup-disabled-badge');
+  const wrap  = document.getElementById('backup-enabled-wrap');
+  const icon  = document.getElementById('backup-enabled-icon');
+  const label = document.getElementById('backup-enabled-label');
   if (badge) badge.style.display = enabled ? 'none' : 'block';
+  if (wrap) {
+    wrap.style.background  = enabled ? '#22c55e18' : 'var(--bg3)';
+    wrap.style.borderColor = enabled ? '#22c55e40' : 'var(--border)';
+  }
+  if (icon)  icon.style.color  = enabled ? '#22c55e' : 'var(--muted)';
+  if (label) label.style.color = enabled ? '#22c55e' : 'var(--muted)';
 }
 
 function toggleAlertCustom(name) {
@@ -300,8 +309,9 @@ async function loadSettings(force=false) {
     });
     const backupEnabledEl = document.getElementById('backup_enabled');
     if (backupEnabledEl) {
-      backupEnabledEl.checked = s.backup_enabled !== 'false';
-      onBackupEnabledChange();
+      const backupOn = s.backup_enabled !== 'false';
+      backupEnabledEl.checked = backupOn;
+      onBackupEnabledChange(backupOn);
     }
     const ls=document.getElementById('log_level'); if(ls) ls.value=s.log_level||'INFO';
     _settingsLoaded=true; _settingsDirty=false;

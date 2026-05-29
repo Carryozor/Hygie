@@ -98,3 +98,27 @@ async def test_delete_expert_rule(auth_client):
 async def test_unauthorized_returns_401(no_auth_client):
     r = await no_auth_client.get("/api/expert-rules")
     assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_update_expert_rule(auth_client):
+    create_r = await auth_client.post("/api/expert-rules", json=_PAYLOAD)
+    rule_id = create_r.json()["id"]
+    updated_payload = {**_PAYLOAD, "name": "Updated name", "priority": 5}
+    r = await auth_client.put(f"/api/expert-rules/{rule_id}", json=updated_payload)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["name"] == "Updated name"
+    assert data["priority"] == 5
+
+
+@pytest.mark.asyncio
+async def test_update_expert_rule_not_found(auth_client):
+    r = await auth_client.put("/api/expert-rules/9999", json=_PAYLOAD)
+    assert r.status_code == 404, r.text
+
+
+@pytest.mark.asyncio
+async def test_delete_expert_rule_not_found(auth_client):
+    r = await auth_client.delete("/api/expert-rules/9999")
+    assert r.status_code == 404, r.text

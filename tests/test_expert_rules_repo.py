@@ -63,7 +63,7 @@ async def test_get_by_id_not_found(db_path):
     assert rule is None
 
 @pytest.mark.asyncio
-async def test_only_enabled_by_default(db_path):
+async def test_enabled_only_filter(db_path):
     await save_expert_rule(_RULE, db_path=db_path)
     disabled = _RULE.model_copy(update={"name": "Disabled", "enabled": False})
     await save_expert_rule(disabled, db_path=db_path)

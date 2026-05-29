@@ -1,7 +1,11 @@
 """Database query functions — single source of truth for media_queue and libraries SQL."""
+import logging
+
 import aiosqlite
 
 from .utils import now_utc
+
+logger = logging.getLogger(__name__)
 
 
 async def get_pending_queue(*, db_path: str) -> list[dict]:
@@ -85,16 +89,17 @@ async def update_queue_status(item_id: int, status: str, *, db_path: str) -> Non
 async def save_expert_rule(rule: "ExpertRule", *, db_path: str) -> int:
     """Insert or update an expert rule. Returns the rule id."""
     import json
-    from ..rules.models import ExpertRule as _ExpertRule
     conditions_json = json.dumps([c.model_dump() for c in rule.conditions])
     async with aiosqlite.connect(db_path) as db:
         if rule.id:
-            await db.execute(
+            cursor = await db.execute(
                 "UPDATE expert_rules SET name=?, library_id=?, conditions=?, operator=?, "
                 "action=?, enabled=?, priority=? WHERE id=?",
                 (rule.name, rule.library_id, conditions_json, rule.operator.value,
                  rule.action.value, int(rule.enabled), rule.priority, rule.id),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"expert rule id={rule.id} not found")
             await db.commit()
             return rule.id
         cursor = await db.execute(
@@ -123,7 +128,8 @@ async def get_expert_rules(*, db_path: str, enabled_only: bool = False) -> list:
         d = dict(row)
         try:
             conditions = [_Condition(**c) for c in json.loads(d.get("conditions") or "[]")]
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to deserialize conditions for rule id=%s: %s", d.get("id"), exc)
             conditions = []
         result.append(_ExpertRule(
             id=d["id"], name=d["name"], library_id=d.get("library_id"),
@@ -139,8 +145,31 @@ async def get_expert_rules(*, db_path: str, enabled_only: bool = False) -> list:
 
 async def get_expert_rule_by_id(rule_id: int, *, db_path: str):
     """Return a single ExpertRule by id, or None if not found."""
-    rules = await get_expert_rules(db_path=db_path)
-    return next((r for r in rules if r.id == rule_id), None)
+    import json
+    from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, RuleOperator, RuleAction
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM expert_rules WHERE id=?", (rule_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    try:
+        conditions = [_Condition(**c) for c in json.loads(d.get("conditions") or "[]")]
+    except Exception as exc:
+        logger.warning("Failed to deserialize conditions for rule id=%s: %s", d.get("id"), exc)
+        conditions = []
+    return _ExpertRule(
+        id=d["id"], name=d["name"], library_id=d.get("library_id"),
+        conditions=conditions,
+        operator=RuleOperator(d["operator"]),
+        action=RuleAction(d["action"]),
+        enabled=bool(d["enabled"]),
+        priority=d["priority"],
+        created_at=d.get("created_at"),
+    )
 
 
 async def delete_expert_rule(rule_id: int, *, db_path: str) -> None:

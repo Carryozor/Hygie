@@ -36,6 +36,7 @@ from .scheduler import (
     run_ignored_cleanup,
     run_scan,
     sync_emby_collection,
+    sync_plex_overlays,
 )
 from . import proxy
 
@@ -65,6 +66,10 @@ async def _internal_cleanup():
         await sync_emby_collection()
     except Exception as e:
         logger.debug(f"_internal_cleanup: sync_emby_collection: {e}")
+    try:
+        await sync_plex_overlays()
+    except Exception as e:
+        logger.debug(f"_internal_cleanup: sync_plex_overlays: {e}")
 from .routers import (
     auth,
     backup,

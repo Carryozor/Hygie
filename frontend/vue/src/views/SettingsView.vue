@@ -86,6 +86,15 @@
           <code class="bg-[var(--bg3)] px-1 rounded">{{ webhookUrl }}</code>
         </p>
       </div>
+
+      <!-- Overlay affiches Plex -->
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm font-medium">Overlay « Supprimé dans Xj » sur Plex</div>
+          <div class="text-xs text-[var(--muted)]">Applique la bannière sur les affiches des médias en file de suppression</div>
+        </div>
+        <ToggleSlider v-model="form.plex_overlay_enabled" />
+      </div>
     </section>
 
     <button
@@ -124,6 +133,7 @@ function syncForm() {
     deletion_check_interval_minutes: Number(settings.settings.deletion_check_interval_minutes || 60),
     plex_tv_token:                   settings.settings.plex_tv_token || '',
     plex_webhook_secret:             settings.settings.plex_webhook_secret || '',
+    plex_overlay_enabled:            settings.settings.plex_overlay_enabled === 'true',
   }
 }
 
@@ -140,6 +150,7 @@ async function save() {
       deletion_check_interval_minutes: String(form.value.deletion_check_interval_minutes),
       plex_tv_token:                   form.value.plex_tv_token,
       plex_webhook_secret:             form.value.plex_webhook_secret,
+      plex_overlay_enabled:            String(form.value.plex_overlay_enabled),
     })
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)

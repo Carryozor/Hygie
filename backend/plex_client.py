@@ -119,6 +119,28 @@ class PlexClient:
         logger.info("Plex: deleted item ratingKey=%s", rating_key)
         return True
 
+    async def upload_poster(self, rating_key: str, image_bytes: bytes) -> bool:
+        """Upload image_bytes as the custom poster for this item (sets as selected)."""
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
+            resp = await client.post(
+                f"{self._url}/library/metadata/{rating_key}/posters",
+                headers={**self._headers, "Content-Type": "image/jpeg"},
+                content=image_bytes,
+            )
+        if resp.status_code not in (200, 201, 204):
+            logger.warning("Plex upload_poster HTTP %s for ratingKey=%s", resp.status_code, rating_key)
+            return False
+        return True
+
+    async def restore_poster(self, rating_key: str) -> bool:
+        """Restore original poster by triggering a Plex metadata refresh from agents."""
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
+            resp = await client.put(
+                f"{self._url}/library/metadata/{rating_key}/refresh",
+                headers=self._headers,
+            )
+        return resp.status_code in (200, 204)
+
     async def get_active_sessions(self) -> list[dict]:
         data = await self._get("/status/sessions")
         metadata = data.get("MediaContainer", {}).get("Metadata") or []

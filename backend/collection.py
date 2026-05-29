@@ -258,13 +258,21 @@ async def sync_emby_collection():
             )
 
             overlay_enabled = await get_bool_setting("emby_leaving_soon_overlay")
-            if to_remove and overlay_enabled:
-                await _restore_posters_for_removed(client, emby_url, emby_key, to_remove)
-
-            if overlay_enabled and wanted:
+            if overlay_enabled:
                 ui_lang = await get_setting("ui_language") or "fr"
-                await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
-                # Force Emby to rebuild the collection thumbnail after overlay updates
+                if to_remove:
+                    await _restore_posters_for_removed(client, emby_url, emby_key, to_remove)
+                if wanted:
+                    await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
+                # Delete the collection's cached primary image so Emby rebuilds the
+                # mosaic from the freshly-overlaid item posters (fixes stale day counts).
+                try:
+                    await client.delete(
+                        f"{emby_url}/Items/{collection_id}/Images/Primary",
+                        headers={"X-Emby-Token": emby_key},
+                    )
+                except Exception:
+                    pass
                 try:
                     await client.post(
                         f"{emby_url}/Items/{collection_id}/Refresh",
@@ -273,7 +281,7 @@ async def sync_emby_collection():
                             "Recursive": "false",
                             "MetadataRefreshMode": "None",
                             "ImageRefreshMode": "FullRefresh",
-                            "ReplaceAllImages": "false",
+                            "ReplaceAllImages": "true",
                         },
                     )
                 except Exception as e:

@@ -54,6 +54,7 @@ DEFAULT_SETTINGS = {
     "backup_enabled": "true",
     "plex_webhook_secret": "",
     "plex_tv_token": "",
+    "plex_overlay_enabled": "false",
 }
 
 # ─── Settings cache ───────────────────────────────────────────────────────────

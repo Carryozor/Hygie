@@ -19,7 +19,7 @@ import backend.db.logs as _db_logs
 from backend.db.schema import init_db
 from backend.db.repositories import save_expert_rule
 from backend.rules.models import (
-    ExpertRule, Condition, ConditionField, ConditionOp, RuleAction, RuleOperator,
+    ExpertRule, Condition, ConditionGroup, ConditionField, ConditionOp, RuleAction, RuleOperator,
 )
 
 
@@ -41,10 +41,8 @@ async def isolated_db(tmp_path, monkeypatch):
     _db_ms._ms_cache_ts = 0.0
     await init_db()
 
-    import backend.scanner as scanner_mod
     import backend.conditions as cond_mod
     import backend.notifications as notif_mod
-    monkeypatch.setattr(scanner_mod, "DB_PATH", db_path)
     monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
     monkeypatch.setattr(notif_mod, "DB_PATH", db_path)
 
@@ -111,38 +109,38 @@ def _expert_scan_patches(emby_items: list):
 
     stack = ExitStack()
     stack.enter_context(patch(
-        "backend.scanner.get_items_in_library",
+        "backend.scanner._emby_scanner.get_items_in_library",
         new_callable=AsyncMock,
         return_value=(emby_items, len(emby_items)),
     ))
     stack.enter_context(patch(
-        "backend.scanner.get_users",
+        "backend.scanner._orchestrator.get_users",
         new_callable=AsyncMock,
         return_value=[],  # no users — play_count stays 0
     ))
     stack.enter_context(patch(
-        "backend.scanner.get_library_user_data",
+        "backend.scanner._emby_scanner.get_library_user_data",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_radarr_path_cache",
+        "backend.scanner._orchestrator.build_radarr_path_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_sonarr_path_cache",
+        "backend.scanner._orchestrator.build_sonarr_path_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_seerr_request_cache",
+        "backend.scanner._orchestrator.build_seerr_request_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
-    stack.enter_context(patch("backend.scanner.sync_emby_collection", new_callable=AsyncMock))
-    stack.enter_context(patch("backend.scanner.send_notification", new_callable=AsyncMock))
-    stack.enter_context(patch("backend.scanner._send_pending_notifications", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._orchestrator.sync_emby_collection", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._queue_entry.send_notification", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._orchestrator._send_pending_notifications", new_callable=AsyncMock))
     stack.enter_context(patch(
         "backend.conditions.get_client",
         new_callable=AsyncMock,
@@ -165,7 +163,10 @@ async def test_expert_rule_queues_unwatched(isolated_db):
 
     rule = ExpertRule(
         name="Queue unwatched",
-        conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+        condition_groups=[ConditionGroup(
+            conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+            operator=RuleOperator.AND,
+        )],
         operator=RuleOperator.AND,
         action=RuleAction.QUEUE,
         enabled=True,
@@ -197,7 +198,10 @@ async def test_disabled_expert_rule_skipped(isolated_db):
 
     rule = ExpertRule(
         name="Disabled rule",
-        conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+        condition_groups=[ConditionGroup(
+            conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+            operator=RuleOperator.AND,
+        )],
         operator=RuleOperator.AND,
         action=RuleAction.QUEUE,
         enabled=False,
@@ -226,7 +230,10 @@ async def test_expert_rule_notify_only_does_not_queue(isolated_db):
 
     rule = ExpertRule(
         name="Notify only rule",
-        conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+        condition_groups=[ConditionGroup(
+            conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+            operator=RuleOperator.AND,
+        )],
         operator=RuleOperator.AND,
         action=RuleAction.NOTIFY_ONLY,
         enabled=True,
@@ -270,7 +277,10 @@ async def test_expert_rule_does_not_double_queue(isolated_db):
 
     rule = ExpertRule(
         name="Also queue unwatched",
-        conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+        condition_groups=[ConditionGroup(
+            conditions=[Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp.EQ, value=0)],
+            operator=RuleOperator.AND,
+        )],
         operator=RuleOperator.AND,
         action=RuleAction.QUEUE,
         enabled=True,

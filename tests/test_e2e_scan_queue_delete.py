@@ -40,12 +40,9 @@ async def isolated_db(tmp_path, monkeypatch):
     _db_ms._ms_cache_ts = 0.0
     await init_db()
 
-    # scheduler/scanner/deletion import DB_PATH at module level — patch their local copies too
-    import backend.scheduler as sched_mod
-    import backend.scanner as scanner_mod
+    # scheduler/deletion/conditions import DB_PATH at module level — patch their local copies too
     import backend.deletion as deletion_mod
     import backend.conditions as cond_mod
-    monkeypatch.setattr(scanner_mod, "DB_PATH", db_path)
     monkeypatch.setattr(deletion_mod, "DB_PATH", db_path)
     monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
 
@@ -119,41 +116,40 @@ def _scan_patches(emby_items: list):
     from contextlib import ExitStack
 
     stack = ExitStack()
-    # Scan functions now live in backend.scanner — patch that module's namespace
-    # get_items_in_library returns (items, total) — called from _scan_library
+    # Patch functions at the submodule level where they are imported/used
     stack.enter_context(patch(
-        "backend.scanner.get_items_in_library",
+        "backend.scanner._emby_scanner.get_items_in_library",
         new_callable=AsyncMock,
         return_value=(emby_items, len(emby_items)),
     ))
     stack.enter_context(patch(
-        "backend.scanner.get_users",
+        "backend.scanner._orchestrator.get_users",
         new_callable=AsyncMock,
         return_value=[],  # no user data needed — conditions only use DateCreated
     ))
     stack.enter_context(patch(
-        "backend.scanner.get_library_user_data",
+        "backend.scanner._emby_scanner.get_library_user_data",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_radarr_path_cache",
+        "backend.scanner._orchestrator.build_radarr_path_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_sonarr_path_cache",
+        "backend.scanner._orchestrator.build_sonarr_path_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
     stack.enter_context(patch(
-        "backend.scanner.build_seerr_request_cache",
+        "backend.scanner._orchestrator.build_seerr_request_cache",
         new_callable=AsyncMock,
         return_value={},
     ))
-    stack.enter_context(patch("backend.scanner.sync_emby_collection", new_callable=AsyncMock))
-    stack.enter_context(patch("backend.scanner.send_notification", new_callable=AsyncMock))
-    stack.enter_context(patch("backend.scanner._send_pending_notifications", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._orchestrator.sync_emby_collection", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._queue_entry.send_notification", new_callable=AsyncMock))
+    stack.enter_context(patch("backend.scanner._orchestrator._send_pending_notifications", new_callable=AsyncMock))
     # get_client needed by conditions._evaluate_item → get_client_ext_url
     stack.enter_context(patch(
         "backend.conditions.get_client",

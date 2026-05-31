@@ -1,6 +1,5 @@
 <template>
   <div class="space-y-6">
-    <!-- Notifications principales -->
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -14,12 +13,7 @@
       <div>
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.webhookMain') }}</label>
         <div class="flex gap-2">
-          <input
-            v-model="form.discord_webhook"
-            :type="showWebhook ? 'text' : 'password'"
-            :placeholder="t('settings.discord.webhookPlaceholder')"
-            class="flex-1 field font-mono"
-          />
+          <input v-model="form.discord_webhook" :type="showWebhook ? 'text' : 'password'" :placeholder="t('settings.discord.webhookPlaceholder')" class="flex-1 field font-mono" />
           <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showWebhook = !showWebhook">
             <i :class="['fas', showWebhook ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
@@ -32,7 +26,6 @@
       </div>
     </section>
 
-    <!-- Alertes système -->
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold text-sm">{{ t('settings.discord.alerts.title') }}</h2>
@@ -41,65 +34,38 @@
       <div>
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.alerts.webhook') }}</label>
         <div class="flex gap-2">
-          <input
-            v-model="form.discord_webhook_alerts"
-            :type="showAlerts ? 'text' : 'password'"
-            :placeholder="t('settings.discord.webhookPlaceholder')"
-            class="flex-1 field font-mono"
-          />
+          <input v-model="form.discord_webhook_alerts" :type="showAlerts ? 'text' : 'password'" :placeholder="t('settings.discord.webhookPlaceholder')" class="flex-1 field font-mono" />
           <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showAlerts = !showAlerts">
             <i :class="['fas', showAlerts ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
         </div>
       </div>
-
       <div class="space-y-3">
-        <!-- Erreur de suppression -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
-            <span class="text-sm">{{ t('settings.discord.alerts.deletionError') }}</span>
-            <ToggleSlider
-              :model-value="isTruthy(form.discord_alert_deletion_error)"
-              @update:model-value="v => { form.discord_alert_deletion_error = String(v) }"
-            />
-          </div>
-          <div v-if="isTruthy(form.discord_alert_deletion_error)" class="grid grid-cols-2 gap-2 px-1">
-            <input v-model="form.discord_alert_deletion_error_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
-            <input v-model="form.discord_alert_deletion_error_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
-          </div>
-        </div>
-
-        <!-- Échec de scan -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
-            <span class="text-sm">{{ t('settings.discord.alerts.scanFailure') }}</span>
-            <ToggleSlider
-              :model-value="isTruthy(form.discord_alert_scan_failure)"
-              @update:model-value="v => { form.discord_alert_scan_failure = String(v) }"
-            />
-          </div>
-          <div v-if="isTruthy(form.discord_alert_scan_failure)" class="grid grid-cols-2 gap-2 px-1">
-            <input v-model="form.discord_alert_scan_failure_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
-            <input v-model="form.discord_alert_scan_failure_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
-          </div>
-        </div>
-
-        <!-- Échec Seerr -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
-            <span class="text-sm">{{ t('settings.discord.alerts.seerrFailure') }}</span>
-            <ToggleSlider
-              :model-value="isTruthy(form.discord_alert_seerr_failure)"
-              @update:model-value="v => { form.discord_alert_seerr_failure = String(v) }"
-            />
-          </div>
-          <div v-if="isTruthy(form.discord_alert_seerr_failure)" class="grid grid-cols-2 gap-2 px-1">
-            <input v-model="form.discord_alert_seerr_failure_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
-            <input v-model="form.discord_alert_seerr_failure_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
-          </div>
-        </div>
+        <AlertRow
+          v-model:enabled="form.discord_alert_deletion_error"
+          v-model:mention="form.discord_alert_deletion_error_mention"
+          v-model:msg="form.discord_alert_deletion_error_msg"
+          :label="t('settings.discord.alerts.deletionError')"
+          :mention-placeholder="t('settings.discord.mentionPlaceholder')"
+          :msg-placeholder="t('settings.discord.messagePlaceholder')"
+        />
+        <AlertRow
+          v-model:enabled="form.discord_alert_scan_failure"
+          v-model:mention="form.discord_alert_scan_failure_mention"
+          v-model:msg="form.discord_alert_scan_failure_msg"
+          :label="t('settings.discord.alerts.scanFailure')"
+          :mention-placeholder="t('settings.discord.mentionPlaceholder')"
+          :msg-placeholder="t('settings.discord.messagePlaceholder')"
+        />
+        <AlertRow
+          v-model:enabled="form.discord_alert_seerr_failure"
+          v-model:mention="form.discord_alert_seerr_failure_mention"
+          v-model:msg="form.discord_alert_seerr_failure_msg"
+          :label="t('settings.discord.alerts.seerrFailure')"
+          :mention-placeholder="t('settings.discord.mentionPlaceholder')"
+          :msg-placeholder="t('settings.discord.messagePlaceholder')"
+        />
       </div>
-
       <div>
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.errorThreshold') }}</label>
         <input v-model.number="form.discord_alert_error_threshold" type="number" min="0" class="field" />
@@ -109,23 +75,52 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, defineComponent, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 
 const { t } = useI18n()
-
 defineProps({ form: { type: Object, required: true } })
 
 const showWebhook = ref(false)
 const showAlerts  = ref(false)
 
-// 'true' string or boolean true → true
-function isTruthy(v) {
-  return v === 'true' || v === true
-}
+// AlertRow: structure identique à l'original qui fonctionnait.
+// Les placeholders traduits sont passés en props depuis le parent.
+const AlertRow = defineComponent({
+  props: {
+    label:              String,
+    enabled:            String,
+    mention:            String,
+    msg:                String,
+    mentionPlaceholder: { type: String, default: 'Mention (@role / @user)' },
+    msgPlaceholder:     { type: String, default: 'Message personnalisé' },
+  },
+  emits: ['update:enabled', 'update:mention', 'update:msg'],
+  setup(props, { emit }) {
+    const isEnabled = computed({
+      get: () => props.enabled === 'true' || props.enabled === true,
+      set: v => emit('update:enabled', String(v)),
+    })
+    return () => h('div', { class: 'space-y-2' }, [
+      h('div', { class: 'flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg' }, [
+        h('span', { class: 'text-sm' }, props.label),
+        h(ToggleSlider, {
+          modelValue: isEnabled.value,
+          'onUpdate:modelValue': v => { isEnabled.value = v },
+        }),
+      ]),
+      isEnabled.value
+        ? h('div', { class: 'grid grid-cols-2 gap-2 px-1' }, [
+            h('input', { type: 'text', placeholder: props.mentionPlaceholder, value: props.mention || '', onInput: e => emit('update:mention', e.target.value), class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
+            h('input', { type: 'text', placeholder: props.msgPlaceholder,     value: props.msg || '',     onInput: e => emit('update:msg', e.target.value),     class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
+          ])
+        : null,
+    ])
+  },
+})
 </script>
 
 <style scoped>

@@ -12,7 +12,7 @@ from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 from ..deletion import _delete_media
-from ..conditions import _get_poster_url
+from ..rules.legacy_conditions import _get_poster_url
 from ..arr_clients import seerr_find_request_by_tmdb
 
 router = APIRouter(prefix="/api/media", tags=["media"])
@@ -61,17 +61,21 @@ async def list_queue(
     offset: int = Query(0, ge=0),
     status: Optional[str] = None,
     search: Optional[str] = None,
+    library_id: Optional[str] = None,
     sort: str = "delete_at",
-    dir: str = "asc",
+    sort_dir: str = Query("asc", alias="dir"),
 ):
     sort_col = _SORT_MAP.get(sort, "delete_at")  # safe mapping — never raw interpolation
-    dir = "DESC" if dir.lower() == "desc" else "ASC"
+    sort_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
     where = []
     params = []
     if status:
         where.append("status = ?")
         params.append(status)
+    if library_id:
+        where.append("library_id = ?")
+        params.append(library_id)
     if search:
         where.append("(title LIKE ? OR library_name LIKE ? OR seerr_username LIKE ?)")
         s = f"%{search}%"
@@ -87,7 +91,7 @@ async def list_queue(
 
         items = await db.fetch_all(
             f"SELECT * FROM media_queue {where_clause} "
-            f"ORDER BY {sort_col} {dir} LIMIT ? OFFSET ?",
+            f"ORDER BY {sort_col} {sort_dir} LIMIT ? OFFSET ?",
             params + [limit, offset],
         )
 
@@ -140,19 +144,25 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
 
         async with get_db() as db:
             rows = await db.fetch_all(
-                f"SELECT id, emby_id, title, media_type, library_id, library_name, poster_url "
-                f"FROM media_queue WHERE id IN ({placeholders})",
+                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",
                 body.ids,
             )
             for row in rows:
                 await db.execute(
                     """INSERT OR REPLACE INTO ignored_media
-                       (emby_id, title, media_type, library_id, library_name, poster_url,
+                       (emby_id, title, media_type, library_id, library_name, file_path,
+                        poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
+                        seerr_request_url, radarr_id, sonarr_id, added_date, last_played,
                         reason, ignored_at, expire_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (row["emby_id"], row["title"], row.get("media_type") or "Movie",
                      row.get("library_id") or "", row.get("library_name") or "",
-                     row.get("poster_url") or "",
+                     row.get("file_path") or "", row.get("poster_url") or "",
+                     row.get("tmdb_id") or "", row.get("seerr_id"),
+                     row.get("seerr_user_id"), row.get("seerr_username") or "",
+                     row.get("seerr_request_url") or "",
+                     row.get("radarr_id"), row.get("sonarr_id"),
+                     row.get("added_date"), row.get("last_played"),
                      body.reason or "", ignored_at, expire_at),
                 )
                 await db.execute("DELETE FROM media_queue WHERE id=?", (row["id"],))

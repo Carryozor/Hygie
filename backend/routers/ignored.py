@@ -102,7 +102,7 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
     """
     from datetime import timedelta
     from ..db.settings_store import get_setting
-    from ..conditions import _get_poster_url
+    from ..rules.legacy_conditions import _get_poster_url
     from ..db.utils import now_utc
 
     async with get_db() as db:
@@ -139,9 +139,9 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
             """INSERT INTO media_queue
                (emby_id, title, media_type, library_id, library_name, file_path,
                 poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-                seerr_request_url, radarr_id, sonarr_id, added_date, last_played,
-                detected_at, delete_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
+                added_date, last_played, detected_at, delete_at, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
             (
                 item["emby_id"], item["title"],
                 item.get("media_type") or "Movie",
@@ -151,6 +151,7 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
                 item.get("seerr_user_id"), item.get("seerr_username") or "",
                 item.get("seerr_request_url") or "",
                 item.get("radarr_id"), item.get("sonarr_id"),
+                None, None,
                 item.get("added_date"), item.get("last_played"),
                 detected_at, delete_at,
             ),

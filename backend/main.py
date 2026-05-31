@@ -153,6 +153,8 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     # Startup
     await init_db()
+    from .db.migrations import run_migrations
+    await run_migrations()
     from .db.engine import init_db_pool, close_db_pool
     await init_db_pool()  # no-op for SQLite; creates aiomysql pool if DATABASE_URL is set
 

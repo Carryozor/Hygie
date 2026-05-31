@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "queue": "File d'attente",
+    "calendar": "Calendrier",
+    "rules": "Règles",
+    "ignored": "Ignorés",
+    "logs": "Journaux",
+    "settings": "Paramètres",
+    "libraries": "Bibliothèques"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Paramètres sauvegardés.",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "test": "Tester",
+    "refresh": "Rafraîchir",
+    "loading": "Chargement...",
+    "none": "Aucun",
+    "all": "Tous",
+    "enabled": "Actif",
+    "disabled": "Inactif",
+    "add": "Ajouter",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "error": "Erreur",
+    "success": "Succès",
+    "unknown": "Inconnu",
+    "name": "Nom",
+    "actions": "Actions",
+    "status": "Statut",
+    "type": "Type",
+    "url": "URL",
+    "apiKey": "Clé API"
+  },
+  "auth": {
+    "login": "Connexion",
+    "logout": "Déconnexion",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "loginBtn": "Se connecter",
+    "loggingIn": "Connexion...",
+    "invalidCredentials": "Identifiants invalides",
+    "setupTitle": "Configuration initiale",
+    "setupBtn": "Créer le compte",
+    "changePassword": "Changer le mot de passe",
+    "currentPassword": "Mot de passe actuel",
+    "newPassword": "Nouveau mot de passe",
+    "support": "Soutenir"
+  },
+  "sidebar": {
+    "dryRun": "Dry Run",
+    "dryRunActive": "Dry Run actif",
+    "nextScan": "Prochain scan",
+    "scanRunning": "Scan en cours",
+    "launching": "Lancement",
+    "nextDeletion": "Prochaine suppression",
+    "deletionRunning": "Suppression en cours"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "tabs": {
+      "general": "Général",
+      "servers": "Serveurs",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord"
+    }
+  },
+  "logs": {
+    "all": "Tous",
+    "debug": "Debug",
+    "info": "Info",
+    "warning": "Warning",
+    "error": "Erreur",
+    "noLogs": "Aucun log.",
+    "markSeen": "Marquer comme vu",
+    "markSeenAll": "Tout marquer comme vu",
+    "ackAll": "Accuser réception",
+    "reset": "Réinitialiser",
+    "entries": "entrée(s)"
+  },
+  "rules": {
+    "expert": "Règles expertes",
+    "simple": "Règles simples",
+    "create": "Créer une règle",
+    "noRules": "Aucune règle configurée.",
+    "allLibraries": "Toutes les bibliothèques",
+    "libraries": "Bib."
+  },
+  "queue": {
+    "title": "File d'attente",
+    "empty": "Aucun média en file d'attente.",
+    "deleteAt": "Suppression le",
+    "daysLeft": "j restants",
+    "ignore": "Ignorer"
+  }
+}

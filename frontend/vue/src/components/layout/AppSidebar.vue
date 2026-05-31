@@ -23,7 +23,7 @@
       </router-link>
 
       <div class="pt-4 pb-1 px-3">
-        <span class="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Bibliothèques</span>
+        <span class="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">{{ t('nav.libraries') }}</span>
       </div>
       <ServerLibraryTree />
     </nav>
@@ -40,7 +40,7 @@
         @click="toggleDryRun"
       >
         <i class="fas fa-flask-vial w-4 text-center" />
-        <span>{{ isDryRun ? 'Dry Run actif' : 'Dry Run' }}</span>
+        <span>{{ isDryRun ? t('sidebar.dryRunActive') : t('sidebar.dryRun') }}</span>
         <i v-if="togglingDryRun" class="fas fa-spinner fa-spin ml-auto text-[10px]" />
         <i v-else-if="isDryRun" class="fas fa-circle text-[8px] ml-auto text-yellow-400" />
       </button>
@@ -56,10 +56,10 @@
           <div class="flex items-center gap-1.5">
             <i :class="['fas', (triggering === 'scan' || scanRunning) ? 'fa-magnifying-glass' : 'fa-magnifying-glass', 'w-4 text-center opacity-70']" />
             <span v-if="scanRunning || triggering === 'scan'" class="flex items-center gap-0.5">
-              {{ triggering === 'scan' ? 'Lancement' : 'Scan en cours' }}
+              {{ triggering === 'scan' ? t('sidebar.launching') : t('sidebar.scanRunning') }}
               <span class="dots-anim"><span>.</span><span>.</span><span>.</span></span>
             </span>
-            <span v-else>Prochain scan</span>
+            <span v-else>{{ t('sidebar.nextScan') }}</span>
           </div>
           <span v-if="!scanRunning" class="font-mono text-[10px]">{{ scanCountdown }}</span>
         </button>
@@ -87,10 +87,10 @@
           <div class="flex items-center gap-1.5">
             <i class="fas fa-trash-can w-4 text-center opacity-70" />
             <span v-if="deletionRunning || triggering === 'deletion'" class="flex items-center gap-0.5">
-              {{ triggering === 'deletion' ? 'Lancement' : 'Suppression en cours' }}
+              {{ triggering === 'deletion' ? t('sidebar.launching') : t('sidebar.deletionRunning') }}
               <span class="dots-anim"><span>.</span><span>.</span><span>.</span></span>
             </span>
-            <span v-else>Prochaine suppression</span>
+            <span v-else>{{ t('sidebar.nextDeletion') }}</span>
           </div>
           <span v-if="!deletionRunning" class="font-mono text-[10px]">{{ deletionCountdown }}</span>
         </button>
@@ -112,11 +112,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useStatusStore } from '@/stores/status'
 import HygieLogoSvg from '@/components/ui/HygieLogoSvg.vue'
 import ServerLibraryTree from './ServerLibraryTree.vue'
 import api from '@/api/client'
+
+const { t } = useI18n()
 
 const settings = useSettingsStore()
 const status   = useStatusStore()
@@ -161,15 +164,15 @@ async function toggleDryRun() {
   finally { togglingDryRun.value = false }
 }
 
-const navItems = [
-  { to: '/',          icon: 'fa-chart-bar',  label: 'Dashboard' },
-  { to: '/queue',     icon: 'fa-list',       label: "File d'attente" },
-  { to: '/calendar',  icon: 'fa-calendar',   label: 'Calendrier' },
-  { to: '/rules',     icon: 'fa-sliders-h',  label: 'Règles' },
-  { to: '/ignored',   icon: 'fa-ban',        label: 'Ignorés' },
-  { to: '/logs',      icon: 'fa-scroll',     label: 'Journaux' },
-  { to: '/settings',  icon: 'fa-cog',        label: 'Paramètres' },
-]
+const navItems = computed(() => [
+  { to: '/',         icon: 'fa-chart-bar', label: t('nav.dashboard') },
+  { to: '/queue',    icon: 'fa-list',      label: t('nav.queue') },
+  { to: '/calendar', icon: 'fa-calendar',  label: t('nav.calendar') },
+  { to: '/rules',    icon: 'fa-sliders-h', label: t('nav.rules') },
+  { to: '/ignored',  icon: 'fa-ban',       label: t('nav.ignored') },
+  { to: '/logs',     icon: 'fa-scroll',    label: t('nav.logs') },
+  { to: '/settings', icon: 'fa-cog',       label: t('settings.title') },
+])
 
 function formatCountdown(isoDate) {
   if (!isoDate) return null

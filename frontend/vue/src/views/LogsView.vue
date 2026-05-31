@@ -24,11 +24,11 @@
         v-if="hasUnseenErrors"
         :disabled="bulkWorking"
         class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-green-500/40 text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
-        title="Marquer toutes les erreurs comme vues"
+        :title="t('logs.markSeenAll')"
         @click="markSeenAll"
       >
         <i class="fas fa-check text-[10px]" />
-        Tout marquer comme vu
+        {{ t('logs.markSeenAll') }}
       </button>
 
       <!-- Mass acknowledge (orange question mark) -->
@@ -36,21 +36,21 @@
         v-if="hasUnseenErrors"
         :disabled="bulkWorking"
         class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-50"
-        title="Accuser réception de toutes les erreurs"
+        :title="t('logs.ackAll')"
         @click="ackAll"
       >
         <i class="fas fa-question text-[10px]" />
-        Accuser réception
+        {{ t('logs.ackAll') }}
       </button>
 
-      <span class="text-xs text-[var(--muted)] ml-auto">{{ logs.length }} entrée(s)</span>
+      <span class="text-xs text-[var(--muted)] ml-auto">{{ logs.length }} {{ t('logs.entries') }}</span>
     </div>
 
     <div v-if="fetchError" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">{{ fetchError }}</div>
 
     <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden font-mono text-xs">
-      <div v-if="loading" class="p-8 text-center text-[var(--muted)]">Chargement...</div>
-      <div v-else-if="!logs.length" class="p-8 text-center text-[var(--muted)]">Aucun log.</div>
+      <div v-if="loading" class="p-8 text-center text-[var(--muted)]">{{ t('common.loading') }}</div>
+      <div v-else-if="!logs.length" class="p-8 text-center text-[var(--muted)]">{{ t('logs.noLogs') }}</div>
       <template v-else>
         <div
           v-for="log in logs"
@@ -72,7 +72,7 @@
             <button
               v-if="log.seen_status !== 'seen'"
               class="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center text-green-400/70 hover:text-green-400 hover:bg-green-500/10"
-              title="Marquer comme vu"
+              :title="t('logs.markSeen')"
               @click.stop="markSeen(log)"
             ><i class="fas fa-check text-[10px]" /></button>
 
@@ -80,7 +80,7 @@
             <button
               v-if="log.seen_status"
               class="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-[var(--bg3)]"
-              title="Réinitialiser"
+              :title="t('logs.reset')"
               @click.stop="clearStatus(log)"
             ><i class="fas fa-times text-[10px]" /></button>
           </div>
@@ -92,15 +92,18 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 
-const LEVELS = [
-  { value: '',        label: 'Tous' },
-  { value: 'DEBUG',   label: 'Debug' },
-  { value: 'INFO',    label: 'Info' },
-  { value: 'WARNING', label: 'Warning' },
-  { value: 'ERROR',   label: 'Erreur' },
-]
+const { t } = useI18n()
+
+const LEVELS = computed(() => [
+  { value: '',        label: t('logs.all') },
+  { value: 'DEBUG',   label: t('logs.debug') },
+  { value: 'INFO',    label: t('logs.info') },
+  { value: 'WARNING', label: t('logs.warning') },
+  { value: 'ERROR',   label: t('logs.error') },
+])
 
 const logs        = ref([])
 const level       = ref('')

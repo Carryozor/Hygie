@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "queue": "Queue",
+    "calendar": "Calendar",
+    "rules": "Rules",
+    "ignored": "Ignored",
+    "logs": "Logs",
+    "settings": "Settings",
+    "libraries": "Libraries"
+  },
+  "common": {
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Settings saved.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "test": "Test",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "none": "None",
+    "all": "All",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "error": "Error",
+    "success": "Success",
+    "unknown": "Unknown",
+    "name": "Name",
+    "actions": "Actions",
+    "status": "Status",
+    "type": "Type",
+    "url": "URL",
+    "apiKey": "API Key"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "username": "Username",
+    "password": "Password",
+    "loginBtn": "Sign in",
+    "loggingIn": "Signing in...",
+    "invalidCredentials": "Invalid credentials",
+    "setupTitle": "Initial Setup",
+    "setupBtn": "Create Account",
+    "changePassword": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "support": "Support"
+  },
+  "sidebar": {
+    "dryRun": "Dry Run",
+    "dryRunActive": "Dry Run active",
+    "nextScan": "Next scan",
+    "scanRunning": "Scan running",
+    "launching": "Launching",
+    "nextDeletion": "Next deletion",
+    "deletionRunning": "Deletion running"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "general": "General",
+      "servers": "Servers",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord"
+    }
+  },
+  "logs": {
+    "all": "All",
+    "debug": "Debug",
+    "info": "Info",
+    "warning": "Warning",
+    "error": "Error",
+    "noLogs": "No logs.",
+    "markSeen": "Mark as seen",
+    "markSeenAll": "Mark all as seen",
+    "ackAll": "Acknowledge all",
+    "reset": "Reset",
+    "entries": "entry(ies)"
+  },
+  "rules": {
+    "expert": "Expert Rules",
+    "simple": "Simple Rules",
+    "create": "Create Rule",
+    "noRules": "No rules configured.",
+    "allLibraries": "All libraries",
+    "libraries": "Libs."
+  },
+  "queue": {
+    "title": "Queue",
+    "empty": "No media in queue.",
+    "deleteAt": "Deletion on",
+    "daysLeft": "days left",
+    "ignore": "Ignore"
+  }
+}

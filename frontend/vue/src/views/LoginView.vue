@@ -3,17 +3,17 @@
     <div class="w-full max-w-sm p-8 rounded-2xl bg-[var(--bg2)] border border-[var(--border)] space-y-6">
       <div class="flex flex-col items-center gap-3">
         <HygieLogoSvg :size="48" />
-        <h1 class="text-xl font-bold">Connexion</h1>
+        <h1 class="text-xl font-bold">{{ t('auth.login') }}</h1>
       </div>
       <form class="space-y-4" @submit.prevent="submit">
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Nom d'utilisateur</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('auth.username') }}</label>
           <input
 v-model="username" type="text" required autocomplete="username"
             class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)]" />
         </div>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Mot de passe</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('auth.password') }}</label>
           <input
 v-model="password" type="password" required autocomplete="current-password"
             class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)]" />
@@ -22,7 +22,7 @@ v-model="password" type="password" required autocomplete="current-password"
         <button
 type="submit" :disabled="loading"
           class="w-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg py-2.5 text-sm font-semibold transition-opacity">
-          {{ loading ? 'Connexion...' : 'Se connecter' }}
+          {{ loading ? t('auth.loggingIn') : t('auth.loginBtn') }}
         </button>
       </form>
     </div>
@@ -31,9 +31,11 @@ type="submit" :disabled="loading"
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import HygieLogoSvg from '@/components/ui/HygieLogoSvg.vue'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()

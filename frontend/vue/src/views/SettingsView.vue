@@ -16,7 +16,7 @@
     </div>
 
     <div v-if="saved" role="status" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-      <i class="fas fa-check-circle" /> Paramètres sauvegardés.
+      <i class="fas fa-check-circle" /> {{ t('common.saved') }}
     </div>
     <div v-if="saveError" class="bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
       <i class="fas fa-exclamation-triangle" /> {{ saveError }}
@@ -36,13 +36,14 @@
       class="w-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg px-6 py-3 text-sm font-semibold transition-opacity"
       @click="save"
     >
-      {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
+      {{ saving ? t('common.saving') : t('common.save') }}
     </button>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import GeneralTab     from '@/components/settings/GeneralTab.vue'
@@ -53,6 +54,7 @@ import SeerrTab       from '@/components/settings/SeerrTab.vue'
 import QbitTab        from '@/components/settings/QbitTab.vue'
 import DiscordTab     from '@/components/settings/DiscordTab.vue'
 
+const { t }     = useI18n()
 const settings  = useSettingsStore()
 const saving    = ref(false)
 const saved     = ref(false)
@@ -61,13 +63,13 @@ const activeTab = ref('general')
 const form      = ref({})
 
 const TABS = computed(() => [
-  { id: 'general',     faIcon: 'fa-cog',          label: 'Général',        service: null },
-  { id: 'servers',     faIcon: 'fa-server',        label: 'Serveurs',       service: null },
-  { id: 'seerr',       faIcon: null,               label: 'Seerr',          service: 'overseerr' },
-  { id: 'radarr',      faIcon: null,               label: 'Radarr',         service: 'radarr' },
-  { id: 'sonarr',      faIcon: null,               label: 'Sonarr',         service: 'sonarr' },
-  { id: 'qbit',        faIcon: null,               label: 'qBittorrent',    service: form.value.qbit_proxy_url ? 'qui' : 'qbittorrent' },
-  { id: 'discord',     faIcon: null,               label: 'Discord',        service: 'discord' },
+  { id: 'general', faIcon: 'fa-cog',    label: t('settings.tabs.general'), service: null },
+  { id: 'servers', faIcon: 'fa-server', label: t('settings.tabs.servers'), service: null },
+  { id: 'seerr',   faIcon: null,        label: t('settings.tabs.seerr'),   service: 'overseerr' },
+  { id: 'radarr',  faIcon: null,        label: t('settings.tabs.radarr'),  service: 'radarr' },
+  { id: 'sonarr',  faIcon: null,        label: t('settings.tabs.sonarr'),  service: 'sonarr' },
+  { id: 'qbit',    faIcon: null,        label: t('settings.tabs.qbit'),    service: form.value.qbit_proxy_url ? 'qui' : 'qbittorrent' },
+  { id: 'discord', faIcon: null,        label: t('settings.tabs.discord'), service: 'discord' },
 ])
 
 function syncForm() {

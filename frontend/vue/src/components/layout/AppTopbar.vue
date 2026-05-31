@@ -6,7 +6,7 @@
       <span class="text-sm text-[var(--muted)] hidden sm:inline">{{ auth.username }}</span>
       <button
         class="text-[var(--muted)] hover:text-white text-sm transition-colors"
-        title="Déconnexion"
+        :title="t('auth.logout')"
         @click="handleLogout"
       >
         <i class="fas fa-sign-out-alt" />
@@ -40,7 +40,7 @@
         class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-pink-500/10 border border-pink-500/30 text-pink-400 hover:bg-pink-500/20 transition-colors"
       >
         <i class="fas fa-heart text-[10px] heart-beat" />
-        <span class="hidden sm:inline">Soutenir</span>
+        <span class="hidden sm:inline">{{ t('auth.support') }}</span>
       </a>
     </div>
   </header>
@@ -49,35 +49,43 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import { setLocale } from '@/i18n'
 import api from '@/api/client'
 
+const { t } = useI18n()
 const route  = useRoute()
 const router = useRouter()
 const auth   = useAuthStore()
+const lang   = ref(localStorage.getItem('hygie_lang') || 'fr')
 
-const lang = ref('fr')
-
-const titles = {
-  dashboard: 'Dashboard',
-  library:   'Bibliothèque',
-  queue:     "File d'attente",
-  calendar:  'Calendrier',
-  rules:     'Règles',
-  settings:  'Paramètres',
-  logs:      'Journaux',
-  ignored:   'Ignorés',
+const PAGE_ROUTE_KEYS = {
+  dashboard: 'nav.dashboard',
+  library:   'nav.libraries',
+  queue:     'nav.queue',
+  calendar:  'nav.calendar',
+  rules:     'nav.rules',
+  settings:  'settings.title',
+  logs:      'nav.logs',
+  ignored:   'nav.ignored',
 }
-const pageTitle = computed(() => titles[route.name] || 'Hygie')
+const pageTitle = computed(() => {
+  const key = PAGE_ROUTE_KEYS[route.name]
+  return key ? t(key) : 'Hygie'
+})
 
 async function saveLang() {
+  setLocale(lang.value)
   try { await api.post('/settings', { ui_language: lang.value }) } catch { /* silent */ }
 }
 
 onMounted(async () => {
   try {
     const { data } = await api.get('/settings')
-    lang.value = data.ui_language || 'fr'
+    const savedLang = data.ui_language || 'fr'
+    lang.value = savedLang
+    setLocale(savedLang)
   } catch { /* silent */ }
 })
 

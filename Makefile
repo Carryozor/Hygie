@@ -1,4 +1,4 @@
-.PHONY: dev test lint install build compose help deploy deploy-backend deploy-frontend check-schema
+.PHONY: dev test lint lint-frontend lint-all test-all install build compose help deploy deploy-backend deploy-frontend check-schema
 
 CONTAINER ?= hygie
 
@@ -14,7 +14,10 @@ help:
 	@echo "  deploy           Build frontend + deploy all files to container + health-check"
 	@echo "  deploy-backend   Copy backend .py files to container + restart"
 	@echo "  deploy-frontend  Build frontend + copy dist to container"
-	@echo "  check-schema     Validate OpenAPI schema (scripts/check-schema.py)"
+	@echo "  check-schema     Validate OpenAPI schema (scripts/check-schema.py)
+  lint-frontend    Run ESLint on frontend/vue
+  lint-all         Run lint + lint-frontend
+  test-all         Run test + frontend unit tests"
 
 install:
 	pip install -r requirements.txt -r requirements-dev.txt
@@ -27,6 +30,14 @@ test:
 
 lint:
 	python3 -m ruff check backend/ tests/
+
+lint-frontend:
+	cd frontend/vue && npm run lint
+
+lint-all: lint lint-frontend
+
+test-all: test
+	cd frontend/vue && npm run test:unit
 
 build:
 	docker build -t hygie:dev .

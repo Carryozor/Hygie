@@ -68,11 +68,13 @@ _TABLES = [
             library_id TEXT NOT NULL,
             library_name TEXT NOT NULL,
             file_path TEXT NOT NULL,
+            torrent_hash TEXT DEFAULT '',
             poster_url TEXT DEFAULT '',
             tmdb_id TEXT DEFAULT '',
             seerr_id INTEGER,
             seerr_user_id INTEGER,
             seerr_username TEXT DEFAULT '',
+            seerr_discord_id TEXT DEFAULT '',
             seerr_request_url TEXT DEFAULT '',
             radarr_id INTEGER,
             sonarr_id INTEGER,
@@ -81,12 +83,17 @@ _TABLES = [
             added_date TEXT,
             last_played TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
+            ignored INTEGER DEFAULT 0,
             notified_30d INTEGER DEFAULT 0,
             notified_7d INTEGER DEFAULT 0,
             notified_1d INTEGER DEFAULT 0,
             notified_now INTEGER DEFAULT 0,
             notified_detected INTEGER DEFAULT 0,
-            notified_thresholds TEXT DEFAULT '[]'
+            notified_thresholds TEXT DEFAULT '[]',
+            sonarr_series_id INTEGER,
+            season_number INTEGER,
+            plex_rating_key TEXT DEFAULT '',
+            view_count INTEGER DEFAULT 0
         )""",
         [
             ("poster_url", "TEXT DEFAULT ''"),
@@ -109,6 +116,9 @@ _TABLES = [
             ("season_number", "INTEGER"),
             ("plex_rating_key", "TEXT DEFAULT ''"),
             ("view_count", "INTEGER DEFAULT 0"),
+            ("torrent_hash", "TEXT DEFAULT ''"),
+            ("seerr_discord_id", "TEXT DEFAULT ''"),
+            ("ignored", "INTEGER DEFAULT 0"),
         ],
     ),
     (
@@ -157,6 +167,7 @@ _TABLES = [
         "seerr_user_rules",
         """CREATE TABLE IF NOT EXISTS seerr_user_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '',
             seerr_user_id INTEGER NOT NULL,
             seerr_username TEXT NOT NULL,
             library_id TEXT NOT NULL,
@@ -166,9 +177,11 @@ _TABLES = [
             created_at TEXT
         )""",
         [
+            ("name", "TEXT NOT NULL DEFAULT ''"),
             ("discord_id", "TEXT DEFAULT ''"),
             ("enabled", "INTEGER NOT NULL DEFAULT 1"),
             ("created_at", "TEXT"),
+            ("library_ids", "TEXT"),
         ],
     ),
     (
@@ -178,9 +191,14 @@ _TABLES = [
             ts TEXT NOT NULL,
             level TEXT NOT NULL,
             source TEXT NOT NULL,
-            message TEXT NOT NULL
+            message TEXT NOT NULL,
+            category TEXT DEFAULT '',
+            seen_status TEXT
         )""",
-        [],
+        [
+            ("category", "TEXT DEFAULT ''"),
+            ("seen_status", "TEXT"),
+        ],
     ),
     (
         "job_history",
@@ -190,9 +208,12 @@ _TABLES = [
             started_at TEXT NOT NULL,
             finished_at TEXT,
             status TEXT,
-            message TEXT
+            message TEXT,
+            result TEXT
         )""",
-        [],
+        [
+            ("result", "TEXT"),
+        ],
     ),
     (
         "stats_history",
@@ -223,14 +244,16 @@ _TABLES = [
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
             library_id  INTEGER,
+            library_ids TEXT,
             conditions  TEXT    NOT NULL DEFAULT '[]',
             operator    TEXT    NOT NULL DEFAULT 'AND',
             action      TEXT    NOT NULL DEFAULT 'queue',
+            grace_days  INTEGER NOT NULL DEFAULT 7,
             enabled     INTEGER NOT NULL DEFAULT 1,
             priority    INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         )""",
-        [],
+        [("library_ids", "TEXT"), ("grace_days", "INTEGER NOT NULL DEFAULT 7")],
     ),
     (
         "notifications",
@@ -456,6 +479,11 @@ async def _init_db_sqlite():
         # 7b. v2 → v3 data migration (idempotent, runs once)
         await _migrate_v2_to_v3(db)
 
+        # 7c. Libraries → expert rules migration (idempotent)
+        n = await _migrate_libraries_to_expert_rules(db)
+        if n:
+            logger.info(f"Migration automatique : {n} règle(s) experte(s) créée(s) depuis les bibliothèques")
+
         # 8. Migrate interval settings: hours → minutes — runs once, then deletes the old key.
         # The old condition `existing[0] == "60"` was a bug: it matched the default value and
         # overwrote a user-set "60" (1h) with hours*60 on every restart.
@@ -506,6 +534,112 @@ async def _init_db_sqlite():
         await db.commit()
 
     logger.info(f"Database initialized: {_SQLITE_PATH}")
+
+
+_EXPERT_RULE_FIELD_MAP = {
+    "days_not_watched": "days_not_watched",
+    "days_since_added": "added_days_ago",
+    "added_days_ago":   "added_days_ago",
+    "play_count":       "play_count",
+}
+
+
+def _build_expert_conditions(old_conds: list, seerr_conds: list) -> list:
+    """Map old library conditions + seerr filters to ExpertRule condition dicts."""
+    new_conds = []
+    for c in old_conds:
+        field = c.get("field")
+        op    = c.get("op", "gt")
+        value = c.get("value", 0)
+        if field == "never_watched":
+            # never_watched=true → play_count eq 0 ; false → play_count gte 1
+            new_conds.append({
+                "field": "play_count",
+                "op":    "eq"  if bool(value) else "gte",
+                "value": 0     if bool(value) else 1,
+            })
+        elif field in _EXPERT_RULE_FIELD_MAP:
+            new_conds.append({"field": _EXPERT_RULE_FIELD_MAP[field], "op": op, "value": value})
+
+    includes = [c["user_id"] for c in seerr_conds if c.get("type") == "user_include"]
+    excludes = [c["user_id"] for c in seerr_conds if c.get("type") == "user_exclude"]
+    if includes:
+        new_conds.append({"field": "seerr_user_id", "op": "in",     "value": includes})
+    if excludes:
+        new_conds.append({"field": "seerr_user_id", "op": "not_in", "value": excludes})
+    return new_conds
+
+
+async def _migrate_libraries_to_expert_rules(db) -> int:
+    """Convert library conditions → expert_rules rows (raw aiosqlite connection).
+
+    Idempotent: skips rules where (name, library_id) already exists.
+    Field mapping:
+      days_since_added  → added_days_ago
+      days_not_watched  → days_not_watched
+      play_count        → play_count
+      never_watched=1   → play_count eq 0
+      never_watched=0   → play_count gte 1
+    seerr_conditions:
+      user_include ids  → seerr_user_id in [ids]
+      user_exclude ids  → seerr_user_id not_in [ids]
+    """
+    if not await _table_exists(db, "libraries") or not await _table_exists(db, "expert_rules"):
+        return 0
+
+    _orig_factory = db.row_factory
+    db.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
+    try:
+        async with db.execute("SELECT id, name, conditions, logic, seerr_conditions, enabled FROM libraries") as cur:
+            rows = await cur.fetchall()
+    finally:
+        db.row_factory = _orig_factory  # restore BEFORE any further queries
+
+    if not rows:
+        return 0
+
+    created = 0
+    ts = datetime.now(timezone.utc).isoformat()
+    for row in rows:
+        lib_id    = row["id"]
+        name      = row["name"]
+        conds_raw = row["conditions"] or "[]"
+        logic     = row["logic"] or "AND"
+        seerr_raw = row["seerr_conditions"] or "[]"
+        enabled   = row["enabled"]
+
+        try:
+            old_conds   = json.loads(conds_raw)
+            seerr_conds = json.loads(seerr_raw)
+        except Exception:
+            continue
+
+        if not old_conds:
+            continue
+
+        new_conds = _build_expert_conditions(old_conds, seerr_conds)
+        if not new_conds:
+            continue
+
+        rule_name = f"{name} (migré)"
+        async with db.execute(
+            "SELECT id FROM expert_rules WHERE name=? AND CAST(library_id AS TEXT)=CAST(? AS TEXT)",
+            (rule_name, lib_id),
+        ) as cur2:
+            if await cur2.fetchone():
+                continue
+
+        await db.execute(
+            "INSERT INTO expert_rules (name, library_id, conditions, operator, action, enabled, priority, created_at) "
+            "VALUES (?, ?, ?, ?, 'queue', ?, 0, ?)",
+            (rule_name, lib_id, json.dumps(new_conds), logic, int(enabled), ts),
+        )
+        created += 1
+        logger.info(f"Migration: bibliothèque → règle experte : {rule_name} ({len(new_conds)} conditions)")
+
+    if created:
+        await db.commit()
+    return created
 
 
 async def _migrate_v2_to_v3(db) -> None:
@@ -572,7 +706,75 @@ async def _init_db_mariadb() -> None:
             if not existing:
                 await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", (k, v))
         await db.commit()
+
+    n = await _migrate_libraries_to_expert_rules_dbconn()
+    if n:
+        logger.info(f"Migration MariaDB : {n} règle(s) experte(s) créée(s) depuis les bibliothèques")
     logger.info("MariaDB schema initialized")
+
+
+async def _migrate_libraries_to_expert_rules_dbconn() -> int:
+    """DbConn-compatible variant of the libraries → expert_rules migration.
+
+    Used by the MariaDB path. The SQLite path uses the raw-connection variant
+    above since it runs before the DbConn pool is available.
+    """
+    from .engine import get_db
+    try:
+        async with get_db() as db:
+            rows = await db.fetch_all(
+                "SELECT id, name, conditions, logic, seerr_conditions, enabled FROM libraries"
+            )
+    except Exception:
+        return 0
+
+    if not rows:
+        return 0
+
+    created = 0
+    ts = datetime.now(timezone.utc).isoformat()
+    for row in rows:
+        lib_id    = row["id"]
+        name      = row["name"]
+        conds_raw = row.get("conditions") or "[]"
+        logic     = row.get("logic") or "AND"
+        seerr_raw = row.get("seerr_conditions") or "[]"
+        enabled   = row.get("enabled", 1)
+
+        try:
+            old_conds   = json.loads(conds_raw)
+            seerr_conds = json.loads(seerr_raw)
+        except Exception:
+            continue
+
+        if not old_conds:
+            continue
+
+        new_conds = _build_expert_conditions(old_conds, seerr_conds)
+        if not new_conds:
+            continue
+
+        rule_name = f"{name} (migré)"
+        async with get_db() as db:
+            existing = await db.fetch_one(
+                "SELECT id FROM expert_rules WHERE name=? AND CAST(library_id AS CHAR)=CAST(? AS CHAR)",
+                (rule_name, lib_id),
+            )
+        if existing:
+            continue
+
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO expert_rules "
+                "(name, library_id, conditions, operator, action, enabled, priority, created_at) "
+                "VALUES (?, ?, ?, ?, 'queue', ?, 0, ?)",
+                (rule_name, lib_id, json.dumps(new_conds), logic, int(enabled), ts),
+            )
+            await db.commit()
+        created += 1
+        logger.info(f"Migration MariaDB: bibliothèque → règle experte : {rule_name}")
+
+    return created
 
 
 async def init_db() -> None:

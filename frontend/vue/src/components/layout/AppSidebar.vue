@@ -2,7 +2,7 @@
   <aside class="w-60 flex-shrink-0 flex flex-col border-r border-[var(--border)] bg-[var(--bg2)] h-screen sticky top-0 overflow-y-auto">
     <!-- Logo -->
     <div class="flex items-center gap-3 px-4 py-5 border-b border-[var(--border)]">
-      <HygieLogoSvg :size="32" :has-error="hasUnseenErrors" :status-dot="logoStatus" />
+      <HygieLogoSvg :size="32" :has-error="hasUnseenErrors" :status-dot="logoStatus" :server-results="status.serverResults" />
       <div>
         <span class="font-bold text-lg tracking-tight">Hygie</span>
         <div class="text-[10px] text-[var(--muted)] leading-none">v{{ version }}</div>

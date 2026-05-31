@@ -7,36 +7,38 @@
     xmlns="http://www.w3.org/2000/svg"
     class="flex-shrink-0"
   >
-    <!-- ── 3 arc segments ─────────────────────────────────────────────────── -->
+    <!-- ── Arc 1 — top ─────────────────────────────────────────────────────── -->
     <circle
       :cx="C" :cy="C" :r="R"
-      :stroke="arc1Color"
-      :stroke-opacity="arcOpacity"
+      :stroke="arc1.color"
+      :stroke-opacity="arc1.opacity"
       :stroke-width="arcW"
       stroke-linecap="round"
       :stroke-dasharray="`${arcLen} ${gapLen}`"
       :transform="`rotate(${arc1Start} ${C} ${C})`"
-      :class="arcClass"
+      :class="arc1.cls"
     />
+    <!-- ── Arc 2 — bottom-right ──────────────────────────────────────────── -->
     <circle
       :cx="C" :cy="C" :r="R"
-      :stroke="arc2Color"
-      :stroke-opacity="arcOpacity"
+      :stroke="arc2.color"
+      :stroke-opacity="arc2.opacity"
       :stroke-width="arcW"
       stroke-linecap="round"
       :stroke-dasharray="`${arcLen} ${gapLen}`"
       :transform="`rotate(${arc1Start + 120} ${C} ${C})`"
-      :class="arcClass"
+      :class="arc2.cls"
     />
+    <!-- ── Arc 3 — bottom-left ───────────────────────────────────────────── -->
     <circle
       :cx="C" :cy="C" :r="R"
-      :stroke="arc3Color"
-      :stroke-opacity="arcOpacity"
+      :stroke="arc3.color"
+      :stroke-opacity="arc3.opacity"
       :stroke-width="arcW"
       stroke-linecap="round"
       :stroke-dasharray="`${arcLen} ${gapLen}`"
       :transform="`rotate(${arc1Start + 240} ${C} ${C})`"
-      :class="arcClass"
+      :class="arc3.cls"
     />
 
     <!-- ── Hygie logo (centered via nested SVG) ───────────────────────────── -->
@@ -62,9 +64,11 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  size:      { type: Number, default: 32 },
-  statusDot: { type: String, default: 'none' },
-  hasError:  { type: Boolean, default: false },
+  size:          { type: Number,  default: 32 },
+  statusDot:     { type: String,  default: 'none' },
+  hasError:      { type: Boolean, default: false },
+  serverResults: { type: Array,   default: () => [] },
+  // serverResults = [{ok: bool}, ...] — one entry per enabled server (max 3)
 })
 
 const status = computed(() => props.hasError ? 'error' : props.statusDot)
@@ -80,52 +84,62 @@ const arcLen    = computed(() => (100 / 360) * circ.value)
 const gapLen    = computed(() => circ.value - arcLen.value)
 const arc1Start = -90 + 10
 
-// ── Arc colors per state ───────────────────────────────────────────────────────
-// OK  : vivid individual colors (indigo / green / sky-blue)
-// none/unknown : all violet-dim (same hue as logo, pâle)
-// error : all red (#ef4444), blinking
-const arc1Color = computed(() => {
-  if (status.value === 'ok')    return '#6366f1'  // indigo — logo color
-  if (status.value === 'error') return '#ef4444'  // red
-  return '#7c3aed'                                // violet dim (not connected)
-})
-const arc2Color = computed(() => {
-  if (status.value === 'ok')    return '#22c55e'  // green
-  if (status.value === 'error') return '#ef4444'
-  return '#7c3aed'
-})
-const arc3Color = computed(() => {
-  if (status.value === 'ok')    return '#38bdf8'  // sky blue
-  if (status.value === 'error') return '#ef4444'
-  return '#7c3aed'
-})
+// ── Per-arc state ──────────────────────────────────────────────────────────────
+// Each arc independently reflects its server's status.
+// Vivid colors   : indigo #6366f1 (arc1), green #22c55e (arc2), sky #38bdf8 (arc3)
+// Dim (offline)  : violet #7c3aed at 35% opacity
+// Error          : red #ef4444 + blink
 
-// ── Opacity ────────────────────────────────────────────────────────────────────
-const arcOpacity = computed(() => {
-  if (status.value === 'ok')    return 1
-  if (status.value === 'error') return 1
-  return 0.35   // violet pâle quand non connecté
-})
+const VIVID  = ['#6366f1', '#22c55e', '#38bdf8']
+const DIM_C  = '#7c3aed'
+const RED    = '#ef4444'
 
-// ── Animation ──────────────────────────────────────────────────────────────────
-const arcClass = computed(() => {
-  if (status.value === 'ok')    return 'arc-ok'
-  if (status.value === 'error') return 'arc-error'
-  return ''
-})
+function arcState(idx) {
+  // Error state overrides everything
+  if (status.value === 'error') {
+    return { color: RED, opacity: 1, cls: 'arc-error' }
+  }
+
+  const results = props.serverResults
+  if (!results.length) {
+    // No data yet — dim violet until health check completes
+    return { color: DIM_C, opacity: 0.35, cls: '' }
+  }
+
+  const srv = results[idx]
+  if (!srv) {
+    // No server at this position — very faint violet (slot unused)
+    return { color: DIM_C, opacity: 0.15, cls: '' }
+  }
+
+  if (srv.ok) {
+    // Server OK — vivid color + breathe animation
+    return { color: VIVID[idx] || VIVID[0], opacity: 1, cls: 'arc-ok' }
+  } else {
+    // Server KO — dim violet
+    return { color: DIM_C, opacity: 0.35, cls: '' }
+  }
+}
+
+const arc1 = computed(() => arcState(0))
+const arc2 = computed(() => arcState(1))
+const arc3 = computed(() => arcState(2))
 </script>
 
 <style scoped>
-/* OK : respiration douce avec glow indigo */
+/*
+ * OK : respiration douce — opacity only, no filter (filter creates rectangular glow on SVG)
+ * The glow is achieved by the opacity pulse against the dark background
+ */
 @keyframes arc-breathe {
-  0%, 100% { opacity: 1;   filter: drop-shadow(0 0 4px currentColor); }
-  50%       { opacity: 0.55; filter: none; }
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
 }
 .arc-ok {
   animation: arc-breathe 2.8s ease-in-out infinite;
 }
 
-/* Erreur : clignotement rouge */
+/* Error : clignotement rouge */
 @keyframes arc-blink {
   0%, 49%   { opacity: 1; }
   50%, 100% { opacity: 0; }

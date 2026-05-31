@@ -51,6 +51,9 @@ export const useStatusStore = defineStore('status', () => {
     } catch { /* silent */ }
   }
 
+  // ── Per-server results (up to 3, mapped to the 3 logo arcs) ─────────────
+  const serverResults = ref([])   // [{ok: bool}] — one per enabled server, max 3
+
   // ── Server health ─────────────────────────────────────────────────────────
   async function checkServerHealth() {
     const servers = useServersStore()
@@ -58,19 +61,27 @@ export const useStatusStore = defineStore('status', () => {
       s => s.id !== undefined && s.enabled !== false
     )
     if (!srvList.length) {
-      serverStatus.value = 'none'
-      serverError.value  = false
+      serverStatus.value  = 'none'
+      serverError.value   = false
+      serverResults.value = []
       return
     }
     let ok = 0, fail = 0
+    const results = []
     for (const srv of srvList) {
       try {
         const { data } = await api.post(`/settings/media-servers/${srv.id}/test`)
-        data.ok ? ok++ : fail++
-      } catch { fail++ }
+        const isOk = !!data.ok
+        isOk ? ok++ : fail++
+        results.push({ ok: isOk })
+      } catch {
+        fail++
+        results.push({ ok: false })
+      }
     }
-    serverError.value  = fail > 0
-    serverStatus.value = fail === 0 ? 'ok' : ok > 0 ? 'unknown' : 'error'
+    serverError.value   = fail > 0
+    serverStatus.value  = fail === 0 ? 'ok' : ok > 0 ? 'unknown' : 'error'
+    serverResults.value = results.slice(0, 3)   // max 3 arcs
   }
 
   // ── Unseen error logs ─────────────────────────────────────────────────────
@@ -106,7 +117,7 @@ export const useStatusStore = defineStore('status', () => {
 
   return {
     scanNext, deletionNext, scanRunning, deletionRunning,
-    serverError, serverStatus, hasUnseenErrors, logoStatus,
+    serverError, serverStatus, serverResults, hasUnseenErrors, logoStatus,
     fetchScheduler, checkServerHealth, checkUnseenErrors,
     start, stop,
   }

@@ -1,7 +1,8 @@
 """Seerr user rules — Discord ID mappings + per-library grace overrides."""
+import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class RuleBody(BaseModel):
+    name: str = ""
     seerr_user_id: int
     seerr_username: str
-    library_id: str
+    library_id: str = ""
+    library_ids: Optional[List[str]] = None  # None = all; list = specific library IDs
     grace_days: int = 30
     enabled: bool = True
     discord_id: str = ""
@@ -48,34 +51,35 @@ async def list_rules(user: str = Depends(require_auth)):
 
 @router.post("")
 async def create_rule(body: RuleBody, user: str = Depends(require_auth)):
+    name = body.name or body.seerr_username
+    library_ids_json = json.dumps(body.library_ids) if body.library_ids is not None else None
     async with get_db() as db:
         new_id = await db.execute(
             """INSERT INTO seerr_user_rules
-               (seerr_user_id, seerr_username, library_id, grace_days, enabled,
-                discord_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                body.seerr_user_id,
-                body.seerr_username,
-                body.library_id,
-                body.grace_days,
-                int(body.enabled),
-                body.discord_id,
-            ),
+               (name, seerr_user_id, seerr_username, library_id, library_ids, grace_days, enabled, discord_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, body.seerr_user_id, body.seerr_username, body.library_id, library_ids_json,
+             body.grace_days, int(body.enabled), body.discord_id),
         )
         await db.commit()
-        return {"id": new_id}
+        row = await db.fetch_one("SELECT * FROM seerr_user_rules WHERE id=?", (new_id,))
+    return dict(row)
 
 
 @router.put("/{rule_id}")
 async def update_rule(rule_id: int, body: RuleBody, user: str = Depends(require_auth)):
+    name = body.name or body.seerr_username
+    library_ids_json = json.dumps(body.library_ids) if body.library_ids is not None else None
     async with get_db() as db:
         await db.execute(
-            "UPDATE seerr_user_rules SET grace_days=?, enabled=?, discord_id=? WHERE id=?",
-            (body.grace_days, int(body.enabled), body.discord_id, rule_id),
+            "UPDATE seerr_user_rules SET name=?, library_id=?, library_ids=?, grace_days=?, enabled=?, discord_id=? WHERE id=?",
+            (name, body.library_id, library_ids_json, body.grace_days, int(body.enabled), body.discord_id, rule_id),
         )
         await db.commit()
-    return {"status": "ok"}
+        row = await db.fetch_one("SELECT * FROM seerr_user_rules WHERE id=?", (rule_id,))
+    if not row:
+        raise HTTPException(404, "Règle introuvable")
+    return dict(row)
 
 
 @router.delete("/{rule_id}")
@@ -92,8 +96,8 @@ async def get_discord_mappings(user: str = Depends(require_auth)):
     """List all known Seerr user → Discord ID mappings (one per user)."""
     async with get_db() as db:
         rows = await db.fetch_all(
-            "SELECT DISTINCT seerr_user_id, seerr_username, discord_id "
-            "FROM seerr_user_rules ORDER BY seerr_username"
+            "SELECT seerr_user_id, seerr_username, discord_id "
+            "FROM seerr_user_rules GROUP BY seerr_user_id ORDER BY seerr_username"
         )
     return rows
 
@@ -121,27 +125,17 @@ async def save_discord_mapping(
         else:
             # Insert a global mapping — omit created_at for legacy DB compat,
             # the migration will add it on next restart
-            try:
-                await db.execute(
-                    """INSERT INTO seerr_user_rules
-                       (seerr_user_id, seerr_username, library_id, grace_days,
-                        enabled, discord_id, created_at)
-                       VALUES (?, ?, '*', 30, 1, ?, ?)""",
-                    (
-                        body.seerr_user_id,
-                        body.seerr_username,
-                        body.discord_id,
-                        datetime.now(timezone.utc).isoformat(),
-                    ),
-                )
-            except Exception:
-                # Fallback without created_at (legacy DB without that column)
-                await db.execute(
-                    """INSERT INTO seerr_user_rules
-                       (seerr_user_id, seerr_username, library_id, grace_days,
-                        enabled, discord_id)
-                       VALUES (?, ?, '*', 30, 1, ?)""",
-                    (body.seerr_user_id, body.seerr_username, body.discord_id),
-                )
+            await db.execute(
+                """INSERT INTO seerr_user_rules
+                   (seerr_user_id, seerr_username, library_id, grace_days,
+                    enabled, discord_id, created_at)
+                   VALUES (?, ?, '*', 30, 1, ?, ?)""",
+                (
+                    body.seerr_user_id,
+                    body.seerr_username,
+                    body.discord_id,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
         await db.commit()
     return {"status": "saved"}

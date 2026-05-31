@@ -30,12 +30,12 @@
             <SimpleRuleForm
               v-if="ruleType === 'simple'"
               :initial="editRule || {}"
-              @update:modelValue="formData = $event"
+              @update:model-value="formData = $event"
             />
             <ExpertRuleBuilder
               v-else
               :initial="editRule || {}"
-              @update:modelValue="formData = $event"
+              @update:model-value="formData = $event"
             />
           </template>
         </div>
@@ -100,7 +100,8 @@ watch(() => props.editRule, (r) => {
 const canSave = computed(() => {
   if (!ruleType.value) return false
   if (ruleType.value === 'expert') {
-    return formData.value.name && formData.value.conditions?.length > 0
+    const hasGroups = formData.value.condition_groups?.some(g => g.conditions?.length > 0)
+    return !!(formData.value.name && hasGroups)
   }
   return !!formData.value.seerr_user_id
 })

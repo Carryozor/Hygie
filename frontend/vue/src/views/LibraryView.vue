@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useServersStore } from '@/stores/servers'
 import api from '@/api/client'
@@ -38,17 +38,21 @@ const library = computed(() => servers.libraries.find(l => String(l.id) === Stri
 const queueCount   = computed(() => items.value.filter(i => i.status === 'pending').length)
 const deletedCount = computed(() => items.value.filter(i => i.status === 'deleted').length)
 
-onMounted(async () => {
+async function fetchLibrary(id) {
+  if (!id) return
   loading.value = true
   error.value = ''
   try {
-    if (!servers.libraries.length) await servers.fetch()
-    const { data } = await api.get('/media', { params: { library_id: route.params.id, limit: 200 } })
+    await servers.fetch()
+    const { data } = await api.get('/media', { params: { library_id: id, limit: 200 } })
     items.value = data.items || data || []
   } catch {
     error.value = 'Impossible de charger la bibliothèque.'
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(() => fetchLibrary(route.params.id))
+watch(() => route.params.id, id => fetchLibrary(id))
 </script>

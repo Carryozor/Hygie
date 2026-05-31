@@ -33,21 +33,34 @@
           >
             <i class="fas fa-user-tag text-[var(--accent)]" />
             <div class="flex-1 min-w-0">
-              <div class="text-sm font-medium truncate">{{ r.seerr_username || '—' }}</div>
+              <div class="text-sm font-medium truncate">{{ r.name || r.seerr_username || '—' }}</div>
               <div class="text-xs text-[var(--muted)]">
-                Bibliothèque: {{ libraryName(r.library_id) }} · {{ r.grace_days }}j de grâce
+                {{ r.seerr_username }} · {{ libraryName(r.library_id) }} · {{ r.grace_days }}j de grâce
                 <span v-if="r.discord_id"> · Discord: {{ r.discord_id }}</span>
               </div>
             </div>
-            <!-- Enabled badge -->
-            <span :class="['text-xs px-2 py-0.5 rounded-full', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']">
+            <!-- Enabled toggle -->
+            <button
+              :class="['text-xs px-2 py-0.5 rounded-full transition-colors', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']"
+              :title="r.enabled ? 'Désactiver' : 'Activer'"
+              @click="toggleSimple(r)"
+            >
               {{ r.enabled ? 'Actif' : 'Inactif' }}
-            </span>
-            <!-- Actions -->
-            <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="editSimple(r)">
+            </button>
+            <!-- Run -->
+            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" title="Lancer un scan" :disabled="runningId === (r.library_id || 'all')" @click="runRule(r.library_id)">
+              <i :class="['fas', runningId === (r.library_id || 'all') ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+            </button>
+            <!-- Edit -->
+            <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" title="Modifier" @click="editSimple(r)">
               <i class="fas fa-pencil text-sm" />
             </button>
-            <button class="text-[var(--muted)] hover:text-red-400 transition-colors" @click="confirmDelete('simple', r.id)">
+            <!-- Clone -->
+            <button class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors" title="Cloner" @click="cloneSimple(r)">
+              <i class="fas fa-copy text-sm" />
+            </button>
+            <!-- Delete -->
+            <button class="text-[var(--muted)] hover:text-red-400 transition-colors" title="Supprimer" @click="confirmDelete('simple', r.id)">
               <i class="fas fa-trash text-sm" />
             </button>
           </div>
@@ -56,7 +69,21 @@
 
       <!-- Expert rules -->
       <section>
-        <h3 class="text-xs text-[var(--muted)] uppercase tracking-wide mb-3">Règles expertes</h3>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs text-[var(--muted)] uppercase tracking-wide">Règles expertes</h3>
+          <button
+            class="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg2)] border border-[var(--border)] hover:bg-[var(--bg3)] text-[var(--muted)] hover:text-[var(--text)] transition-colors flex items-center gap-1.5"
+            :disabled="migrating"
+            title="Convertir les conditions des bibliothèques en règles expertes"
+            @click="migrateFromLibraries"
+          >
+            <i :class="['fas', migrating ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles', 'text-[10px]']" />
+            {{ migrating ? 'Migration...' : 'Migrer depuis bibliothèques' }}
+          </button>
+        </div>
+        <div v-if="migrateMsg" class="mb-2 text-xs px-3 py-2 rounded-lg" :class="migrateMsg.ok ? 'bg-green-500/10 text-green-400 border border-green-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'">
+          {{ migrateMsg.text }}
+        </div>
         <div v-if="!rules.expertRules.length" class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 text-center text-[var(--muted)] text-sm">
           Aucune règle experte.
         </div>
@@ -70,9 +97,10 @@
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium truncate">{{ r.name }}</div>
               <div class="text-xs text-[var(--muted)]">
-                {{ r.conditions?.length ?? 0 }} condition(s) ·
+                {{ totalConditions(r) }} condition(s) · {{ r.condition_groups?.length ?? 1 }} bloc(s) ·
                 {{ r.operator }} ·
-                {{ ACTION_LABELS[r.action] ?? r.action }}
+                {{ ACTION_LABELS[r.action] ?? r.action }} ·
+                {{ r.grace_days ?? 7 }}j de grâce
                 <template v-if="r.library_id"> · {{ libraryName(r.library_id) }}</template>
               </div>
             </div>
@@ -83,10 +111,20 @@
             >
               {{ r.enabled ? 'Actif' : 'Inactif' }}
             </button>
-            <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="editExpert(r)">
+            <!-- Run -->
+            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" title="Lancer un scan" :disabled="runningId === (r.library_id || 'all')" @click="runRule(r.library_id)">
+              <i :class="['fas', runningId === (r.library_id || 'all') ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+            </button>
+            <!-- Edit -->
+            <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" title="Modifier" @click="editExpert(r)">
               <i class="fas fa-pencil text-sm" />
             </button>
-            <button class="text-[var(--muted)] hover:text-red-400 transition-colors" @click="confirmDelete('expert', r.id)">
+            <!-- Clone -->
+            <button class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors" title="Cloner" @click="cloneExpert(r)">
+              <i class="fas fa-copy text-sm" />
+            </button>
+            <!-- Delete -->
+            <button class="text-[var(--muted)] hover:text-red-400 transition-colors" title="Supprimer" @click="confirmDelete('expert', r.id)">
               <i class="fas fa-trash text-sm" />
             </button>
           </div>
@@ -127,11 +165,54 @@ import { reactive, computed, onMounted, ref } from 'vue'
 import { useRulesStore } from '@/stores/rules'
 import { useServersStore } from '@/stores/servers'
 import CreateRuleModal from '@/components/rules/CreateRuleModal.vue'
+import api from '@/api/client'
 
 const rules   = useRulesStore()
 const servers = useServersStore()
 
+const migrating  = ref(false)
+const migrateMsg = ref(null)
+const runningId  = ref(null)
+
+async function runRule(libraryId) {
+  const key = libraryId || 'all'
+  runningId.value = key
+  try {
+    if (libraryId) await api.post(`/libraries/${libraryId}/scan`)
+    else await api.post('/scan/trigger')
+  } catch { /* silent — scan may already be running */ }
+  finally { runningId.value = null }
+}
+
+async function migrateFromLibraries() {
+  migrating.value = true
+  migrateMsg.value = null
+  try {
+    const { data } = await api.post('/expert-rules/migrate-from-libraries')
+    const n = data.created ?? 0
+    migrateMsg.value = {
+      ok: true,
+      text: n === 0
+        ? 'Aucune nouvelle règle à créer (déjà migrées).'
+        : `${n} règle(s) créée(s) avec succès.`,
+    }
+    if (n > 0) await rules.fetchAll()
+  } catch {
+    migrateMsg.value = { ok: false, text: 'Erreur lors de la migration.' }
+  } finally {
+    migrating.value = false
+    setTimeout(() => { migrateMsg.value = null }, 5000)
+  }
+}
+
 const ACTION_LABELS = { queue: 'File de suppression', notify_only: 'Notification seulement' }
+
+function totalConditions(r) {
+  if (r.condition_groups?.length) {
+    return r.condition_groups.reduce((s, g) => s + (g.conditions?.length ?? 0), 0)
+  }
+  return r.conditions?.length ?? 0
+}
 
 const modal = reactive({ open: false, rule: null, type: '' })
 const deleteTarget = ref(null)
@@ -153,10 +234,32 @@ function editSimple(r) {
   modal.open = true
 }
 
+function cloneSimple(r) {
+  const { id, ...rest } = r
+  modal.rule = { ...rest }
+  modal.type = 'simple'
+  modal.open = true
+}
+
 function editExpert(r) {
   modal.rule = { ...r, conditions: r.conditions ? JSON.parse(JSON.stringify(r.conditions)) : [] }
   modal.type = 'expert'
   modal.open = true
+}
+
+function cloneExpert(r) {
+  const { id, ...rest } = r
+  modal.rule = {
+    ...rest,
+    name: `${rest.name} (copie)`,
+    conditions: rest.conditions ? JSON.parse(JSON.stringify(rest.conditions)) : [],
+  }
+  modal.type = 'expert'
+  modal.open = true
+}
+
+async function toggleSimple(r) {
+  await rules.updateSimpleRule(r.id, { ...r, enabled: !r.enabled })
 }
 
 function confirmDelete(type, id) {

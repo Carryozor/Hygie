@@ -1,9 +1,10 @@
 """Calendar — upcoming deletions grouped by date."""
 from collections import defaultdict
+from datetime import timedelta
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH, parse_iso_dt
+from ..db.utils import parse_iso_dt, now_utc
 from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -14,12 +15,15 @@ async def calendar(
     user: str = Depends(require_auth),
     days_ahead: int = Query(90, ge=1, le=365),
 ):
-    """Return pending deletions grouped by day."""
+    """Return pending deletions grouped by day, up to days_ahead days from now."""
+    cutoff_str = (now_utc() + timedelta(days=days_ahead)).isoformat()
+
     async with get_db() as db:
         rows = await db.fetch_all(
             "SELECT id, title, media_type, library_name, delete_at, poster_url, "
             "seerr_username FROM media_queue WHERE status='pending' "
-            "ORDER BY delete_at ASC"
+            "AND delete_at <= ? ORDER BY delete_at ASC",
+            (cutoff_str,),
         )
 
     grouped: dict = defaultdict(list)
@@ -31,8 +35,6 @@ async def calendar(
         key = dt.strftime("%Y-%m-%d")
         grouped[key].append(d)
 
-    # Return format: {"events": {"YYYY-MM-DD": [item, ...]}}
-    # as expected by the frontend renderCalendar()
     return {
         "events": {date: items for date, items in sorted(grouped.items())}
     }

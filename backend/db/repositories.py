@@ -1,8 +1,10 @@
 """Database query functions — single source of truth for media_queue and libraries SQL."""
+import json
 import logging
 
 from .engine import get_db
 from .utils import now_utc
+from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, ConditionGroup as _ConditionGroup, RuleOperator, RuleAction
 
 logger = logging.getLogger(__name__)
 
@@ -90,27 +92,59 @@ async def update_queue_status(item_id: int, status: str) -> None:
 
 
 # ─── Expert rules ──────────────────────────────────────────────────────────────
-async def save_expert_rule(rule: "ExpertRule") -> int:
+
+def _parse_condition_groups(raw_json: str, legacy_operator: str = "AND") -> list[_ConditionGroup]:
+    """Deserialize conditions JSON, auto-upgrading old flat format to groups."""
+    try:
+        raw = json.loads(raw_json or "[]")
+    except Exception:
+        return []
+    if not raw:
+        return []
+    # Old flat format: list of condition dicts with 'field' key
+    if isinstance(raw[0], dict) and "field" in raw[0]:
+        try:
+            return [_ConditionGroup(
+                conditions=[_Condition(**c) for c in raw],
+                operator=RuleOperator(legacy_operator),
+            )]
+        except Exception as exc:
+            logger.warning("Failed to upgrade flat conditions: %s", exc)
+            return []
+    # New groups format: list of group dicts with 'conditions' key
+    groups = []
+    for g in raw:
+        try:
+            groups.append(_ConditionGroup(
+                conditions=[_Condition(**c) for c in g.get("conditions", [])],
+                operator=RuleOperator(g.get("operator", "AND")),
+            ))
+        except Exception as exc:
+            logger.warning("Failed to parse condition group: %s", exc)
+    return groups
+
+
+async def save_expert_rule(rule: _ExpertRule) -> int:
     """Insert or update an expert rule. Returns the rule id."""
-    import json
-    conditions_json = json.dumps([c.model_dump() for c in rule.conditions])
+    conditions_json = json.dumps([g.model_dump() for g in rule.condition_groups])
+    library_ids_json = json.dumps(rule.library_ids) if rule.library_ids is not None else None
     async with get_db() as db:
         if rule.id:
             rowcount = await db.execute_write(
-                "UPDATE expert_rules SET name=?, library_id=?, conditions=?, operator=?, "
-                "action=?, enabled=?, priority=? WHERE id=?",
-                (rule.name, rule.library_id, conditions_json, rule.operator.value,
-                 rule.action.value, int(rule.enabled), rule.priority, rule.id),
+                "UPDATE expert_rules SET name=?, library_id=?, library_ids=?, conditions=?, operator=?, "
+                "action=?, grace_days=?, enabled=?, priority=? WHERE id=?",
+                (rule.name, rule.library_id, library_ids_json, conditions_json, rule.operator.value,
+                 rule.action.value, rule.grace_days, int(rule.enabled), rule.priority, rule.id),
             )
             if rowcount == 0:
                 raise ValueError(f"expert rule id={rule.id} not found")
             await db.commit()
             return rule.id
         new_id = await db.execute(
-            "INSERT INTO expert_rules (name, library_id, conditions, operator, action, enabled, priority) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (rule.name, rule.library_id, conditions_json, rule.operator.value,
-             rule.action.value, int(rule.enabled), rule.priority),
+            "INSERT INTO expert_rules (name, library_id, library_ids, conditions, operator, action, grace_days, enabled, priority) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (rule.name, rule.library_id, library_ids_json, conditions_json, rule.operator.value,
+             rule.action.value, rule.grace_days, int(rule.enabled), rule.priority),
         )
         await db.commit()
         return new_id
@@ -118,8 +152,6 @@ async def save_expert_rule(rule: "ExpertRule") -> int:
 
 async def get_expert_rules(*, enabled_only: bool = False) -> list:
     """Return all expert rules ordered by priority then id."""
-    import json
-    from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, RuleOperator, RuleAction
     where = "WHERE enabled=1" if enabled_only else ""
     async with get_db() as db:
         rows = await db.fetch_all(
@@ -127,16 +159,26 @@ async def get_expert_rules(*, enabled_only: bool = False) -> list:
         )
     result = []
     for d in rows:
-        try:
-            conditions = [_Condition(**c) for c in json.loads(d.get("conditions") or "[]")]
-        except Exception as exc:
-            logger.warning("Failed to deserialize conditions for rule id=%s: %s", d.get("id"), exc)
-            conditions = []
+        condition_groups = _parse_condition_groups(
+            d.get("conditions") or "[]", d.get("operator", "AND")
+        )
+        if not condition_groups:
+            logger.warning("Rule id=%s has no valid conditions, skipping", d.get("id"))
+            continue
+        library_ids = None
+        raw_lids = d.get("library_ids")
+        if raw_lids:
+            try:
+                library_ids = json.loads(raw_lids)
+            except Exception:
+                pass
         result.append(_ExpertRule(
             id=d["id"], name=d["name"], library_id=d.get("library_id"),
-            conditions=conditions,
+            library_ids=library_ids,
+            condition_groups=condition_groups,
             operator=RuleOperator(d["operator"]),
             action=RuleAction(d["action"]),
+            grace_days=d.get("grace_days", 7),
             enabled=bool(d["enabled"]),
             priority=d["priority"],
             created_at=d.get("created_at"),
@@ -146,24 +188,32 @@ async def get_expert_rules(*, enabled_only: bool = False) -> list:
 
 async def get_expert_rule_by_id(rule_id: int):
     """Return a single ExpertRule by id, or None if not found."""
-    import json
-    from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, RuleOperator, RuleAction
     async with get_db() as db:
         d = await db.fetch_one(
             "SELECT * FROM expert_rules WHERE id=?", (rule_id,)
         )
     if d is None:
         return None
-    try:
-        conditions = [_Condition(**c) for c in json.loads(d.get("conditions") or "[]")]
-    except Exception as exc:
-        logger.warning("Failed to deserialize conditions for rule id=%s: %s", d.get("id"), exc)
-        conditions = []
+    condition_groups = _parse_condition_groups(
+        d.get("conditions") or "[]", d.get("operator", "AND")
+    )
+    if not condition_groups:
+        logger.warning("Rule id=%s has no valid conditions", d.get("id"))
+        return None
+    library_ids = None
+    raw_lids = d.get("library_ids")
+    if raw_lids:
+        try:
+            library_ids = json.loads(raw_lids)
+        except Exception:
+            pass
     return _ExpertRule(
         id=d["id"], name=d["name"], library_id=d.get("library_id"),
-        conditions=conditions,
+        library_ids=library_ids,
+        condition_groups=condition_groups,
         operator=RuleOperator(d["operator"]),
         action=RuleAction(d["action"]),
+        grace_days=d.get("grace_days", 7),
         enabled=bool(d["enabled"]),
         priority=d["priority"],
         created_at=d.get("created_at"),

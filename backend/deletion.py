@@ -12,9 +12,11 @@ from .db.logs import add_job_run, add_log, finish_job_run
 from .db.repositories import get_pending_queue, update_queue_status
 from .emby_client import delete_item, get_client
 from .arr_clients import (
-    radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,
+    radarr_delete, radarr_find_by_path, radarr_get, radarr_get_torrent_hash,
+    radarr_delete_by_id, radarr_get_torrent_hash_any,
     seerr_delete_request, sonarr_delete_episode_file, sonarr_delete_season,
-    sonarr_delete_series, sonarr_find_by_path, sonarr_get_torrent_hash,
+    sonarr_delete_series, sonarr_find_by_path, sonarr_get_series_by_id,
+    sonarr_get_torrent_hash,
 )
 from .qbit_client import qbit_add_tag, qbit_delete_torrent, qbit_find_by_path
 from .discord_client import send_alert, send_notification
@@ -122,9 +124,13 @@ async def _find_torrent_hash(row: dict) -> Optional[str]:
     file_path = row.get("file_path", "")
     media_type = row.get("media_type", "")
     if media_type == "Movie":
-        rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
-        if rid:
-            return await radarr_get_torrent_hash(int(rid))
+        rid_stored = row.get("radarr_id")
+        if rid_stored:
+            return await radarr_get_torrent_hash_any(int(rid_stored))
+        found = await radarr_find_by_path(file_path)
+        if found:
+            rid, r_url, r_key = found
+            return await radarr_get_torrent_hash(int(rid), url=r_url, key=r_key)
     else:
         sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
         if sid:
@@ -143,12 +149,18 @@ async def _delete_from_arr(row: dict) -> None:
     season_number = row.get("season_number")
 
     if media_type == "Movie":
-        rid = row.get("radarr_id") or await radarr_find_by_path(file_path)
-        if rid:
-            await radarr_delete(int(rid), delete_files=False)
+        rid_stored = row.get("radarr_id")
+        if rid_stored:
+            await radarr_delete_by_id(int(rid_stored), delete_files=False)
             await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
+        else:
+            found = await radarr_find_by_path(file_path)
+            if found:
+                rid, r_url, r_key = found
+                await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
+                await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
     elif sonarr_series_id and season_number is not None:
-        # Season-level consolidated entry
+        # Season-level consolidated entry — try all servers if no cache info
         ok = await sonarr_delete_season(int(sonarr_series_id), int(season_number))
         await add_log("DEBUG" if ok else "WARN", f"Sonarr : {title} saison {season_number} {'retirée' if ok else 'erreur'}", "deletion")
     elif sonarr_series_id:
@@ -186,6 +198,27 @@ async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag
         await add_log("WARN", f"qBittorrent erreur pour {title}: {e}", "deletion")
 
 
+async def _get_size_bytes(row: dict) -> int:
+    """Best-effort file size lookup from Radarr/Sonarr before deletion."""
+    try:
+        media_type = row.get("media_type", "")
+        if media_type == "Movie":
+            rid = row.get("radarr_id")
+            if rid:
+                movie = await radarr_get(int(rid))
+                if movie:
+                    return int((movie.get("movieFile") or {}).get("size") or 0)
+        else:
+            sonarr_series_id = row.get("sonarr_series_id")
+            if sonarr_series_id:
+                series = await sonarr_get_series_by_id(int(sonarr_series_id))
+                if series:
+                    return int((series.get("statistics") or {}).get("sizeOnDisk") or 0)
+    except Exception as e:
+        logger.debug(f"_get_size_bytes: {e}")
+    return 0
+
+
 async def _delete_media(
     row: dict,
     dry_run: bool,
@@ -214,8 +247,8 @@ async def _delete_media(
         return True
 
     try:
-        qbit_action = qbit_action or await get_setting("qbit_action") or "tag_only"
-        qbit_tag = qbit_tag_val or await get_setting("qbit_tag") or "Supprimé-Hygie"
+        qbit_action = qbit_action or "tag_only"
+        qbit_tag = qbit_tag_val or "Supprimé-Hygie"
 
         # Resolve library server_id for multi-server correctness
         library_server_id = "0"
@@ -230,7 +263,10 @@ async def _delete_media(
             except Exception as e:
                 logger.debug(f"_delete_media: library_server_id lookup: {e}")
 
-        torrent_hash = await _find_torrent_hash(row)
+        size_bytes, torrent_hash = await asyncio.gather(
+            _get_size_bytes(row),
+            _find_torrent_hash(row),
+        )
 
         try:
             await send_notification([row], "now", dry_run=False)
@@ -277,8 +313,8 @@ async def _delete_media(
                 await _db.execute(
                     "INSERT INTO stats_history "
                     "(ts, total_deleted, total_scanned, space_freed_bytes, month, library_id) "
-                    "VALUES (?, 1, 0, 0, ?, ?)",
-                    (now_utc().isoformat(), month, lib_id),
+                    "VALUES (?, 1, 0, ?, ?, ?)",
+                    (now_utc().isoformat(), size_bytes, month, lib_id),
                 )
                 await _db.commit()
         except Exception as e:

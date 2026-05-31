@@ -15,8 +15,10 @@ DEFAULT_SETTINGS = {
     "media_servers": "[]",             # JSON array of server configs (encrypted)
     "radarr_url": "",
     "radarr_api_key": "",
+    "radarr_servers": "[]",    # JSON: [{id, name, url, api_key, enabled}]
     "sonarr_url": "",
     "sonarr_api_key": "",
+    "sonarr_servers": "[]",    # JSON: [{id, name, url, api_key, enabled}]
     "seerr_url": "",
     "seerr_api_key": "",
     "seerr_external_url": "",

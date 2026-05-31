@@ -1,108 +1,42 @@
-<!-- frontend/vue/src/views/SettingsView.vue -->
 <template>
-  <div class="max-w-2xl space-y-8">
-    <div v-if="saved" role="status" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm">
-      Paramètres sauvegardés.
+  <div class="space-y-6">
+    <!-- Tab bar -->
+    <div class="flex flex-wrap gap-1 bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-1">
+      <button
+        v-for="tab in TABS"
+        :key="tab.id"
+        class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+        :class="activeTab === tab.id ? 'bg-[var(--accent)] text-white' : 'text-[var(--muted)] hover:text-white hover:bg-[var(--bg3)]'"
+        @click="activeTab = tab.id"
+      >
+        <ServiceIcon v-if="tab.service" :name="tab.service" :size="14" :color="activeTab === tab.id ? '#fff' : undefined" />
+        <i v-else :class="['fas', tab.faIcon, 'text-xs']" />
+        <span>{{ tab.label }}</span>
+      </button>
     </div>
 
-    <!-- Général -->
-    <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
-      <h2 class="font-semibold">Général</h2>
+    <div v-if="saved" role="status" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+      <i class="fas fa-check-circle" /> Paramètres sauvegardés.
+    </div>
+    <div v-if="saveError" class="bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+      <i class="fas fa-exclamation-triangle" /> {{ saveError }}
+    </div>
 
-      <div class="flex items-center justify-between">
-        <div>
-          <div class="text-sm font-medium">Mode Dry Run</div>
-          <div class="text-xs text-[var(--muted)]">Simule les suppressions sans les exécuter</div>
-        </div>
-        <ToggleSlider v-model="form.dry_run" />
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <div class="text-sm font-medium">Sauvegarde automatique</div>
-          <div class="text-xs text-[var(--muted)]">Sauvegarde la base de données avant suppression</div>
-        </div>
-        <ToggleSlider v-model="form.backup_enabled" />
-      </div>
-    </section>
-
-    <!-- Intervalles -->
-    <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-4">
-      <h2 class="font-semibold">Intervalles</h2>
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Scan (minutes)</label>
-          <input v-model.number="form.scan_interval_minutes" type="number" min="10"
-            class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]" />
-        </div>
-        <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Suppression (minutes)</label>
-          <input v-model.number="form.deletion_check_interval_minutes" type="number" min="10"
-            class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]" />
-        </div>
-      </div>
-    </section>
-
-    <!-- Plex -->
-    <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
-      <div class="flex items-center gap-2">
-        <i class="fas fa-play-circle text-[var(--accent)]" />
-        <h2 class="font-semibold">Plex</h2>
-      </div>
-
-      <!-- Plex.tv token -->
-      <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Token Plex.tv</label>
-        <div class="flex gap-2">
-          <input
-            v-model="form.plex_tv_token"
-            :type="showPlexToken ? 'text' : 'password'"
-            placeholder="Votre token Plex.tv…"
-            class="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-[var(--accent)]"
-          />
-          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="showPlexToken = !showPlexToken">
-            <i :class="['fas', showPlexToken ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
-          </button>
-        </div>
-        <p class="text-xs text-[var(--muted)] mt-1">Utilisé pour découvrir vos serveurs Plex et vos amis.</p>
-      </div>
-
-      <!-- Webhook secret -->
-      <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Secret Webhook Plex</label>
-        <div class="flex gap-2">
-          <input
-            v-model="form.plex_webhook_secret"
-            :type="showWebhookSecret ? 'text' : 'password'"
-            placeholder="Secret optionnel…"
-            class="flex-1 bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-[var(--accent)]"
-          />
-          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="showWebhookSecret = !showWebhookSecret">
-            <i :class="['fas', showWebhookSecret ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
-          </button>
-        </div>
-        <p class="text-xs text-[var(--muted)] mt-1">
-          Configurez l'URL webhook Plex :
-          <code class="bg-[var(--bg3)] px-1 rounded">{{ webhookUrl }}</code>
-        </p>
-      </div>
-
-      <!-- Overlay affiches Plex -->
-      <div class="flex items-center justify-between">
-        <div>
-          <div class="text-sm font-medium">Overlay « Supprimé dans Xj » sur Plex</div>
-          <div class="text-xs text-[var(--muted)]">Applique la bannière sur les affiches des médias en file de suppression</div>
-        </div>
-        <ToggleSlider v-model="form.plex_overlay_enabled" />
-      </div>
-    </section>
+    <GeneralTab   v-show="activeTab === 'general'"    :form="form" />
+    <ServersTab   v-show="activeTab === 'servers'"    :form="form" />
+    <SeerrTab     v-show="activeTab === 'seerr'"     :form="form" />
+    <RadarrTab    v-show="activeTab === 'radarr'"    :form="form" />
+    <SonarrTab    v-show="activeTab === 'sonarr'"    :form="form" />
+    <QbitTab      v-show="activeTab === 'qbit'"      :form="form" />
+    <DiscordTab   v-show="activeTab === 'discord'"   :form="form" />
 
     <button
-      @click="save"
+      v-if="activeTab !== 'servers'"
       :disabled="saving"
-      class="bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg px-6 py-2.5 text-sm font-semibold transition-opacity"
+      class="w-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg px-6 py-3 text-sm font-semibold transition-opacity"
+      @click="save"
     >
-      {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+      {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
     </button>
   </div>
 </template>
@@ -110,54 +44,128 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import ToggleSlider from '@/components/ui/ToggleSlider.vue'
+import ServiceIcon from '@/components/ui/ServiceIcon.vue'
+import GeneralTab     from '@/components/settings/GeneralTab.vue'
+import ServersTab     from '@/components/settings/ServersTab.vue'
+import RadarrTab      from '@/components/settings/RadarrTab.vue'
+import SonarrTab      from '@/components/settings/SonarrTab.vue'
+import SeerrTab       from '@/components/settings/SeerrTab.vue'
+import QbitTab        from '@/components/settings/QbitTab.vue'
+import DiscordTab     from '@/components/settings/DiscordTab.vue'
 
-const settings = useSettingsStore()
-const form   = ref({})
-const saving = ref(false)
-const saved  = ref(false)
-const showPlexToken    = ref(false)
-const showWebhookSecret = ref(false)
+const settings  = useSettingsStore()
+const saving    = ref(false)
+const saved     = ref(false)
+const saveError = ref('')
+const activeTab = ref('general')
+const form      = ref({})
 
-const webhookUrl = computed(() => {
-  const base = window.location.origin
-  const secret = form.value.plex_webhook_secret
-  return secret ? `${base}/api/plex/webhook?secret=${secret}` : `${base}/api/plex/webhook`
-})
+const TABS = computed(() => [
+  { id: 'general',     faIcon: 'fa-cog',          label: 'Général',        service: null },
+  { id: 'servers',     faIcon: 'fa-server',        label: 'Serveurs',       service: null },
+  { id: 'seerr',       faIcon: null,               label: 'Seerr',          service: 'overseerr' },
+  { id: 'radarr',      faIcon: null,               label: 'Radarr',         service: 'radarr' },
+  { id: 'sonarr',      faIcon: null,               label: 'Sonarr',         service: 'sonarr' },
+  { id: 'qbit',        faIcon: null,               label: 'qBittorrent',    service: form.value.qbit_proxy_url ? 'qui' : 'qbittorrent' },
+  { id: 'discord',     faIcon: null,               label: 'Discord',        service: 'discord' },
+])
 
 function syncForm() {
+  const s = settings.settings
+  const b = k => s[k] === 'true' || s[k] === true
   form.value = {
-    dry_run:                         settings.settings.dry_run === 'true' || settings.settings.dry_run === true,
-    backup_enabled:                  settings.settings.backup_enabled === 'true' || settings.settings.backup_enabled === true,
-    scan_interval_minutes:           Number(settings.settings.scan_interval_minutes || 360),
-    deletion_check_interval_minutes: Number(settings.settings.deletion_check_interval_minutes || 60),
-    plex_tv_token:                   settings.settings.plex_tv_token || '',
-    plex_webhook_secret:             settings.settings.plex_webhook_secret || '',
-    plex_overlay_enabled:            settings.settings.plex_overlay_enabled === 'true',
+    dry_run: b('dry_run'), log_level: s.log_level || 'INFO',
+    max_parallel_library_scans: Number(s.max_parallel_library_scans || 3),
+    scan_interval_minutes: Number(s.scan_interval_minutes || 360),
+    deletion_check_interval_minutes: Number(s.deletion_check_interval_minutes || 60),
+    deleted_retention_days: Number(s.deleted_retention_days || 30),
+    log_retention_days: Number(s.log_retention_days || 30),
+    job_history_retention_days: Number(s.job_history_retention_days || 30),
+    backup_enabled: b('backup_enabled'), backup_interval_hours: Number(s.backup_interval_hours || 24),
+    backup_retention_count: Number(s.backup_retention_count || 5), backup_path: s.backup_path || '',
+    public_dashboard_enabled: b('public_dashboard_enabled'),
+    emby_leaving_soon_overlay: b('emby_leaving_soon_overlay'),
+    emby_leaving_soon_collection: s.emby_leaving_soon_collection || '',
+    emby_leaving_soon_days: Number(s.emby_leaving_soon_days || 30),
+    plex_tv_token: s.plex_tv_token || '', plex_webhook_secret: s.plex_webhook_secret || '',
+    plex_overlay_enabled: b('plex_overlay_enabled'),
+    radarr_url: s.radarr_url || '', radarr_api_key: s.radarr_api_key || '',
+    radarr_servers: s.radarr_servers || '[]',
+    sonarr_url: s.sonarr_url || '', sonarr_api_key: s.sonarr_api_key || '',
+    sonarr_servers: s.sonarr_servers || '[]',
+    seerr_url: s.seerr_url || '', seerr_api_key: s.seerr_api_key || '', seerr_external_url: s.seerr_external_url || '',
+    qbit_url: s.qbit_url || '', qbit_proxy_url: s.qbit_proxy_url || '',
+    qbit_user: s.qbit_user || '', qbit_password: s.qbit_password || '',
+    qbit_action: s.qbit_action || '', qbit_tag: s.qbit_tag || '',
+    discord_webhook: s.discord_webhook || '', discord_webhook_alerts: s.discord_webhook_alerts || '',
+    discord_notif_thresholds: s.discord_notif_thresholds || '30,14,7,3,1',
+    discord_alert_deletion_error: s.discord_alert_deletion_error || 'false',
+    discord_alert_deletion_error_mention: s.discord_alert_deletion_error_mention || '',
+    discord_alert_deletion_error_msg: s.discord_alert_deletion_error_msg || '',
+    discord_alert_scan_failure: s.discord_alert_scan_failure || 'false',
+    discord_alert_scan_failure_mention: s.discord_alert_scan_failure_mention || '',
+    discord_alert_scan_failure_msg: s.discord_alert_scan_failure_msg || '',
+    discord_alert_seerr_failure: s.discord_alert_seerr_failure || 'false',
+    discord_alert_seerr_failure_mention: s.discord_alert_seerr_failure_mention || '',
+    discord_alert_seerr_failure_msg: s.discord_alert_seerr_failure_msg || '',
+    discord_alert_error_threshold: Number(s.discord_alert_error_threshold || 0),
   }
 }
 
-watch(() => settings.settings, syncForm, { deep: true })
+watch(() => settings.settings, () => { if (!saving.value) syncForm() }, { deep: true })
 
 async function save() {
-  saving.value = true
-  saved.value  = false
+  saving.value = true; saved.value = false; saveError.value = ''
   try {
+    const f = form.value
     await settings.save({
-      dry_run:                         String(form.value.dry_run),
-      backup_enabled:                  String(form.value.backup_enabled),
-      scan_interval_minutes:           String(form.value.scan_interval_minutes),
-      deletion_check_interval_minutes: String(form.value.deletion_check_interval_minutes),
-      plex_tv_token:                   form.value.plex_tv_token,
-      plex_webhook_secret:             form.value.plex_webhook_secret,
-      plex_overlay_enabled:            String(form.value.plex_overlay_enabled),
+      dry_run: String(f.dry_run), log_level: f.log_level,
+      max_parallel_library_scans: String(f.max_parallel_library_scans),
+      scan_interval_minutes: String(f.scan_interval_minutes),
+      deletion_check_interval_minutes: String(f.deletion_check_interval_minutes),
+      deleted_retention_days: String(f.deleted_retention_days),
+      log_retention_days: String(f.log_retention_days),
+      job_history_retention_days: String(f.job_history_retention_days),
+      backup_enabled: String(f.backup_enabled), backup_interval_hours: String(f.backup_interval_hours),
+      backup_retention_count: String(f.backup_retention_count), backup_path: f.backup_path,
+      public_dashboard_enabled: String(f.public_dashboard_enabled),
+      emby_leaving_soon_overlay: String(f.emby_leaving_soon_overlay),
+      emby_leaving_soon_collection: f.emby_leaving_soon_collection,
+      emby_leaving_soon_days: String(f.emby_leaving_soon_days),
+      plex_tv_token: f.plex_tv_token, plex_webhook_secret: f.plex_webhook_secret,
+      plex_overlay_enabled: String(f.plex_overlay_enabled),
+      radarr_url: f.radarr_url, radarr_api_key: f.radarr_api_key,
+      radarr_servers: f.radarr_servers,
+      sonarr_url: f.sonarr_url, sonarr_api_key: f.sonarr_api_key,
+      sonarr_servers: f.sonarr_servers,
+      seerr_url: f.seerr_url, seerr_api_key: f.seerr_api_key, seerr_external_url: f.seerr_external_url,
+      qbit_url: f.qbit_url, qbit_proxy_url: f.qbit_proxy_url,
+      qbit_user: f.qbit_user, qbit_password: f.qbit_password,
+      qbit_action: f.qbit_action, qbit_tag: f.qbit_tag,
+      discord_webhook: f.discord_webhook, discord_webhook_alerts: f.discord_webhook_alerts,
+      discord_notif_thresholds: f.discord_notif_thresholds,
+      discord_alert_deletion_error: f.discord_alert_deletion_error,
+      discord_alert_deletion_error_mention: f.discord_alert_deletion_error_mention,
+      discord_alert_deletion_error_msg: f.discord_alert_deletion_error_msg,
+      discord_alert_scan_failure: f.discord_alert_scan_failure,
+      discord_alert_scan_failure_mention: f.discord_alert_scan_failure_mention,
+      discord_alert_scan_failure_msg: f.discord_alert_scan_failure_msg,
+      discord_alert_seerr_failure: f.discord_alert_seerr_failure,
+      discord_alert_seerr_failure_mention: f.discord_alert_seerr_failure_mention,
+      discord_alert_seerr_failure_msg: f.discord_alert_seerr_failure_msg,
+      discord_alert_error_threshold: String(f.discord_alert_error_threshold),
     })
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)
-  } finally {
-    saving.value = false
-  }
+  } catch (e) {
+    const msg = e?.response?.data?.detail || e?.message || 'Erreur inconnue'
+    saveError.value = `Échec de la sauvegarde : ${msg}`
+    setTimeout(() => { saveError.value = '' }, 6000)
+  } finally { saving.value = false }
 }
 
-onMounted(async () => { await settings.fetch(); syncForm() })
+onMounted(async () => {
+  await settings.fetch()
+  syncForm()
+})
 </script>

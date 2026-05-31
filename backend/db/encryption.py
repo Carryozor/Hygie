@@ -18,7 +18,11 @@ SENSITIVE_KEYS = frozenset({
     "qbit_proxy_url",
     "discord_webhook",
     "discord_webhook_alerts",
-    "media_servers",   # JSON array contains API keys — encrypt the whole blob
+    "media_servers",    # JSON array — encrypt the whole blob
+    "radarr_servers",   # JSON array — encrypt the whole blob
+    "sonarr_servers",   # JSON array — encrypt the whole blob
+    "plex_tv_token",
+    "plex_webhook_secret",
 })
 
 _fernet_instance = None

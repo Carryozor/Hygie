@@ -36,6 +36,7 @@ class SeerrCondition(BaseModel):
 class LibraryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     emby_library_id: str
+    server_id: str = "0"
     conditions: List[Condition] = []
     logic: Literal["AND", "OR"] = "AND"
     grace_days: int = Field(default=7, ge=0, le=3650)
@@ -47,6 +48,7 @@ class LibraryCreate(BaseModel):
 class LibraryUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     emby_library_id: Optional[str] = None
+    server_id: Optional[str] = None
     conditions: Optional[List[Condition]] = None
     logic: Optional[Literal["AND", "OR"]] = None
     grace_days: Optional[int] = Field(default=None, ge=0, le=3650)
@@ -57,10 +59,35 @@ class LibraryUpdate(BaseModel):
 
 @router.get("/emby-libraries")
 @router.get("/emby")
-async def list_emby_libraries(user: str = Depends(require_auth)):
-    """List available Emby libraries to choose from."""
-    libs = await emby_get_libraries()
+async def list_emby_libraries(server_id: str = "0", user: str = Depends(require_auth)):
+    """List available Emby/Jellyfin libraries to choose from for the given server."""
+    libs = await emby_get_libraries(server_id)
     return [{"id": lib["Id"], "name": lib["Name"]} for lib in libs]
+
+
+@router.get("/plex/{server_id}/sections")
+async def list_plex_sections(server_id: str, user: str = Depends(require_auth)):
+    """List Plex library sections for a server, flagging already-configured ones."""
+    from ..db.media_servers import get_media_servers
+    from ..plex_client import build_plex_client
+    servers = await get_media_servers()
+    server = next((s for s in servers if str(s.get("id")) == server_id), None)
+    if not server or server.get("type") != "plex":
+        raise HTTPException(404, "Serveur Plex introuvable")
+    plex = build_plex_client(server)
+    if not plex:
+        raise HTTPException(400, "Configuration Plex insuffisante (URL ou token manquant)")
+    try:
+        sections = await plex.get_libraries()
+    except Exception as e:
+        raise HTTPException(502, f"Erreur Plex : {e}")
+    async with get_db() as db:
+        existing = await db.fetch_all(
+            "SELECT emby_library_id FROM libraries WHERE server_id=?", (server_id,)
+        )
+    configured = {r["emby_library_id"] for r in existing}
+    return [{"id": s["id"], "title": s["title"], "type": s["type"], "configured": s["id"] in configured}
+            for s in sections]
 
 
 @router.get("")
@@ -84,13 +111,14 @@ async def create_library(body: LibraryCreate, user: str = Depends(require_auth))
     async with get_db() as db:
         await db.execute(
             """INSERT INTO libraries
-               (id, name, emby_library_id, conditions, logic, grace_days,
+               (id, name, emby_library_id, server_id, conditions, logic, grace_days,
                 seerr_conditions, enabled, deletion_unit, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 lib_id,
                 body.name,
                 body.emby_library_id,
+                body.server_id,
                 json.dumps([c.model_dump() for c in body.conditions]),
                 body.logic,
                 body.grace_days,
@@ -113,7 +141,7 @@ async def update_library(
     user: str = Depends(require_auth),
 ):
     _ALLOWED_LIB_COLS = frozenset({
-        "name", "emby_library_id", "conditions", "logic",
+        "name", "emby_library_id", "server_id", "conditions", "logic",
         "grace_days", "seerr_conditions", "enabled", "deletion_unit",
     })
     updates = []
@@ -169,43 +197,24 @@ async def clone_library(library_id: str, user: str = Depends(require_auth)):
             raise HTTPException(404, "Bibliothèque introuvable")
 
         new_id = str(uuid.uuid4())
-        try:
-            await db.execute(
-                """INSERT INTO libraries
-                   (id, name, emby_library_id, conditions, logic, grace_days,
-                    seerr_conditions, enabled, deletion_unit, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    new_id,
-                    f"{src['name']} (copie)",
-                    src["emby_library_id"],
-                    src["conditions"],
-                    src["logic"],
-                    src["grace_days"],
-                    src["seerr_conditions"],
-                    src["enabled"],
-                    src.get("deletion_unit", "episode"),
-                    datetime.now(timezone.utc).isoformat(),
-                ),
-            )
-        except Exception:
-            # Fallback without created_at for legacy DB
-            await db.execute(
-                """INSERT INTO libraries
-                   (id, name, emby_library_id, conditions, logic, grace_days,
-                    seerr_conditions, enabled)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    new_id,
-                    f"{src['name']} (copie)",
-                    src["emby_library_id"],
-                    src["conditions"],
-                    src["logic"],
-                    src["grace_days"],
-                    src["seerr_conditions"],
-                    src["enabled"],
-                ),
-            )
+        await db.execute(
+            """INSERT INTO libraries
+               (id, name, emby_library_id, conditions, logic, grace_days,
+                seerr_conditions, enabled, deletion_unit, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                new_id,
+                f"{src['name']} (copie)",
+                src["emby_library_id"],
+                src["conditions"],
+                src["logic"],
+                src["grace_days"],
+                src["seerr_conditions"],
+                src["enabled"],
+                src.get("deletion_unit", "episode"),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
         await db.commit()
     return {"id": new_id}
 

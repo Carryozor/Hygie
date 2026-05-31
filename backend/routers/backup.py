@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api/backup", tags=["backup"])
 
 @router.post("")
 async def trigger_backup(user: str = Depends(require_auth)):
-    """Trigger a manual DB backup immediately."""
-    filename = await run_backup()
+    """Trigger a manual DB backup immediately (always runs regardless of backup_enabled setting)."""
+    filename = await run_backup(force=True)
     if filename is None:
         raise HTTPException(500, "Backup échoué")
     return {"filename": filename}

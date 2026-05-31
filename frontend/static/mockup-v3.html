@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Hygie v3.0 — Mockups</title>
+<style>
+  :root {
+    --bg: #0f172a; --bg2: #1e293b; --bg3: #2d3748;
+    --border: #334155; --accent: #6366f1;
+    --green: #22c55e; --cyan: #00a4dc; --gold: #e5a00d;
+    --text: #e2e8f0; --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 13px; }
+  h1 { font-size: 20px; font-weight: 700; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--accent); margin-bottom: 16px; }
+  h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+  .section { margin-bottom: 56px; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: .05em; }
+  .tag-a { background: #6366f120; color: #818cf8; border: 1px solid #6366f140; }
+  .tag-b { background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b40; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .card-sub { font-size: 11px; color: var(--muted); margin-bottom: 16px; }
+  /* ── inputs ── */
+  select, input[type=text], input[type=number] {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 8px; border-radius: 6px; font-size: 12px; outline: none; min-width: 0;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px;
+    font-size: 12px; font-weight: 500; border: 1px solid transparent; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-danger { background: #ef444420; border-color: #ef444440; color: #ef4444; }
+  .btn-sm { padding: 3px 8px; font-size: 11px; }
+  /* ── toggle ── */
+  .toggle-wrap { position: relative; display: inline-block; width: 40px; height: 22px; }
+  .toggle-wrap input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track { position: absolute; inset: 0; background: #374151; border-radius: 11px; transition: .2s; cursor: pointer; }
+  .toggle-thumb { position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 8px; top: 3px; left: 3px; transition: .2s; pointer-events: none; }
+  input:checked + .toggle-track { background: var(--accent); }
+  input:checked ~ .toggle-thumb { left: 21px; }
+  /* ── server badges ── */
+  .badge-emby  { background: #52b54b20; color: #52b54b; border: 1px solid #52b54b40; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .badge-jelly { background: #00a4dc20; color: #00a4dc; border: 1px solid #00a4dc40; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .badge-plex  { background: #e5a00d20; color: #e5a00d; border: 1px solid #e5a00d40; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+
+  /* ══════════════════ RULE BUILDER A ══════════════════ */
+  .rb-a { display: flex; flex-direction: column; gap: 8px; }
+  .rb-a-row { display: grid; grid-template-columns: 160px 120px 1fr 28px; gap: 6px; align-items: center; }
+  .rb-a-connector { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 2px 0; }
+  .rb-a-connector .pill {
+    padding: 2px 10px; border-radius: 99px; border: 1px solid var(--border); font-size: 11px; font-weight: 600;
+    background: var(--bg3); color: var(--text); cursor: pointer;
+  }
+  .rb-a-connector .pill.active { background: #6366f120; border-color: var(--accent); color: #818cf8; }
+  .rm-btn { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    background: #ef444415; border: 1px solid #ef444430; color: #ef4444; cursor: pointer; font-size: 12px; flex-shrink: 0; }
+  .rb-a-footer { display: flex; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .rb-a-action { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px; background: var(--bg3); border-radius: 8px; border: 1px solid var(--border); }
+
+  /* ══════════════════ RULE BUILDER B ══════════════════ */
+  .rb-b { display: flex; flex-direction: column; gap: 0; }
+  .rb-b-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; cursor: grab; position: relative; }
+  .rb-b-card:hover { border-color: var(--accent); }
+  .rb-b-drag { color: var(--muted); font-size: 12px; cursor: grab; }
+  .rb-b-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .rb-b-body { flex: 1; min-width: 0; }
+  .rb-b-title { font-size: 12px; font-weight: 600; }
+  .rb-b-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .rb-b-controls { display: flex; align-items: center; gap: 6px; }
+  .rb-b-connector-line { display: flex; align-items: center; margin: 3px 0 3px 54px; gap: 0; }
+  .rb-b-connector-pill { padding: 2px 10px; border-radius: 99px; background: #6366f115; border: 1px solid var(--accent); color: #818cf8; font-size: 10px; font-weight: 700; cursor: pointer; }
+  .rb-b-add-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 12px; text-align: center;
+    color: var(--muted); font-size: 12px; cursor: pointer; margin-top: 4px; }
+  .rb-b-add-zone:hover { border-color: var(--accent); color: var(--accent); }
+  .rb-b-footer { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .rb-b-action-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px;
+    border: 2px solid #6366f140; background: #6366f110; flex: 1; }
+
+  /* ══════════════════ LAYOUT MOCKUPS ══════════════════ */
+  .layout-frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  /* Layout 1 — sidebar libraries */
+  .l1-wrap { display: flex; height: 400px; }
+  .l1-sidebar { width: 200px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .l1-sidebar-head { padding: 10px 12px; font-size: 11px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .05em; }
+  .l1-server-group { }
+  .l1-server-label { padding: 8px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
+  .l1-lib { padding: 5px 12px 5px 22px; font-size: 12px; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+  .l1-lib:hover { color: var(--text); background: var(--bg3); }
+  .l1-lib.active { color: var(--text); background: #6366f118; border-right: 2px solid var(--accent); }
+  .l1-lib-count { font-size: 10px; background: var(--bg3); padding: 1px 5px; border-radius: 4px; }
+  .l1-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .l1-main-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .l1-main-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .l1-main-body { flex: 1; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .l1-item { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    display: flex; align-items: center; gap: 10px; }
+  .l1-item-thumb { width: 32px; height: 48px; border-radius: 4px; background: #334155; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .l1-item-body { flex: 1; min-width: 0; }
+  .l1-item-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .l1-item-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .l1-stats-bar { padding: 8px 12px; border-top: 1px solid var(--border); display: flex; gap: 16px; background: var(--bg2); }
+  .l1-stat { text-align: center; }
+  .l1-stat-val { font-size: 14px; font-weight: 700; color: var(--accent); }
+  .l1-stat-label { font-size: 10px; color: var(--muted); }
+
+  /* Layout 2 — dashboard cross-serveur */
+  .l2-wrap { display: flex; height: 400px; }
+  .l2-sidebar { width: 200px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .l2-nav-item { padding: 7px 12px; font-size: 12px; color: var(--muted); cursor: pointer; display: flex; align-items: center; gap: 7px; }
+  .l2-nav-item.active { color: var(--text); background: #6366f118; border-right: 2px solid var(--accent); }
+  .l2-server-section { padding: 8px 12px 4px; }
+  .l2-server-head { font-size: 10px; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .l2-lib-item { padding: 4px 0 4px 14px; font-size: 11px; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+  .l2-lib-item:hover { color: var(--text); }
+  .l2-main { flex: 1; overflow: hidden; }
+  .l2-dash-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .l2-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px 16px; }
+  .l2-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .l2-card-val { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .l2-card-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .l2-table-head { padding: 0 16px; font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: 6px; display: grid; grid-template-columns: 1fr 80px 80px 60px; }
+  .l2-table-body { overflow-y: auto; max-height: 160px; }
+  .l2-row { padding: 7px 16px; display: grid; grid-template-columns: 1fr 80px 80px 60px; align-items: center; border-bottom: 1px solid #1e293b; font-size: 11px; }
+  .l2-row:hover { background: var(--bg3); }
+  .server-dot { width: 6px; height: 6px; border-radius: 3px; display: inline-block; margin-right: 5px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+    <div>
+      <h1>Hygie v3.0 — Mockups de design</h1>
+      <div style="color:var(--muted);font-size:12px;margin-top:4px">Rule Builder × Layout — choisir une option par section</div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <span class="badge-emby">Emby</span>
+      <span class="badge-jelly">Jellyfin</span>
+      <span class="badge-plex">Plex</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECTION 1 : RULE BUILDER ═══════════════════ -->
+  <div class="section">
+    <h2>① Rule Builder — Créer une règle experte</h2>
+    <div class="grid2">
+
+      <!-- OPTION A -->
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="tag tag-a">Option A</span>
+          <div class="card-title">Form linéaire</div>
+        </div>
+        <div class="card-sub">Conditions empilées, opérateur AND/OR global — style Maintainerr. Rapide à apprendre, très efficace.</div>
+
+        <div style="margin-bottom:10px">
+          <input type="text" value="Films non regardés" style="width:100%;font-size:13px;padding:7px 10px">
+        </div>
+
+        <div class="rb-a">
+          <!-- Row 1 -->
+          <div class="rb-a-row">
+            <select><option>Jours non vu</option></select>
+            <select><option>Supérieur à</option></select>
+            <input type="number" value="365" placeholder="valeur">
+            <div class="rm-btn">×</div>
+          </div>
+          <!-- connector -->
+          <div class="rb-a-connector">
+            <div class="pill active">ET</div>
+            <div class="pill">OU</div>
+            <div style="flex:1;height:1px;background:var(--border)"></div>
+          </div>
+          <!-- Row 2 -->
+          <div class="rb-a-row">
+            <select><option>Note</option></select>
+            <select><option>Inférieur à</option></select>
+            <input type="number" value="6" placeholder="valeur">
+            <div class="rm-btn">×</div>
+          </div>
+          <div class="rb-a-connector">
+            <div class="pill active">ET</div>
+            <div class="pill">OU</div>
+            <div style="flex:1;height:1px;background:var(--border)"></div>
+          </div>
+          <!-- Row 3 -->
+          <div class="rb-a-row">
+            <select><option>Type</option></select>
+            <select><option>Est</option></select>
+            <select style="width:100%"><option>Film</option></select>
+            <div class="rm-btn">×</div>
+          </div>
+        </div>
+
+        <div class="rb-a-footer">
+          <button class="btn btn-ghost btn-sm">+ Ajouter une condition</button>
+        </div>
+
+        <div class="rb-a-action">
+          <span style="font-size:11px;color:var(--muted)">Action :</span>
+          <select>
+            <option>🗑 Mettre en file de suppression</option>
+            <option>🔔 Notifier seulement</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted);margin-left:auto">Priorité :</span>
+          <input type="number" value="0" style="width:60px">
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-primary" style="flex:1;justify-content:center">Enregistrer</button>
+          <button class="btn btn-ghost">Tester sur la librairie</button>
+        </div>
+
+        <div style="margin-top:16px;padding:10px;background:#22c55e08;border:1px solid #22c55e20;border-radius:8px;">
+          <div style="font-size:11px;font-weight:600;color:#22c55e;margin-bottom:4px">✓ Aperçu logique</div>
+          <div style="font-size:11px;color:var(--muted)">Films où <b style="color:var(--text)">jours_non_vu &gt; 365</b> ET <b style="color:var(--text)">note &lt; 6</b> ET <b style="color:var(--text)">type = Film</b></div>
+        </div>
+      </div>
+
+      <!-- OPTION B -->
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="tag tag-b">Option B</span>
+          <div class="card-title">Cards visuelles + drag & drop</div>
+        </div>
+        <div class="card-sub">Chaque condition est une card avec icône. Drag pour réordonner, connecteur cliquable entre chaque card.</div>
+
+        <div style="margin-bottom:10px">
+          <input type="text" value="Films non regardés" style="width:100%;font-size:13px;padding:7px 10px">
+        </div>
+
+        <div class="rb-b">
+          <!-- Card 1 -->
+          <div class="rb-b-card">
+            <span class="rb-b-drag">⠿</span>
+            <div class="rb-b-icon" style="background:#6366f120">📅</div>
+            <div class="rb-b-body">
+              <div class="rb-b-title">Jours non vu &gt; 365</div>
+              <div class="rb-b-desc">Depuis le dernier visionnage</div>
+            </div>
+            <div class="rb-b-controls">
+              <button class="btn btn-ghost btn-sm">Modifier</button>
+              <div class="rm-btn">×</div>
+            </div>
+          </div>
+
+          <!-- connector -->
+          <div class="rb-b-connector-line">
+            <div style="width:1px;height:10px;background:var(--border);margin-right:9px"></div>
+            <div class="rb-b-connector-pill">ET</div>
+            <div style="flex:1;height:1px;background:var(--border);margin-left:9px"></div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="rb-b-card">
+            <span class="rb-b-drag">⠿</span>
+            <div class="rb-b-icon" style="background:#f59e0b20">⭐</div>
+            <div class="rb-b-body">
+              <div class="rb-b-title">Note &lt; 6.0</div>
+              <div class="rb-b-desc">Note communautaire</div>
+            </div>
+            <div class="rb-b-controls">
+              <button class="btn btn-ghost btn-sm">Modifier</button>
+              <div class="rm-btn">×</div>
+            </div>
+          </div>
+
+          <div class="rb-b-connector-line">
+            <div style="width:1px;height:10px;background:var(--border);margin-right:9px"></div>
+            <div class="rb-b-connector-pill">ET</div>
+            <div style="flex:1;height:1px;background:var(--border);margin-left:9px"></div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="rb-b-card">
+            <span class="rb-b-drag">⠿</span>
+            <div class="rb-b-icon" style="background:#22c55e20">🎬</div>
+            <div class="rb-b-body">
+              <div class="rb-b-title">Type = Film</div>
+              <div class="rb-b-desc">Filtrer par type de média</div>
+            </div>
+            <div class="rb-b-controls">
+              <button class="btn btn-ghost btn-sm">Modifier</button>
+              <div class="rm-btn">×</div>
+            </div>
+          </div>
+
+          <!-- add zone -->
+          <div class="rb-b-add-zone" style="margin-top:6px">
+            + Ajouter une condition
+          </div>
+        </div>
+
+        <div class="rb-b-footer">
+          <div class="rb-b-action-card">
+            <span style="font-size:18px">🗑</span>
+            <div>
+              <div style="font-size:11px;font-weight:600">File de suppression</div>
+              <div style="font-size:10px;color:var(--muted)">Priorité 0 — actif</div>
+            </div>
+            <label class="toggle-wrap" style="margin-left:auto">
+              <input type="checkbox" checked>
+              <div class="toggle-track"></div><div class="toggle-thumb"></div>
+            </label>
+          </div>
+          <button class="btn btn-ghost" style="flex-shrink:0">Tester</button>
+        </div>
+
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" style="width:100%;justify-content:center">Enregistrer la règle</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECTION 2 : LAYOUT ═══════════════════ -->
+  <div class="section">
+    <h2>② Layout v3.0 — Navigation principale</h2>
+    <div class="grid2">
+
+      <!-- LAYOUT 1 -->
+      <div class="card" style="padding:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span class="tag tag-a">Layout A</span>
+          <div class="card-title">Library-Centric — sidebar bibliothèques</div>
+        </div>
+        <div class="layout-frame">
+          <div class="l1-wrap">
+            <div class="l1-sidebar">
+              <div class="l1-sidebar-head">Bibliothèques</div>
+              <div class="l1-server-group">
+                <div class="l1-server-label"><span style="width:8px;height:8px;border-radius:4px;background:#52b54b;flex-shrink:0"></span><span style="color:#52b54b;font-size:10px;font-weight:700">EMBY</span></div>
+                <div class="l1-lib active">🎬 Films <span class="l1-lib-count">847</span></div>
+                <div class="l1-lib">📺 Séries <span class="l1-lib-count">312</span></div>
+              </div>
+              <div class="l1-server-group">
+                <div class="l1-server-label"><span style="width:8px;height:8px;border-radius:4px;background:#00a4dc;flex-shrink:0"></span><span style="color:#00a4dc;font-size:10px;font-weight:700">JELLYFIN</span></div>
+                <div class="l1-lib">🎵 Musique <span class="l1-lib-count">2.1k</span></div>
+                <div class="l1-lib">🎬 Films 4K <span class="l1-lib-count">94</span></div>
+              </div>
+              <div class="l1-server-group">
+                <div class="l1-server-label"><span style="width:8px;height:8px;border-radius:4px;background:#e5a00d;flex-shrink:0"></span><span style="color:#e5a00d;font-size:10px;font-weight:700">PLEX</span></div>
+                <div class="l1-lib">🎬 Movies <span class="l1-lib-count">205</span></div>
+              </div>
+            </div>
+            <div class="l1-main">
+              <div class="l1-main-head">
+                <div class="l1-main-title">
+                  <span class="badge-emby">EMBY</span>
+                  Films
+                  <span style="font-size:11px;color:var(--muted);font-weight:400">847 items · 4.2 To</span>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-sm">Filtrer</button>
+                  <button class="btn btn-primary btn-sm">Scanner</button>
+                </div>
+              </div>
+              <div class="l1-main-body">
+                <div class="l1-item">
+                  <div class="l1-item-thumb">🎬</div>
+                  <div class="l1-item-body">
+                    <div class="l1-item-title">The Dark Knight</div>
+                    <div class="l1-item-meta">2008 · 1080p · 14.2 Go · Vu il y a 847 j · ⭐ 9.0</div>
+                  </div>
+                  <span style="font-size:10px;background:#ef444415;color:#ef4444;border:1px solid #ef444430;padding:2px 6px;border-radius:4px">En file</span>
+                </div>
+                <div class="l1-item">
+                  <div class="l1-item-thumb">🎬</div>
+                  <div class="l1-item-body">
+                    <div class="l1-item-title">Morbius</div>
+                    <div class="l1-item-meta">2022 · 1080p · 9.8 Go · Jamais vu · ⭐ 5.1</div>
+                  </div>
+                  <span style="font-size:10px;background:#f59e0b15;color:#f59e0b;border:1px solid #f59e0b30;padding:2px 6px;border-radius:4px">Règle experte</span>
+                </div>
+                <div class="l1-item">
+                  <div class="l1-item-thumb">🎬</div>
+                  <div class="l1-item-body">
+                    <div class="l1-item-title">Everything Everywhere</div>
+                    <div class="l1-item-meta">2022 · 4K · 28.1 Go · Vu il y a 12 j · ⭐ 7.8</div>
+                  </div>
+                  <span style="font-size:10px;background:#22c55e15;color:#22c55e;border:1px solid #22c55e30;padding:2px 6px;border-radius:4px">OK</span>
+                </div>
+              </div>
+              <div class="l1-stats-bar">
+                <div class="l1-stat"><div class="l1-stat-val">23</div><div class="l1-stat-label">En file</div></div>
+                <div class="l1-stat"><div class="l1-stat-val">4</div><div class="l1-stat-label">Expert rules</div></div>
+                <div class="l1-stat"><div class="l1-stat-val">4.2 To</div><div class="l1-stat-label">Total</div></div>
+                <div class="l1-stat"><div class="l1-stat-val">847 Go</div><div class="l1-stat-label">Récupérable</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">
+          <b style="color:var(--text)">Pour :</b> Navigation directe, stats par lib en bas, badge serveur clair.<br>
+          <b style="color:var(--text)">Contre :</b> Pas de vue cross-serveur, sidebar chargée si beaucoup de libs.
+        </div>
+      </div>
+
+      <!-- LAYOUT 2 -->
+      <div class="card" style="padding:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span class="tag tag-b">Layout B</span>
+          <div class="card-title">Dashboard cross-serveur + sidebar libs</div>
+        </div>
+        <div class="layout-frame">
+          <div class="l2-wrap">
+            <div class="l2-sidebar">
+              <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+                <div class="l2-nav-item active" style="padding:5px 0">📊 Dashboard</div>
+                <div class="l2-nav-item" style="padding:5px 0">📋 File d'attente</div>
+                <div class="l2-nav-item" style="padding:5px 0">⚙️ Règles</div>
+              </div>
+              <div style="padding:8px 12px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Bibliothèques</div>
+              <div class="l2-server-section">
+                <div class="l2-server-head"><span style="width:7px;height:7px;border-radius:50%;background:#52b54b"></span><span style="color:#52b54b">Emby</span></div>
+                <div class="l2-lib-item">🎬 Films <span style="font-size:10px">847</span></div>
+                <div class="l2-lib-item">📺 Séries <span style="font-size:10px">312</span></div>
+              </div>
+              <div class="l2-server-section">
+                <div class="l2-server-head"><span style="width:7px;height:7px;border-radius:50%;background:#00a4dc"></span><span style="color:#00a4dc">Jellyfin</span></div>
+                <div class="l2-lib-item">🎬 Films 4K <span style="font-size:10px">94</span></div>
+              </div>
+              <div class="l2-server-section">
+                <div class="l2-server-head"><span style="width:7px;height:7px;border-radius:50%;background:#e5a00d"></span><span style="color:#e5a00d">Plex</span></div>
+                <div class="l2-lib-item">🎬 Movies <span style="font-size:10px">205</span></div>
+              </div>
+            </div>
+            <div class="l2-main">
+              <div class="l2-dash-head" style="border-bottom:1px solid var(--border)">
+                <span style="font-size:13px;font-weight:600">Vue d'ensemble — tous serveurs</span>
+                <div style="display:flex;gap:6px;margin-left:auto">
+                  <span class="badge-emby">Emby</span>
+                  <span class="badge-jelly">Jellyfin</span>
+                  <span class="badge-plex">Plex</span>
+                </div>
+              </div>
+              <div class="l2-cards">
+                <div class="l2-card"><div class="l2-card-val">47</div><div class="l2-card-label">En file (tous)</div></div>
+                <div class="l2-card"><div class="l2-card-val" style="color:#22c55e">1.2 To</div><div class="l2-card-label">Récupérable</div></div>
+                <div class="l2-card"><div class="l2-card-val" style="color:#f59e0b">3</div><div class="l2-card-label">Règles actives</div></div>
+              </div>
+              <div class="l2-table-head" style="padding-top:8px">
+                <div>TITRE</div><div>SERVEUR</div><div>TAILLE</div><div>STATUT</div>
+              </div>
+              <div class="l2-table-body">
+                <div class="l2-row">
+                  <div>Morbius</div>
+                  <div><span style="width:6px;height:6px;border-radius:3px;background:#52b54b;display:inline-block;margin-right:4px"></span>Emby</div>
+                  <div>9.8 Go</div>
+                  <div><span style="color:#ef4444">En file</span></div>
+                </div>
+                <div class="l2-row">
+                  <div>Venom 3</div>
+                  <div><span style="width:6px;height:6px;border-radius:3px;background:#e5a00d;display:inline-block;margin-right:4px"></span>Plex</div>
+                  <div>14.1 Go</div>
+                  <div><span style="color:#f59e0b">Expert</span></div>
+                </div>
+                <div class="l2-row">
+                  <div>Lightyear</div>
+                  <div><span style="width:6px;height:6px;border-radius:3px;background:#00a4dc;display:inline-block;margin-right:4px"></span>Jellyfin</div>
+                  <div>22.3 Go</div>
+                  <div><span style="color:#ef4444">En file</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">
+          <b style="color:var(--text)">Pour :</b> Vue cross-serveur native, tableau unifié, navigation claire.<br>
+          <b style="color:var(--text)">Contre :</b> Dashboard peut sembler vide avec un seul serveur.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:20px 0;border-top:1px solid var(--border)">
+    Hygie v3.0 — Vue 3 + Vite + Pinia · Mockups interactifs
+  </div>
+
+</div>
+</body>
+</html>

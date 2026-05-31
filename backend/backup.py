@@ -42,16 +42,18 @@ def _do_backup(src_path: str, dst_path: str) -> None:
         dst.close()
 
 
-async def run_backup() -> Optional[str]:
-    """Create a timestamped backup of the DB. Returns the backup filename or None on error/disabled."""
+async def run_backup(force: bool = False) -> Optional[str]:
+    """Create a timestamped backup of the DB. Returns the backup filename or None on error.
+    If force=True, bypasses the backup_enabled / interval=0 guard (used for manual trigger).
+    """
     import asyncio
 
     if DB_PATH == ":memory:":
         return None
 
     backup_dir, interval, retention = await _backup_settings()
-    if not await get_bool_setting("backup_enabled") or interval == 0:
-        return None  # Backup disabled
+    if not force and (not await get_bool_setting("backup_enabled") or interval == 0):
+        return None  # Backup disabled (only checked for scheduled runs)
 
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
 

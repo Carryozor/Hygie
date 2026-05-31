@@ -12,8 +12,8 @@
           <i :class="['fas', toastIcon(toast.type), 'mt-0.5 flex-shrink-0']" />
           <span class="flex-1">{{ toast.message }}</span>
           <button
-            @click="remove(toast.id)"
             class="flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+            @click="remove(toast.id)"
           >
             <i class="fas fa-times text-xs" />
           </button>

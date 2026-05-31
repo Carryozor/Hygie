@@ -1,18 +1,26 @@
 <template>
-  <div v-if="conditions.length" class="text-xs text-[var(--muted)] bg-[var(--bg3)] rounded-lg px-3 py-2 leading-relaxed">
-    <span v-for="(c, i) in conditions" :key="i">
-      <span v-if="i > 0" :class="operator === 'AND' ? 'text-blue-400' : 'text-orange-400'" class="font-semibold mx-1">
+  <div v-if="conditionGroups.length" class="text-xs text-[var(--muted)] bg-[var(--bg3)] rounded-lg px-3 py-2 leading-relaxed">
+    <template v-for="(grp, gi) in conditionGroups" :key="gi">
+      <span v-if="gi > 0" :class="operator === 'AND' ? 'text-blue-400' : 'text-orange-400'" class="font-bold mx-1">
         {{ operator }}
       </span>
-      <span class="text-[var(--text)]">{{ humanize(c) }}</span>
-    </span>
+      <!-- Wrap in parens when there are multiple conditions in a group or multiple groups -->
+      <span v-if="grp.conditions.length > 1 || conditionGroups.length > 1">(</span>
+      <span v-for="(c, ci) in grp.conditions" :key="ci">
+        <span v-if="ci > 0" :class="grp.operator === 'AND' ? 'text-blue-400' : 'text-orange-400'" class="font-semibold mx-1">
+          {{ grp.operator }}
+        </span>
+        <span class="text-[var(--text)]">{{ humanize(c) }}</span>
+      </span>
+      <span v-if="grp.conditions.length > 1 || conditionGroups.length > 1">)</span>
+    </template>
   </div>
 </template>
 
 <script setup>
 const props = defineProps({
-  conditions: { type: Array, default: () => [] },
-  operator:   { type: String, default: 'AND' },
+  conditionGroups: { type: Array, default: () => [] },
+  operator:        { type: String, default: 'AND' },
 })
 
 const FIELD_LABELS = {

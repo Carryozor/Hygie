@@ -7,17 +7,16 @@ export const useServersStore = defineStore('servers', () => {
   const libraries = ref([])
 
   async function fetch() {
-    const [settingsRes, libRes] = await Promise.all([
-      api.get('/settings'),
+    const [serversRes, libRes] = await Promise.all([
+      api.get('/settings/media-servers'),
       api.get('/libraries'),
     ])
-    const raw = settingsRes.data?.media_servers
-    servers.value = typeof raw === 'string' ? JSON.parse(raw) : (raw || [])
+    servers.value   = serversRes.data || []
     libraries.value = libRes.data || []
   }
 
   function librariesForServer(serverId) {
-    return libraries.value.filter(l => String(l.server_id) === String(serverId))
+    return libraries.value.filter(l => String(l.server_id ?? '0') === String(serverId))
   }
 
   return { servers, libraries, fetch, librariesForServer }

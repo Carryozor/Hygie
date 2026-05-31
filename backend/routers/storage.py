@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _storage_cache: dict = {"data": None, "ts": 0.0}
 _storage_refresh_task: asyncio.Task | None = None
+_storage_task_lock: asyncio.Lock = asyncio.Lock()
 _STORAGE_TTL = 300.0  # 5 minutes — stale-while-revalidate makes this safe to extend
 
 
@@ -103,13 +104,17 @@ async def _fetch_storage_data() -> dict:
             all_series = rs.json()
             count = len(all_series)
             mon = sum(1 for s in all_series if s.get("monitored"))
-            eps = sum(s.get("statistics", {}).get("episodeFileCount", 0) or 0 for s in all_series)
+            eps_on_disk = sum(s.get("statistics", {}).get("episodeFileCount", 0) or 0 for s in all_series)
+            eps_total = sum(s.get("statistics", {}).get("totalEpisodeCount", 0) or 0 for s in all_series)
+            eps_aired = sum(s.get("statistics", {}).get("episodeCount", 0) or 0 for s in all_series)
             size = sum(s.get("statistics", {}).get("sizeOnDisk", 0) or 0 for s in all_series)
             series = {
                 "count": count,
                 "monitored": mon,
                 "unmonitored": count - mon,
-                "episodes": eps,
+                "episodes": eps_on_disk,
+                "episodes_aired": eps_aired,
+                "episodes_total": eps_total,
                 "size": size,
             }
             total_media_size += size
@@ -187,8 +192,9 @@ async def get_storage(user: str = Depends(require_auth)):
 
     if _storage_cache["data"] is not None:
         # Stale data available — return it instantly and refresh in background
-        if _storage_refresh_task is None or _storage_refresh_task.done():
-            _storage_refresh_task = asyncio.create_task(_fetch_storage_data())
+        async with _storage_task_lock:
+            if _storage_refresh_task is None or _storage_refresh_task.done():
+                _storage_refresh_task = asyncio.create_task(_fetch_storage_data())
         return _storage_cache["data"]
 
     # Cold start — no data at all, must wait

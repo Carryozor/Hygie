@@ -17,6 +17,7 @@ import httpx
 from .db.settings_store import get_setting, set_setting
 from .db.media_servers import get_media_servers, save_media_servers
 from .db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
+from .db.encryption import _decrypt_value
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,6 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
     """Return (url, api_key) for the given server_id.
     Falls back to legacy emby_url/emby_api_key if media_servers is empty.
     """
-    from .db.encryption import _decrypt_value
     servers = await get_media_servers()
     for s in servers:
         if str(s.get("id", "")) == str(server_id):
@@ -49,7 +49,6 @@ async def get_client(server_id: str = "0") -> Tuple[str, str]:
 
 async def get_client_ext_url(server_id: str = "0") -> str:
     """Return the external URL for the given server."""
-    from .db.encryption import _decrypt_value
     servers = await get_media_servers()
     for s in servers:
         if str(s.get("id", "")) == str(server_id):
@@ -104,9 +103,9 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
         return False, str(e), ""
 
 
-async def get_libraries() -> List[dict]:
-    """Return all Emby libraries."""
-    url, key = await get_client()
+async def get_libraries(server_id: str = "0") -> List[dict]:
+    """Return all Emby libraries for the given server."""
+    url, key = await get_client(server_id)
     if not url or not key:
         return []
     try:
@@ -162,29 +161,43 @@ async def get_items_in_library(
 async def get_library_user_data(user_id: str, library_id: str, server_id: str = "0") -> dict:
     """Return {emby_item_id: UserData} for all items in a library for one user.
 
-    One HTTP request per user per library, replacing per-item get_user_data calls.
+    Paginates in batches of 500 to avoid truncation on large libraries.
     """
     url, key = await get_client(server_id)
     if not url or not key:
         return {}
-    params = {
-        "ParentId": library_id,
-        "Fields": "UserData",
-        "Recursive": "true",
-        "Limit": 100000,
-        "IncludeItemTypes": "Movie,Episode",
-    }
+
+    result: dict = {}
+    start_index = 0
+    page_size = 500
+
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            r = await http_retry(lambda: client.get(f"{url}/Users/{user_id}/Items", headers=_auth(key), params=params))
-            if r.status_code == 200:
-                return {
-                    item["Id"]: item.get("UserData") or {}
-                    for item in r.json().get("Items", [])
+            while True:
+                params = {
+                    "ParentId": library_id,
+                    "Fields": "UserData",
+                    "Recursive": "true",
+                    "StartIndex": start_index,
+                    "Limit": page_size,
+                    "IncludeItemTypes": "Movie,Episode",
                 }
+                r = await http_retry(
+                    lambda: client.get(f"{url}/Users/{user_id}/Items", headers=_auth(key), params=params)
+                )
+                if r.status_code != 200:
+                    break
+                body = r.json()
+                items = body.get("Items", [])
+                for item in items:
+                    result[item["Id"]] = item.get("UserData") or {}
+                total = body.get("TotalRecordCount", 0)
+                start_index += len(items)
+                if not items or start_index >= total:
+                    break
     except Exception as e:
         logger.warning(f"get_library_user_data error: {e}")
-    return {}
+    return result
 
 
 async def get_user_data(user_id: str, item_id: str, server_id: str = "0") -> Optional[dict]:

@@ -1,0 +1,69 @@
+# backend/scanner/_expert_rules.py
+"""Build item_data dict and evaluate expert rules against it."""
+from typing import Optional
+
+from ..db.utils import now_utc
+from ..db.repositories import get_expert_rules as _get_expert_rules
+from ..rules.engine import evaluate_rule as _evaluate_rule
+from ..rules.models import RuleAction as _RuleAction
+
+
+def _build_item_data(
+    item: dict,
+    play_count: int,
+    last_played,
+    added_date,
+    seerr_user_id=None,
+) -> dict:
+    """Build the item_data dict expected by evaluate_rule.
+
+    Keys match ConditionField enum values:
+    days_not_watched, play_count, rating, file_size_gb, added_days_ago,
+    media_type, seerr_user_id.
+    """
+    now = now_utc()
+
+    if last_played is not None:
+        days_not_watched = (now - last_played).days
+    elif added_date is not None:
+        days_not_watched = (now - added_date).days
+    else:
+        days_not_watched = 0
+
+    added_days_ago = (now - added_date).days if added_date is not None else 0
+    rating = float(item.get("CommunityRating") or 0.0)
+
+    size_bytes = 0
+    media_sources = item.get("MediaSources") or []
+    if media_sources and isinstance(media_sources[0], dict):
+        size_bytes = int(media_sources[0].get("Size") or 0)
+    file_size_gb = round(size_bytes / (1024 ** 3), 4) if size_bytes else 0.0
+
+    return {
+        "days_not_watched": days_not_watched,
+        "play_count":       play_count,
+        "rating":           rating,
+        "file_size_gb":     file_size_gb,
+        "added_days_ago":   added_days_ago,
+        "media_type":       item.get("Type") or "Movie",
+        "seerr_user_id":    seerr_user_id,
+    }
+
+
+async def _evaluate_expert_rules(item_data: dict, library_id=None) -> tuple[Optional[str], int]:
+    """Return (action, grace_days) if any enabled expert rule matches, else (None, 7).
+
+    Rules with library_id=None apply globally; rules scoped to a library_id only apply there.
+    """
+    rules = await _get_expert_rules(enabled_only=True)
+    for rule in rules:
+        # library_ids (multi-select) takes precedence over legacy library_id
+        if rule.library_ids is not None:
+            if library_id is None or str(library_id) not in [str(x) for x in rule.library_ids]:
+                continue
+        elif rule.library_id is not None and library_id is not None:
+            if str(rule.library_id) != str(library_id):
+                continue
+        if _evaluate_rule(rule, item_data):
+            return rule.action.value, rule.grace_days
+    return None, 7

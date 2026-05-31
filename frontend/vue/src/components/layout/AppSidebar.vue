@@ -32,12 +32,12 @@
     <div class="px-3 py-4 border-t border-[var(--border)] space-y-3">
       <!-- Dry Run toggle button -->
       <button
-        @click="toggleDryRun"
         :disabled="togglingDryRun"
         class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors"
         :class="isDryRun
           ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20'
           : 'bg-[var(--bg3)] border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-yellow-500/30'"
+        @click="toggleDryRun"
       >
         <i class="fas fa-flask-vial w-4 text-center" />
         <span>{{ isDryRun ? 'Dry Run actif' : 'Dry Run' }}</span>

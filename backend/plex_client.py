@@ -183,6 +183,28 @@ class PlexClient:
         return results
 
 
+async def test_plex_server(server: dict) -> tuple[bool, str, str]:
+    """Test a Plex server connection. Returns (ok, message, server_type)."""
+    url = (server.get("url") or "").rstrip("/")
+    token = server.get("api_key") or ""
+    if not url or not token:
+        return False, "URL ou token manquant", "plex"
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
+            resp = await client.get(
+                f"{url}/identity",
+                headers={**_PLEX_HEADERS, "X-Plex-Token": token},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                mc = data.get("MediaContainer", {})
+                version = mc.get("version", "?")
+                return True, f"Plex Media Server v{version}", "plex"
+            return False, f"HTTP {resp.status_code}", "plex"
+    except Exception as e:
+        return False, str(e), "plex"
+
+
 def build_plex_client(server: dict) -> Optional["PlexClient"]:
     if server.get("type") != "plex":
         return None

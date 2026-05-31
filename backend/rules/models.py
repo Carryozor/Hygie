@@ -43,13 +43,20 @@ class Condition(BaseModel):
             raise ValueError(f"op={op} does not accept a list value")
         return v
 
+class ConditionGroup(BaseModel):
+    """A group of conditions evaluated with a common operator (AND/OR)."""
+    conditions: list[Condition] = Field(..., min_length=1)
+    operator:   RuleOperator   = RuleOperator.AND
+
 class ExpertRule(BaseModel):
-    id:          int | None     = None
-    name:        str
-    library_id:  int | None     = None
-    conditions:  list[Condition] = Field(..., min_length=1)
-    operator:    RuleOperator   = RuleOperator.AND
-    action:      RuleAction     = RuleAction.QUEUE
-    enabled:     bool           = True
-    priority:    int            = 0
-    created_at:  str | None     = None  # ISO-8601 string; kept as str for SQLite compatibility
+    id:               int | None          = None
+    name:             str
+    library_id:       str | int | None    = None
+    library_ids:      list[str] | None    = None  # None = all; list = specific library IDs
+    condition_groups: list[ConditionGroup] = Field(..., min_length=1)
+    operator:         RuleOperator        = RuleOperator.AND  # between groups
+    action:           RuleAction          = RuleAction.QUEUE
+    grace_days:       int                 = 7
+    enabled:          bool                = True
+    priority:         int                 = 0
+    created_at:       str | None          = None

@@ -1,10 +1,10 @@
-"""Logs — list with filters."""
+"""Logs — list with filters, mark-as-seen, acknowledge."""
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, field_validator
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
@@ -37,6 +37,52 @@ async def list_logs(
             params + [limit],
         )
     return rows
+
+
+class LogStatusUpdate(BaseModel):
+    seen_status: Optional[str] = None  # 'seen' | 'acked' | None (clear)
+
+
+@router.patch("/{log_id}")
+async def update_log_status(log_id: int, body: LogStatusUpdate, user: str = Depends(require_auth)):
+    """Mark a single log entry as seen or acknowledged."""
+    status = body.seen_status if body.seen_status in ("seen", "acked") else None
+    async with get_db() as db:
+        await db.execute("UPDATE logs SET seen_status=? WHERE id=?", (status, log_id))
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/unseen-errors-count")
+async def unseen_errors_count(user: str = Depends(require_auth)):
+    """Return the number of ERROR logs not yet seen or acknowledged."""
+    async with get_db() as db:
+        row = await db.fetch_one(
+            "SELECT COUNT(*) as n FROM logs WHERE level='ERROR' AND seen_status IS NULL"
+        )
+    return {"count": row["n"] if row else 0}
+
+
+@router.post("/mark-seen-errors")
+async def mark_seen_all_errors(user: str = Depends(require_auth)):
+    """Mark all unseen ERROR logs as seen (green checkmark)."""
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE logs SET seen_status='seen' WHERE level='ERROR' AND seen_status IS NULL"
+        )
+        await db.commit()
+    return {"ok": True}
+
+
+@router.post("/ack-errors")
+async def ack_all_errors(user: str = Depends(require_auth)):
+    """Acknowledge all ERROR logs that haven't been seen yet (orange question mark)."""
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE logs SET seen_status='acked' WHERE level='ERROR' AND seen_status IS NULL"
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 @router.delete("")

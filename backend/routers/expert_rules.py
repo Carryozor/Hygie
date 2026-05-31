@@ -1,15 +1,18 @@
 """Expert rules CRUD endpoints."""
+import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from ..auth import require_auth
 from ..db.utils import DB_PATH
+from ..db.engine import SQLITE_PATH
 from ..db.repositories import (
     save_expert_rule,
     get_expert_rules,
     get_expert_rule_by_id,
     delete_expert_rule,
 )
+from ..db.schema import _migrate_libraries_to_expert_rules
 from ..rules.models import ExpertRule
 
 router = APIRouter(prefix="/api/expert-rules", tags=["expert-rules"])
@@ -50,3 +53,12 @@ async def delete_expert_rule_endpoint(
         raise HTTPException(status_code=404, detail="Rule not found")
     await delete_expert_rule(rule_id)
     return Response(status_code=204)
+
+
+@router.post("/migrate-from-libraries")
+async def migrate_from_libraries(user: str = Depends(require_auth)):
+    """Re-run library → expert rules migration (idempotent: skips existing rules)."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        n = await _migrate_libraries_to_expert_rules(db)
+    return {"created": n}

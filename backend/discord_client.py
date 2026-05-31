@@ -130,13 +130,14 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
 
     # Image — public URLs only (Discord can't reach internal Docker hostnames)
     if poster and poster.startswith(("http://", "https://")):
+        import ipaddress
         from urllib.parse import urlparse
         hostname = (urlparse(poster).hostname or "").lower()
-        is_internal = (
-            "." not in hostname
-            or hostname.startswith(("10.", "192.168.", "172."))
-            or hostname in ("localhost", "127.0.0.1")
-        )
+        try:
+            _ip = ipaddress.ip_address(hostname)
+            is_internal = _ip.is_private or _ip.is_loopback
+        except ValueError:
+            is_internal = "." not in hostname or hostname in ("localhost",)
         if not is_internal:
             key = "image" if single else "thumbnail"
             embed[key] = {"url": poster}

@@ -98,6 +98,9 @@ class DbConn:
                 return list(await cur.fetchall())
 
     async def fetch_one(self, sql: str, params: tuple = ()) -> dict | None:
+        stripped = sql.rstrip().rstrip(";")
+        if "LIMIT" not in stripped.upper():
+            sql = stripped + " LIMIT 1"
         rows = await self.fetch_all(sql, params)
         return rows[0] if rows else None
 

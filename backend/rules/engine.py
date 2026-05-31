@@ -32,10 +32,23 @@ def evaluate_condition(condition: Condition, item: dict) -> bool:
 
 
 def evaluate_rule(rule: ExpertRule, item: dict) -> bool:
-    """Return True if item matches rule. Disabled rules always return False."""
-    if not rule.enabled or not rule.conditions:
+    """Return True if item matches rule.
+
+    Each ConditionGroup is evaluated independently (conditions combined with
+    the group's own operator). Groups are then combined with rule.operator.
+    Disabled rules always return False.
+    """
+    if not rule.enabled or not rule.condition_groups:
         return False
-    results = [evaluate_condition(c, item) for c in rule.conditions]
+
+    group_results = []
+    for group in rule.condition_groups:
+        cond_results = [evaluate_condition(c, item) for c in group.conditions]
+        if group.operator == RuleOperator.AND:
+            group_results.append(all(cond_results))
+        else:
+            group_results.append(any(cond_results))
+
     if rule.operator == RuleOperator.AND:
-        return all(results)
-    return any(results)  # OR
+        return all(group_results)
+    return any(group_results)

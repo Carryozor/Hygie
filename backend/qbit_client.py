@@ -124,8 +124,43 @@ async def _request(method: str, path: str, **kwargs) -> Optional[httpx.Response]
         return await _try_url(client, direct_url, method, path, user, password, **kwargs)
 
 
+async def _test_url_fresh(client: httpx.AsyncClient, url: str, user: str, password: str) -> tuple[bool, str]:
+    """Test a qBittorrent URL with a fresh login (ignores any cached SID)."""
+    try:
+        r = await client.post(
+            f"{url}/api/v2/auth/login",
+            data={"username": user, "password": password},
+            headers={"Referer": url},
+        )
+        if r.status_code != 200 or r.text.strip() != "Ok.":
+            return False, "authentification échouée"
+        cookie = r.cookies.get("SID")
+        if not cookie:
+            return False, "session invalide"
+        rv = await client.get(f"{url}/api/v2/app/version", cookies={"SID": cookie})
+        if rv.status_code == 200:
+            return True, f"v{rv.text.strip()}"
+        return False, f"HTTP {rv.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+
+async def test_qui() -> tuple[bool, str]:
+    """Test only the QUI proxy URL with a fresh login."""
+    proxy_url = (await get_setting("qbit_proxy_url") or "").rstrip("/")
+    if not proxy_url:
+        return False, "Proxy QUI non configuré"
+    user = await get_setting("qbit_user") or ""
+    password = await get_setting("qbit_password") or ""
+    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
+        ok, detail = await _test_url_fresh(client, proxy_url, user, password)
+        if ok:
+            return True, f"Proxy QUI ✅ {detail}"
+        return False, f"Proxy QUI ❌ ({detail})"
+
+
 async def test_qbit() -> tuple[bool, str]:
-    """Test each configured qBit URL independently and report both results."""
+    """Test each configured qBit URL with a fresh login and report both results."""
     proxy_url = (await get_setting("qbit_proxy_url") or "").rstrip("/")
     direct_url = (await get_setting("qbit_url") or "").rstrip("/")
 
@@ -139,21 +174,19 @@ async def test_qbit() -> tuple[bool, str]:
 
     async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
         if proxy_url:
-            r = await _try_url(client, proxy_url, "GET", "/api/v2/app/version", user, password)
-            if r is not None and r.status_code == 200:
-                parts.append(f"Proxy QUI ✅ v{r.text.strip()}")
+            ok, detail = await _test_url_fresh(client, proxy_url, user, password)
+            if ok:
+                parts.append(f"Proxy QUI ✅ {detail}")
                 any_ok = True
             else:
-                detail = "injoignable" if r is None else f"HTTP {r.status_code}"
                 parts.append(f"Proxy QUI ❌ ({detail})")
 
         if direct_url and direct_url != proxy_url:
-            r = await _try_url(client, direct_url, "GET", "/api/v2/app/version", user, password)
-            if r is not None and r.status_code == 200:
-                parts.append(f"Direct ✅ v{r.text.strip()}")
+            ok, detail = await _test_url_fresh(client, direct_url, user, password)
+            if ok:
+                parts.append(f"Direct ✅ {detail}")
                 any_ok = True
             else:
-                detail = "injoignable" if r is None else f"HTTP {r.status_code}"
                 parts.append(f"Direct ❌ ({detail})")
 
     msg = " | ".join(parts) if parts else "Connexion impossible"

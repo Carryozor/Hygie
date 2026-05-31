@@ -127,4 +127,4 @@ async def _send_pending_notifications():
             else:
                 logger.warning(f"Threshold notification '{threshold_key}' failed — will retry next cycle")
     except Exception as e:
-        logger.debug(f"_send_pending_notifications: {e}")
+        logger.warning(f"_send_pending_notifications: {e}")

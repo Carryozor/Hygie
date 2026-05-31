@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "test": "npm run test:unit"
+    "test": "npm run test:unit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@vueuse/core": "^10.11.0",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@pinia/testing": "^1.0.3",
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-vue": "^5.0.5",
     "@vitest/coverage-v8": "^4.1.7",
     "@vue/test-utils": "^2.4.10",

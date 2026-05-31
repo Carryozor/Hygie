@@ -108,7 +108,10 @@
     },
     "saveError": "Échec de la sauvegarde",
     "general": {
-      "logs": { "title": "Journaux", "level": "Niveau de log" },
+      "logs": {
+        "title": "Journaux",
+        "level": "Niveau de log"
+      },
       "maxParallelScans": "Scans parallèles max",
       "scheduling": {
         "title": "Planification",
@@ -173,13 +176,21 @@
       "thresholdDays": "Seuil en jours",
       "save": "Sauvegarder les serveurs",
       "plexSettings": "Paramètres Plex",
-      "error": { "plex": "Impossible de contacter le serveur Plex" }
+      "error": {
+        "plex": "Impossible de contacter le serveur Plex"
+      }
     },
     "arr": {
       "instanceName": "Nom de l'instance",
       "apiKey": "Clé API",
-      "radarr": { "add": "Ajouter une instance Radarr", "urlPlaceholder": "http://radarr:7878" },
-      "sonarr": { "add": "Ajouter une instance Sonarr", "urlPlaceholder": "http://sonarr:8989" }
+      "radarr": {
+        "add": "Ajouter une instance Radarr",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Ajouter une instance Sonarr",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
     },
     "seerr": {
       "title": "Overseerr / Jellyseerr",
@@ -200,7 +211,9 @@
       "discordIdPlaceholder": "ID Discord (ex: 123456789012345678)",
       "howToFindDiscordId": "Pour trouver un ID Discord : activez le mode développeur dans Discord, puis clic droit sur l'utilisateur → Copier l'identifiant.",
       "noUsers": "Aucun utilisateur Seerr trouvé. Vérifiez la configuration.",
-      "error": { "contactFailed": "Impossible de contacter Seerr" }
+      "error": {
+        "contactFailed": "Impossible de contacter Seerr"
+      }
     },
     "qbit": {
       "url": "URL qBittorrent",
@@ -226,7 +239,7 @@
       "thresholdsPlaceholder": "30,14,7,3,1",
       "thresholdsHelp": "Un message Discord sera envoyé J-30, J-14, J-7…",
       "errorThreshold": "Seuil d'erreurs avant alerte (0 = désactivé)",
-      "mentionPlaceholder": "Mention (@role / @user)",
+      "mentionPlaceholder": "Mention ({'@'}role / {'@'}user)",
       "messagePlaceholder": "Message personnalisé",
       "alerts": {
         "title": "Alertes système",
@@ -260,7 +273,10 @@
     "title": "Règles",
     "new": "Nouvelle règle",
     "edit": "Modifier la règle",
-    "type": "Type de règle",
+    "type": {
+      "simpleDesc": "Délai de grâce personnalisé par utilisateur Seerr et bibliothèque.",
+      "expertDesc": "Conditions avancées sur jours non-vu, note, taille, type de média…"
+    },
     "nameLabel": "Nom de la règle",
     "namePlaceholder": "Ma règle…",
     "actionLabel": "Action",
@@ -311,10 +327,6 @@
       "libraries": "Bib. :",
       "noneSelected": "aucune sélectionnée",
       "allLibraries": "Toutes les bibliothèques"
-    },
-    "type": {
-      "simpleDesc": "Délai de grâce personnalisé par utilisateur Seerr et bibliothèque.",
-      "expertDesc": "Conditions avancées sur jours non-vu, note, taille, type de média…"
     }
   },
   "queue": {
@@ -333,7 +345,9 @@
     "confirmDelete": "Supprimer ce média du serveur maintenant ?",
     "confirmPurge": "Purger toutes les entrées supprimées de la file ?",
     "purge": "Purger",
-    "error": { "loadFailed": "Impossible de charger la file d'attente." },
+    "error": {
+      "loadFailed": "Impossible de charger la file d'attente."
+    },
     "filters": {
       "all": "Tous",
       "pending": "En attente",
@@ -358,7 +372,9 @@
     "remove": "Supprimer définitivement",
     "confirmRemove": "Retirer ce média de la liste des ignorés ?",
     "removeBtn": "Retirer",
-    "error": { "loadFailed": "Impossible de charger les médias ignorés." },
+    "error": {
+      "loadFailed": "Impossible de charger les médias ignorés."
+    },
     "columns": {
       "title": "Titre",
       "library": "Bibliothèque",
@@ -371,8 +387,13 @@
     "more": "+{n} autres",
     "summary": "suppression(s) planifiée(s) ce mois",
     "days": {
-      "mon": "Lun", "tue": "Mar", "wed": "Mer", "thu": "Jeu",
-      "fri": "Ven", "sat": "Sam", "sun": "Dim"
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mer",
+      "thu": "Jeu",
+      "fri": "Ven",
+      "sat": "Sam",
+      "sun": "Dim"
     }
   },
   "setup": {
@@ -421,9 +442,15 @@
       "viewAll": "Voir tout",
       "empty": "Aucune suppression planifiée"
     },
-    "diskUsage": { "title": "Espace disque" },
-    "error": { "loadFailed": "Impossible de charger les données du tableau de bord." },
-    "queue": { "added": "Ajouté" },
+    "diskUsage": {
+      "title": "Espace disque"
+    },
+    "error": {
+      "loadFailed": "Impossible de charger les données du tableau de bord."
+    },
+    "queue": {
+      "added": "Ajouté"
+    },
     "library": {
       "inLibrary": "En bibliothèque",
       "onDisk": "Sur disque",

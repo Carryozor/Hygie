@@ -1,60 +1,465 @@
 {
-  "nav": { "dashboard": "Dashboard", "queue": "Warteschlange", "calendar": "Kalender", "rules": "Regeln", "ignored": "Ignoriert", "logs": "Protokolle", "settings": "Einstellungen", "libraries": "Bibliotheken" },
-  "common": { "save": "Speichern", "saving": "Speichert…", "saved": "Einstellungen gespeichert.", "cancel": "Abbrechen", "delete": "Löschen", "edit": "Bearbeiten", "test": "Testen", "refresh": "Aktualisieren", "loading": "Lädt...", "none": "Keine", "all": "Alle", "enabled": "Aktiv", "disabled": "Inaktiv", "add": "Hinzufügen", "close": "Schließen", "confirm": "Bestätigen", "yes": "Ja", "no": "Nein", "error": "Fehler", "success": "Erfolg", "unknown": "Unbekannt", "name": "Name", "actions": "Aktionen", "status": "Status", "type": "Typ", "url": "URL", "apiKey": "API-Schlüssel", "search": "Suchen…", "items": "Element(e)", "ok": "✓ OK", "failed": "Fehlgeschlagen", "select": "— Auswählen —", "today": "Heute", "user": "Benutzer", "password": "Passwort", "inProgress": "In Bearbeitung…", "noResults": "Keine Ergebnisse", "discover": "Entdecken" },
-  "auth": { "login": "Anmeldung", "logout": "Abmelden", "username": "Benutzername", "password": "Passwort", "loginBtn": "Anmelden", "loggingIn": "Anmelden...", "invalidCredentials": "Ungültige Anmeldedaten", "setupTitle": "Ersteinrichtung", "setupBtn": "Konto erstellen", "changePassword": "Passwort ändern", "currentPassword": "Aktuelles Passwort", "newPassword": "Neues Passwort", "support": "Unterstützen" },
-  "sidebar": { "dryRun": "Probelauf", "dryRunActive": "Probelauf aktiv", "nextScan": "Nächster Scan", "scanRunning": "Scan läuft", "launching": "Starten", "nextDeletion": "Nächste Löschung", "deletionRunning": "Löschung läuft" },
-  "status": { "pending": "Ausstehend", "deleted": "Gelöscht", "error": "Fehler", "active": "Aktiv", "inactive": "Inaktiv" },
-  "media": { "movie": "Film", "series": "Serie", "episode": "Episode", "season": "Staffel", "movies": "Filme" },
-  "days": { "exceeded": "Überschritten", "today": "Heute", "tomorrow": "Morgen", "in": "In", "inDays": "in {n}T", "imminent": "unmittelbar bevorstehend" },
+  "nav": {
+    "dashboard": "Dashboard",
+    "queue": "Warteschlange",
+    "calendar": "Kalender",
+    "rules": "Regeln",
+    "ignored": "Ignoriert",
+    "logs": "Protokolle",
+    "settings": "Einstellungen",
+    "libraries": "Bibliotheken"
+  },
+  "common": {
+    "save": "Speichern",
+    "saving": "Speichert…",
+    "saved": "Einstellungen gespeichert.",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "test": "Testen",
+    "refresh": "Aktualisieren",
+    "loading": "Lädt...",
+    "none": "Keine",
+    "all": "Alle",
+    "enabled": "Aktiv",
+    "disabled": "Inaktiv",
+    "add": "Hinzufügen",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "yes": "Ja",
+    "no": "Nein",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "unknown": "Unbekannt",
+    "name": "Name",
+    "actions": "Aktionen",
+    "status": "Status",
+    "type": "Typ",
+    "url": "URL",
+    "apiKey": "API-Schlüssel",
+    "search": "Suchen…",
+    "items": "Element(e)",
+    "ok": "✓ OK",
+    "failed": "Fehlgeschlagen",
+    "select": "— Auswählen —",
+    "today": "Heute",
+    "user": "Benutzer",
+    "password": "Passwort",
+    "inProgress": "In Bearbeitung…",
+    "noResults": "Keine Ergebnisse",
+    "discover": "Entdecken"
+  },
+  "auth": {
+    "login": "Anmeldung",
+    "logout": "Abmelden",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "loginBtn": "Anmelden",
+    "loggingIn": "Anmelden...",
+    "invalidCredentials": "Ungültige Anmeldedaten",
+    "setupTitle": "Ersteinrichtung",
+    "setupBtn": "Konto erstellen",
+    "changePassword": "Passwort ändern",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "support": "Unterstützen"
+  },
+  "sidebar": {
+    "dryRun": "Probelauf",
+    "dryRunActive": "Probelauf aktiv",
+    "nextScan": "Nächster Scan",
+    "scanRunning": "Scan läuft",
+    "launching": "Starten",
+    "nextDeletion": "Nächste Löschung",
+    "deletionRunning": "Löschung läuft"
+  },
+  "status": {
+    "pending": "Ausstehend",
+    "deleted": "Gelöscht",
+    "error": "Fehler",
+    "active": "Aktiv",
+    "inactive": "Inaktiv"
+  },
+  "media": {
+    "movie": "Film",
+    "series": "Serie",
+    "episode": "Episode",
+    "season": "Staffel",
+    "movies": "Filme"
+  },
+  "days": {
+    "exceeded": "Überschritten",
+    "today": "Heute",
+    "tomorrow": "Morgen",
+    "in": "In",
+    "inDays": "in {n}T",
+    "imminent": "unmittelbar bevorstehend"
+  },
   "settings": {
     "title": "Einstellungen",
-    "tabs": { "general": "Allgemein", "servers": "Server", "radarr": "Radarr", "sonarr": "Sonarr", "seerr": "Seerr", "qbit": "qBittorrent", "discord": "Discord" },
+    "tabs": {
+      "general": "Allgemein",
+      "servers": "Server",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord"
+    },
     "saveError": "Speichern fehlgeschlagen",
     "general": {
-      "logs": { "title": "Protokolle", "level": "Protokollstufe" },
+      "logs": {
+        "title": "Protokolle",
+        "level": "Protokollstufe"
+      },
       "maxParallelScans": "Max. parallele Scans",
-      "scheduling": { "title": "Planung", "scanInterval": "Scan-Intervall (Min.)", "deletionInterval": "Löschintervall (Min.)", "deletedRetention": "Aufbewahrung gelöschter Medien (Tage)", "logRetention": "Protokollaufbewahrung (Tage)", "historyRetention": "Verlaufsaufbewahrung (Tage)" },
-      "backup": { "title": "Datenbanksicherung", "auto": "Automatische Sicherung", "before": "Vor jedem Löschzyklus", "interval": "Intervall (Stunden)", "retention": "Anzahl der aufzubewahrenden Sicherungen", "path": "Sicherungsordner", "manual": "Manuelle Sicherung", "existing": "Vorhandene Sicherungen", "created": "Sicherung erstellt", "failed": "Sicherung fehlgeschlagen" },
-      "publicDashboard": { "title": "Öffentliches Dashboard", "enable": "Öffentliches Dashboard aktivieren", "description": "Seite ohne Anmeldung mit Löschungskalender", "url": "Vollständige URL:", "slug": "URL-Segment (optional)", "slugPlaceholder": "my-calendar", "password": "Passwort (optional)", "passwordHelp": "Wenn gesetzt, müssen Besucher dieses Passwort eingeben, um auf das Dashboard zuzugreifen." }
+      "scheduling": {
+        "title": "Planung",
+        "scanInterval": "Scan-Intervall (Min.)",
+        "deletionInterval": "Löschintervall (Min.)",
+        "deletedRetention": "Aufbewahrung gelöschter Medien (Tage)",
+        "logRetention": "Protokollaufbewahrung (Tage)",
+        "historyRetention": "Verlaufsaufbewahrung (Tage)"
+      },
+      "backup": {
+        "title": "Datenbanksicherung",
+        "auto": "Automatische Sicherung",
+        "before": "Vor jedem Löschzyklus",
+        "interval": "Intervall (Stunden)",
+        "retention": "Anzahl der aufzubewahrenden Sicherungen",
+        "path": "Sicherungsordner",
+        "manual": "Manuelle Sicherung",
+        "existing": "Vorhandene Sicherungen",
+        "created": "Sicherung erstellt",
+        "failed": "Sicherung fehlgeschlagen"
+      },
+      "publicDashboard": {
+        "title": "Öffentliches Dashboard",
+        "enable": "Öffentliches Dashboard aktivieren",
+        "description": "Seite ohne Anmeldung mit Löschungskalender",
+        "url": "Vollständige URL:",
+        "slug": "URL-Segment (optional)",
+        "slugPlaceholder": "my-calendar",
+        "password": "Passwort (optional)",
+        "passwordHelp": "Wenn gesetzt, müssen Besucher dieses Passwort eingeben, um auf das Dashboard zuzugreifen."
+      }
     },
-    "servers": { "description": "Verwalten Sie Ihre Emby-, Jellyfin- und Plex-Server", "add": "Server hinzufügen", "empty": "Kein Server konfiguriert.", "unnamed": "Unbenannter Server", "unknownType": "unbekannter Typ", "localUrl": "Lokale URL", "externalUrl": "Externe URL (optional)", "apiKey": "API-Schlüssel", "plexToken": "Plex-Token (X-Plex-Token)", "howToGetToken": "Wie erhalte ich das Token?", "linux": "Linux:", "windows": "Windows:", "webhookSecret": "Webhook-Geheimnis", "plexPassOnly": "(nur Plex Pass)", "secretOptional": "Optionales Geheimnis…", "webhookUrl": "Webhook-URL:", "plexOverlay": "Plex-Poster-Overlay", "overlayDesc": "Banner «Gelöscht in Xt» — erfordert Plex Pass", "plexSections": "Plex-Abschnitte", "added": "✓ Hinzugefügt", "addSection": "+ Hinzufügen", "discoverFirst": "Klicken Sie auf Entdecken, um Plex-Abschnitte anzuzeigen.", "saveThenDiscover": "Speichern Sie zuerst den Server, dann klicken Sie auf Entdecken.", "leavingSoonCollection": "Sammlung \"Bald gelöscht\"", "leavingSoonOverlay": "Overlay \"Gelöscht in Xt\"", "bannerDesc": "Banner auf Postern", "collectionName": "Sammlungsname", "leavingSoonDefault": "Bald gelöscht", "thresholdDays": "Schwellenwert in Tagen", "save": "Server speichern", "plexSettings": "Plex-Einstellungen", "error": { "plex": "Plex-Server nicht erreichbar" } },
-    "arr": { "instanceName": "Instanzname", "apiKey": "API-Schlüssel", "radarr": { "add": "Radarr-Instanz hinzufügen", "urlPlaceholder": "http://radarr:7878" }, "sonarr": { "add": "Sonarr-Instanz hinzufügen", "urlPlaceholder": "http://sonarr:8989" } },
-    "seerr": { "title": "Overseerr / Jellyseerr", "urlPlaceholder": "http://seerr:5055", "externalUrl": "Externe URL (Links in Benachrichtigungen)", "externalUrlPlaceholder": "https://seerr.meinedomain.de", "importRadarrSonarr": "Radarr & Sonarr aus Seerr importieren", "importDescription": "Seerr kennt bereits Ihre Radarr- und Sonarr-Instanzen. Klicken Sie zum automatischen Importieren.", "import": "Instanzen importieren", "importing": "Importiert…", "imported": "Importiert!", "discordIds": { "title": "Discord-IDs der Benutzer", "description": "Ordnen Sie jedem Seerr-Benutzer eine Discord-ID zu" }, "loadUsers": "Benutzer laden", "seerrId": "Seerr-ID:", "discordIdPlaceholder": "Discord-ID (z.B. 123456789012345678)", "howToFindDiscordId": "Um eine Discord-ID zu finden: Entwicklermodus in Discord aktivieren, dann Rechtsklick auf den Benutzer → ID kopieren.", "noUsers": "Keine Seerr-Benutzer gefunden. Konfiguration prüfen.", "error": { "contactFailed": "Seerr nicht erreichbar" } },
-    "qbit": { "url": "qBittorrent-URL", "urlPlaceholder": "http://qbittorrent:8080", "quiProxy": "QUI-Proxy-URL", "quiProxyOptional": "QUI-Proxy-URL (optional)", "quiProxyPlaceholder": "http://qui:3000", "actions": { "title": "Aktionen bei Löschung", "pause": "Torrent pausieren", "deleteNoFiles": "Torrent löschen (ohne Dateien)", "deleteWithFiles": "Torrent + Dateien löschen", "applyTag": "Tag auf Torrent anwenden" }, "tagDefault": "hygie-deleted", "orLabel": "UND/ODER" },
-    "discord": { "title": "Discord-Benachrichtigungen", "webhookMain": "Haupt-Webhook (Löschbenachrichtigungen)", "webhookPlaceholder": "https://discord.com/api/webhooks/…", "thresholdsLabel": "Benachrichtigungsschwellen (Tage vor Löschung, kommagetrennt)", "thresholdsPlaceholder": "30,14,7,3,1", "thresholdsHelp": "Eine Discord-Nachricht wird T-30, T-14, T-7 gesendet…", "errorThreshold": "Fehlerschwelle vor Alarm (0 = deaktiviert)", "mentionPlaceholder": "Erwähnung (@rolle / @benutzer)", "messagePlaceholder": "Benutzerdefinierte Nachricht", "alerts": { "title": "Systemwarnungen", "webhook": "Warnungs-Webhook (kritische Fehler)", "deletionError": "Löschfehler", "scanFailure": "Scan-Fehler", "seerrFailure": "Seerr-Fehler" } }
+    "servers": {
+      "description": "Verwalten Sie Ihre Emby-, Jellyfin- und Plex-Server",
+      "add": "Server hinzufügen",
+      "empty": "Kein Server konfiguriert.",
+      "unnamed": "Unbenannter Server",
+      "unknownType": "unbekannter Typ",
+      "localUrl": "Lokale URL",
+      "externalUrl": "Externe URL (optional)",
+      "apiKey": "API-Schlüssel",
+      "plexToken": "Plex-Token (X-Plex-Token)",
+      "howToGetToken": "Wie erhalte ich das Token?",
+      "linux": "Linux:",
+      "windows": "Windows:",
+      "webhookSecret": "Webhook-Geheimnis",
+      "plexPassOnly": "(nur Plex Pass)",
+      "secretOptional": "Optionales Geheimnis…",
+      "webhookUrl": "Webhook-URL:",
+      "plexOverlay": "Plex-Poster-Overlay",
+      "overlayDesc": "Banner «Gelöscht in Xt» — erfordert Plex Pass",
+      "plexSections": "Plex-Abschnitte",
+      "added": "✓ Hinzugefügt",
+      "addSection": "+ Hinzufügen",
+      "discoverFirst": "Klicken Sie auf Entdecken, um Plex-Abschnitte anzuzeigen.",
+      "saveThenDiscover": "Speichern Sie zuerst den Server, dann klicken Sie auf Entdecken.",
+      "leavingSoonCollection": "Sammlung \"Bald gelöscht\"",
+      "leavingSoonOverlay": "Overlay \"Gelöscht in Xt\"",
+      "bannerDesc": "Banner auf Postern",
+      "collectionName": "Sammlungsname",
+      "leavingSoonDefault": "Bald gelöscht",
+      "thresholdDays": "Schwellenwert in Tagen",
+      "save": "Server speichern",
+      "plexSettings": "Plex-Einstellungen",
+      "error": {
+        "plex": "Plex-Server nicht erreichbar"
+      }
+    },
+    "arr": {
+      "instanceName": "Instanzname",
+      "apiKey": "API-Schlüssel",
+      "radarr": {
+        "add": "Radarr-Instanz hinzufügen",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Sonarr-Instanz hinzufügen",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
+    },
+    "seerr": {
+      "title": "Overseerr / Jellyseerr",
+      "urlPlaceholder": "http://seerr:5055",
+      "externalUrl": "Externe URL (Links in Benachrichtigungen)",
+      "externalUrlPlaceholder": "https://seerr.meinedomain.de",
+      "importRadarrSonarr": "Radarr & Sonarr aus Seerr importieren",
+      "importDescription": "Seerr kennt bereits Ihre Radarr- und Sonarr-Instanzen. Klicken Sie zum automatischen Importieren.",
+      "import": "Instanzen importieren",
+      "importing": "Importiert…",
+      "imported": "Importiert!",
+      "discordIds": {
+        "title": "Discord-IDs der Benutzer",
+        "description": "Ordnen Sie jedem Seerr-Benutzer eine Discord-ID zu"
+      },
+      "loadUsers": "Benutzer laden",
+      "seerrId": "Seerr-ID:",
+      "discordIdPlaceholder": "Discord-ID (z.B. 123456789012345678)",
+      "howToFindDiscordId": "Um eine Discord-ID zu finden: Entwicklermodus in Discord aktivieren, dann Rechtsklick auf den Benutzer → ID kopieren.",
+      "noUsers": "Keine Seerr-Benutzer gefunden. Konfiguration prüfen.",
+      "error": {
+        "contactFailed": "Seerr nicht erreichbar"
+      }
+    },
+    "qbit": {
+      "url": "qBittorrent-URL",
+      "urlPlaceholder": "http://qbittorrent:8080",
+      "quiProxy": "QUI-Proxy-URL",
+      "quiProxyOptional": "QUI-Proxy-URL (optional)",
+      "quiProxyPlaceholder": "http://qui:3000",
+      "actions": {
+        "title": "Aktionen bei Löschung",
+        "pause": "Torrent pausieren",
+        "deleteNoFiles": "Torrent löschen (ohne Dateien)",
+        "deleteWithFiles": "Torrent + Dateien löschen",
+        "applyTag": "Tag auf Torrent anwenden"
+      },
+      "tagDefault": "hygie-deleted",
+      "orLabel": "UND/ODER"
+    },
+    "discord": {
+      "title": "Discord-Benachrichtigungen",
+      "webhookMain": "Haupt-Webhook (Löschbenachrichtigungen)",
+      "webhookPlaceholder": "https://discord.com/api/webhooks/…",
+      "thresholdsLabel": "Benachrichtigungsschwellen (Tage vor Löschung, kommagetrennt)",
+      "thresholdsPlaceholder": "30,14,7,3,1",
+      "thresholdsHelp": "Eine Discord-Nachricht wird T-30, T-14, T-7 gesendet…",
+      "errorThreshold": "Fehlerschwelle vor Alarm (0 = deaktiviert)",
+      "mentionPlaceholder": "Erwähnung ({'@'}rolle / {'@'}benutzer)",
+      "messagePlaceholder": "Benutzerdefinierte Nachricht",
+      "alerts": {
+        "title": "Systemwarnungen",
+        "webhook": "Warnungs-Webhook (kritische Fehler)",
+        "deletionError": "Löschfehler",
+        "scanFailure": "Scan-Fehler",
+        "seerrFailure": "Seerr-Fehler"
+      }
+    }
   },
-  "logs": { "all": "Alle", "debug": "Debug", "info": "Info", "warning": "Warnung", "error": "Fehler", "noLogs": "Keine Protokolle.", "markSeen": "Als gesehen markieren", "markSeenAll": "Alle als gesehen markieren", "ackAll": "Alle bestätigen", "reset": "Zurücksetzen", "entries": "Einträge" },
+  "logs": {
+    "all": "Alle",
+    "debug": "Debug",
+    "info": "Info",
+    "warning": "Warnung",
+    "error": "Fehler",
+    "noLogs": "Keine Protokolle.",
+    "markSeen": "Als gesehen markieren",
+    "markSeenAll": "Alle als gesehen markieren",
+    "ackAll": "Alle bestätigen",
+    "reset": "Zurücksetzen",
+    "entries": "Einträge"
+  },
   "rules": {
-    "expert": "Expertenregeln", "simple": "Einfache Regeln", "create": "Regel erstellen", "noRules": "Keine Regeln konfiguriert.", "allLibraries": "Alle Bibliotheken", "libraries": "Bibl.",
-    "title": "Regeln", "new": "Neue Regel", "edit": "Regel bearbeiten", "type": "Regeltyp", "nameLabel": "Regelname", "namePlaceholder": "Meine Regel…", "actionLabel": "Aktion", "allLibrariesLabel": "Alle", "selected": "ausgewählt", "conditionBlocks": "Bedingungsblöcke", "noBlocks": "Keine Blöcke — klicken Sie auf \"Block hinzufügen\"", "blockLabel": "Block {n}", "addCondition": "+ Bedingung", "noConditions": "Keine Bedingungen", "addBlock": "+ Block hinzufügen", "priority": "Priorität", "graceDays": "Gnadenfrist (Tage)", "active": "Regel aktiv", "conditions": "Bedingung(en)", "blocks": "Block/Blöcke", "confirmDelete": "Diese Regel dauerhaft löschen?", "discordIdPlaceholder": "z.B. 123456789012345678", "disable": "Deaktivieren", "enable": "Aktivieren", "runScan": "Scan starten",
-    "action": { "queue": "In Löschliste einreihen", "notifyOnly": "Nur benachrichtigen" },
-    "expertSection": { "title": "Expertenregeln", "empty": "Keine Expertenregeln.", "migrate": "Aus Bibliotheken migrieren", "migrating": "Migriert...", "migrateTooltip": "Bibliotheksbedingungen in Expertenregeln umwandeln", "migrateNone": "Keine neuen Regeln zu erstellen (bereits migriert).", "migrateSuccess": "{n} Regel(n) erfolgreich erstellt.", "migrateError": "Migrationsfehler." },
-    "simpleSection": { "title": "Einfache Regeln (Seerr)", "empty": "Keine einfachen Regeln.", "namePlaceholder": "Z.B. Alice — Nur Filme", "seerrUser": "Seerr-Benutzer", "loadingUsers": "Benutzer laden…", "searchUsers": "Benutzer suchen…", "selected": "Ausgewählt:", "noUsers": "Keine Seerr-Benutzer gefunden.", "discordIdOptional": "Discord-ID (optional)" },
-    "recap": { "libraries": "Bibl.:", "noneSelected": "keine ausgewählt", "allLibraries": "Alle Bibliotheken" },
-    "type": { "simpleDesc": "Benutzerdefinierte Gnadenfrist pro Seerr-Benutzer und Bibliothek.", "expertDesc": "Erweiterte Bedingungen für nicht angesehene Tage, Bewertung, Größe, Medientyp…" }
+    "expert": "Expertenregeln",
+    "simple": "Einfache Regeln",
+    "create": "Regel erstellen",
+    "noRules": "Keine Regeln konfiguriert.",
+    "allLibraries": "Alle Bibliotheken",
+    "libraries": "Bibl.",
+    "title": "Regeln",
+    "new": "Neue Regel",
+    "edit": "Regel bearbeiten",
+    "type": {
+      "simpleDesc": "Benutzerdefinierte Gnadenfrist pro Seerr-Benutzer und Bibliothek.",
+      "expertDesc": "Erweiterte Bedingungen für nicht angesehene Tage, Bewertung, Größe, Medientyp…"
+    },
+    "nameLabel": "Regelname",
+    "namePlaceholder": "Meine Regel…",
+    "actionLabel": "Aktion",
+    "allLibrariesLabel": "Alle",
+    "selected": "ausgewählt",
+    "conditionBlocks": "Bedingungsblöcke",
+    "noBlocks": "Keine Blöcke — klicken Sie auf \"Block hinzufügen\"",
+    "blockLabel": "Block {n}",
+    "addCondition": "+ Bedingung",
+    "noConditions": "Keine Bedingungen",
+    "addBlock": "+ Block hinzufügen",
+    "priority": "Priorität",
+    "graceDays": "Gnadenfrist (Tage)",
+    "active": "Regel aktiv",
+    "conditions": "Bedingung(en)",
+    "blocks": "Block/Blöcke",
+    "confirmDelete": "Diese Regel dauerhaft löschen?",
+    "discordIdPlaceholder": "z.B. 123456789012345678",
+    "disable": "Deaktivieren",
+    "enable": "Aktivieren",
+    "runScan": "Scan starten",
+    "action": {
+      "queue": "In Löschliste einreihen",
+      "notifyOnly": "Nur benachrichtigen"
+    },
+    "expertSection": {
+      "title": "Expertenregeln",
+      "empty": "Keine Expertenregeln.",
+      "migrate": "Aus Bibliotheken migrieren",
+      "migrating": "Migriert...",
+      "migrateTooltip": "Bibliotheksbedingungen in Expertenregeln umwandeln",
+      "migrateNone": "Keine neuen Regeln zu erstellen (bereits migriert).",
+      "migrateSuccess": "{n} Regel(n) erfolgreich erstellt.",
+      "migrateError": "Migrationsfehler."
+    },
+    "simpleSection": {
+      "title": "Einfache Regeln (Seerr)",
+      "empty": "Keine einfachen Regeln.",
+      "namePlaceholder": "Z.B. Alice — Nur Filme",
+      "seerrUser": "Seerr-Benutzer",
+      "loadingUsers": "Benutzer laden…",
+      "searchUsers": "Benutzer suchen…",
+      "selected": "Ausgewählt:",
+      "noUsers": "Keine Seerr-Benutzer gefunden.",
+      "discordIdOptional": "Discord-ID (optional)"
+    },
+    "recap": {
+      "libraries": "Bibl.:",
+      "noneSelected": "keine ausgewählt",
+      "allLibraries": "Alle Bibliotheken"
+    }
   },
   "queue": {
-    "title": "Warteschlange", "empty": "Keine Medien in der Warteschlange.", "deleteAt": "Löschung am", "daysLeft": "Tage übrig", "ignore": "Ignorieren",
-    "purgeDeleted": "Gelöschte bereinigen", "neverWatched": "Nie angesehen", "deleteNow": "Jetzt löschen", "ignoreTitle": "Ignorieren", "ignoreReason": "Grund (optional)", "reasonPlaceholder": "Grund…", "expiration": "Ablauf (Tage, 0 = dauerhaft)", "confirmDelete": "Dieses Medium jetzt vom Server löschen?", "confirmPurge": "Alle gelöschten Einträge aus der Warteschlange bereinigen?", "purge": "Bereinigen",
-    "error": { "loadFailed": "Warteschlange kann nicht geladen werden." },
-    "filters": { "all": "Alle", "pending": "Ausstehend", "deleted": "Gelöscht", "errors": "Fehler" },
-    "columns": { "title": "Titel", "library": "Bibliothek", "requester": "Anforderer", "lastPlayed": "Zuletzt gespielt", "addedAt": "Hinzugefügt am", "status": "Status", "deletion": "Löschung" }
+    "title": "Warteschlange",
+    "empty": "Keine Medien in der Warteschlange.",
+    "deleteAt": "Löschung am",
+    "daysLeft": "Tage übrig",
+    "ignore": "Ignorieren",
+    "purgeDeleted": "Gelöschte bereinigen",
+    "neverWatched": "Nie angesehen",
+    "deleteNow": "Jetzt löschen",
+    "ignoreTitle": "Ignorieren",
+    "ignoreReason": "Grund (optional)",
+    "reasonPlaceholder": "Grund…",
+    "expiration": "Ablauf (Tage, 0 = dauerhaft)",
+    "confirmDelete": "Dieses Medium jetzt vom Server löschen?",
+    "confirmPurge": "Alle gelöschten Einträge aus der Warteschlange bereinigen?",
+    "purge": "Bereinigen",
+    "error": {
+      "loadFailed": "Warteschlange kann nicht geladen werden."
+    },
+    "filters": {
+      "all": "Alle",
+      "pending": "Ausstehend",
+      "deleted": "Gelöscht",
+      "errors": "Fehler"
+    },
+    "columns": {
+      "title": "Titel",
+      "library": "Bibliothek",
+      "requester": "Anforderer",
+      "lastPlayed": "Zuletzt gespielt",
+      "addedAt": "Hinzugefügt am",
+      "status": "Status",
+      "deletion": "Löschung"
+    }
   },
   "ignored": {
-    "count": "ignoriert", "empty": "Keine ignorierten Medien.", "permanent": "Dauerhaft", "requeue": "Erneut einreihen", "remove": "Dauerhaft entfernen", "confirmRemove": "Dieses Medium aus der Ignorierliste entfernen?", "removeBtn": "Entfernen",
-    "error": { "loadFailed": "Ignorierte Medien können nicht geladen werden." },
-    "columns": { "title": "Titel", "library": "Bibliothek", "reason": "Grund", "ignoredAt": "Ignoriert am", "expires": "Läuft ab" }
+    "count": "ignoriert",
+    "empty": "Keine ignorierten Medien.",
+    "permanent": "Dauerhaft",
+    "requeue": "Erneut einreihen",
+    "remove": "Dauerhaft entfernen",
+    "confirmRemove": "Dieses Medium aus der Ignorierliste entfernen?",
+    "removeBtn": "Entfernen",
+    "error": {
+      "loadFailed": "Ignorierte Medien können nicht geladen werden."
+    },
+    "columns": {
+      "title": "Titel",
+      "library": "Bibliothek",
+      "reason": "Grund",
+      "ignoredAt": "Ignoriert am",
+      "expires": "Läuft ab"
+    }
   },
-  "calendar": { "more": "+{n} weitere", "summary": "geplante Löschung(en) diesen Monat", "days": { "mon": "Mo", "tue": "Di", "wed": "Mi", "thu": "Do", "fri": "Fr", "sat": "Sa", "sun": "So" } },
-  "setup": { "welcome": "Willkommen bei Hygie", "subtitle": "Erstellen Sie Ihr Administratorkonto, um zu beginnen.", "creating": "Erstellt...", "createAccount": "Konto erstellen", "error": "Fehler beim Erstellen des Kontos" },
-  "conditions": { "daysNotWatched": "Tage nicht angesehen", "daysNotWatchedShort": "Tage nicht anges.", "playCount": "Wiedergaben", "rating": "Bewertung", "fileSize": "Größe (GB)", "addedDaysAgo": "Vor (Tagen) hinzugefügt", "addedDaysAgoShort": "vor (T) hinzugef.", "mediaType": "Medientyp", "type": "Typ", "seerrUser": "Seerr-Benutzer", "seerrUserShort": "Seerr-Nutzer", "showNames": "Namen anzeigen", "showIds": "IDs anzeigen", "selectedCount": "{n} ausgewählt", "noUsers": "Keine Seerr-Benutzer" },
-  "operators": { "in": "in", "notIn": "nicht in" },
+  "calendar": {
+    "more": "+{n} weitere",
+    "summary": "geplante Löschung(en) diesen Monat",
+    "days": {
+      "mon": "Mo",
+      "tue": "Di",
+      "wed": "Mi",
+      "thu": "Do",
+      "fri": "Fr",
+      "sat": "Sa",
+      "sun": "So"
+    }
+  },
+  "setup": {
+    "welcome": "Willkommen bei Hygie",
+    "subtitle": "Erstellen Sie Ihr Administratorkonto, um zu beginnen.",
+    "creating": "Erstellt...",
+    "createAccount": "Konto erstellen",
+    "error": "Fehler beim Erstellen des Kontos"
+  },
+  "conditions": {
+    "daysNotWatched": "Tage nicht angesehen",
+    "daysNotWatchedShort": "Tage nicht anges.",
+    "playCount": "Wiedergaben",
+    "rating": "Bewertung",
+    "fileSize": "Größe (GB)",
+    "addedDaysAgo": "Vor (Tagen) hinzugefügt",
+    "addedDaysAgoShort": "vor (T) hinzugef.",
+    "mediaType": "Medientyp",
+    "type": "Typ",
+    "seerrUser": "Seerr-Benutzer",
+    "seerrUserShort": "Seerr-Nutzer",
+    "showNames": "Namen anzeigen",
+    "showIds": "IDs anzeigen",
+    "selectedCount": "{n} ausgewählt",
+    "noUsers": "Keine Seerr-Benutzer"
+  },
+  "operators": {
+    "in": "in",
+    "notIn": "nicht in"
+  },
   "dashboard": {
-    "stats": { "pending": "Ausstehend", "total": "gesamt", "totalDeleted": "Löschungen gesamt", "thisMonth": "diesen Monat", "ignored": "Ignoriert", "errors": "Fehler", "reclaimableSpace": "Rückgewinnbarer Speicher", "moviesInLibrary": "Filme in Bibliothek", "seriesInLibrary": "Serien in Bibliothek", "scansPerformed": "Scans durchgeführt" },
-    "upcoming": { "title": "5 nächste Löschungen", "viewAll": "Alle anzeigen", "empty": "Keine geplante Löschung" },
-    "diskUsage": { "title": "Speicherplatz" },
-    "error": { "loadFailed": "Dashboard-Daten können nicht geladen werden." },
-    "queue": { "added": "Hinzugefügt" },
-    "library": { "inLibrary": "In Bibliothek", "onDisk": "Auf Datenträger", "missing": "Fehlend", "monitored": "Überwacht", "unmonitored": "Nicht überwacht", "episodesOnDisk": "Episoden auf Datenträger", "totalEpisodes": "Episoden gesamt", "episodesAired": "Ausgestrahlte Episoden" }
+    "stats": {
+      "pending": "Ausstehend",
+      "total": "gesamt",
+      "totalDeleted": "Löschungen gesamt",
+      "thisMonth": "diesen Monat",
+      "ignored": "Ignoriert",
+      "errors": "Fehler",
+      "reclaimableSpace": "Rückgewinnbarer Speicher",
+      "moviesInLibrary": "Filme in Bibliothek",
+      "seriesInLibrary": "Serien in Bibliothek",
+      "scansPerformed": "Scans durchgeführt"
+    },
+    "upcoming": {
+      "title": "5 nächste Löschungen",
+      "viewAll": "Alle anzeigen",
+      "empty": "Keine geplante Löschung"
+    },
+    "diskUsage": {
+      "title": "Speicherplatz"
+    },
+    "error": {
+      "loadFailed": "Dashboard-Daten können nicht geladen werden."
+    },
+    "queue": {
+      "added": "Hinzugefügt"
+    },
+    "library": {
+      "inLibrary": "In Bibliothek",
+      "onDisk": "Auf Datenträger",
+      "missing": "Fehlend",
+      "monitored": "Überwacht",
+      "unmonitored": "Nicht überwacht",
+      "episodesOnDisk": "Episoden auf Datenträger",
+      "totalEpisodes": "Episoden gesamt",
+      "episodesAired": "Ausgestrahlte Episoden"
+    }
   }
 }

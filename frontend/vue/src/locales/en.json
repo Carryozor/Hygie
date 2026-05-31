@@ -108,7 +108,10 @@
     },
     "saveError": "Save failed",
     "general": {
-      "logs": { "title": "Logs", "level": "Log level" },
+      "logs": {
+        "title": "Logs",
+        "level": "Log level"
+      },
       "maxParallelScans": "Max parallel scans",
       "scheduling": {
         "title": "Scheduling",
@@ -173,13 +176,21 @@
       "thresholdDays": "Threshold in days",
       "save": "Save servers",
       "plexSettings": "Plex Settings",
-      "error": { "plex": "Cannot contact Plex server" }
+      "error": {
+        "plex": "Cannot contact Plex server"
+      }
     },
     "arr": {
       "instanceName": "Instance name",
       "apiKey": "API Key",
-      "radarr": { "add": "Add Radarr instance", "urlPlaceholder": "http://radarr:7878" },
-      "sonarr": { "add": "Add Sonarr instance", "urlPlaceholder": "http://sonarr:8989" }
+      "radarr": {
+        "add": "Add Radarr instance",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Add Sonarr instance",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
     },
     "seerr": {
       "title": "Overseerr / Jellyseerr",
@@ -200,7 +211,9 @@
       "discordIdPlaceholder": "Discord ID (e.g. 123456789012345678)",
       "howToFindDiscordId": "To find a Discord ID: enable developer mode in Discord, then right-click on the user → Copy ID.",
       "noUsers": "No Seerr users found. Check configuration.",
-      "error": { "contactFailed": "Cannot contact Seerr" }
+      "error": {
+        "contactFailed": "Cannot contact Seerr"
+      }
     },
     "qbit": {
       "url": "qBittorrent URL",
@@ -226,7 +239,7 @@
       "thresholdsPlaceholder": "30,14,7,3,1",
       "thresholdsHelp": "A Discord message will be sent D-30, D-14, D-7…",
       "errorThreshold": "Error threshold before alert (0 = disabled)",
-      "mentionPlaceholder": "Mention (@role / @user)",
+      "mentionPlaceholder": "Mention ({'@'}role / {'@'}user)",
       "messagePlaceholder": "Custom message",
       "alerts": {
         "title": "System alerts",
@@ -260,7 +273,10 @@
     "title": "Rules",
     "new": "New rule",
     "edit": "Edit rule",
-    "type": "Rule type",
+    "type": {
+      "simpleDesc": "Custom grace period per Seerr user and library.",
+      "expertDesc": "Advanced conditions on days not watched, rating, size, media type…"
+    },
     "nameLabel": "Rule name",
     "namePlaceholder": "My rule…",
     "actionLabel": "Action",
@@ -311,10 +327,6 @@
       "libraries": "Libs.:",
       "noneSelected": "none selected",
       "allLibraries": "All libraries"
-    },
-    "type": {
-      "simpleDesc": "Custom grace period per Seerr user and library.",
-      "expertDesc": "Advanced conditions on days not watched, rating, size, media type…"
     }
   },
   "queue": {
@@ -333,7 +345,9 @@
     "confirmDelete": "Delete this media from the server now?",
     "confirmPurge": "Purge all deleted entries from queue?",
     "purge": "Purge",
-    "error": { "loadFailed": "Cannot load queue." },
+    "error": {
+      "loadFailed": "Cannot load queue."
+    },
     "filters": {
       "all": "All",
       "pending": "Pending",
@@ -358,7 +372,9 @@
     "remove": "Remove permanently",
     "confirmRemove": "Remove this media from the ignored list?",
     "removeBtn": "Remove",
-    "error": { "loadFailed": "Cannot load ignored media." },
+    "error": {
+      "loadFailed": "Cannot load ignored media."
+    },
     "columns": {
       "title": "Title",
       "library": "Library",
@@ -371,8 +387,13 @@
     "more": "+{n} more",
     "summary": "scheduled deletion(s) this month",
     "days": {
-      "mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu",
-      "fri": "Fri", "sat": "Sat", "sun": "Sun"
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
     }
   },
   "setup": {
@@ -421,9 +442,15 @@
       "viewAll": "View all",
       "empty": "No scheduled deletion"
     },
-    "diskUsage": { "title": "Disk usage" },
-    "error": { "loadFailed": "Cannot load dashboard data." },
-    "queue": { "added": "Added" },
+    "diskUsage": {
+      "title": "Disk usage"
+    },
+    "error": {
+      "loadFailed": "Cannot load dashboard data."
+    },
+    "queue": {
+      "added": "Added"
+    },
     "library": {
       "inLibrary": "In library",
       "onDisk": "On disk",

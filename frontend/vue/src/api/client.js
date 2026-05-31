@@ -1,4 +1,6 @@
+// frontend/vue/src/api/client.js
 import axios from 'axios'
+import { installErrorInterceptor } from './errorHandler'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -11,12 +13,15 @@ api.interceptors.request.use(cfg => {
 api.interceptors.response.use(
   r => r,
   err => {
-    if (err.response?.status === 401) {
+    const isPublic = ['/login', '/setup', '/public'].includes(window.location.pathname)
+    if (err.response?.status === 401 && !isPublic) {
       localStorage.removeItem('hygie_token')
-      window.location.href = '/login'
+      window.dispatchEvent(new Event('hygie:unauthorized'))
     }
     return Promise.reject(err)
   }
 )
+
+installErrorInterceptor(api)
 
 export default api

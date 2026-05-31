@@ -71,28 +71,28 @@
       <div v-if="stats.storage.movies" class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-5">
         <div class="flex items-center gap-2 mb-4">
           <i class="fas fa-film text-[var(--accent)] text-sm" />
-          <h2 class="font-semibold text-sm">Films (Radarr)</h2>
+          <h2 class="font-semibold text-sm">{{ t('media.movies') }} (Radarr)</h2>
           <span class="ml-auto text-xs font-medium text-[var(--muted)]">{{ formatBytes(stats.storage.movies.size) }}</span>
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">En bibliothèque</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.inLibrary') }}</span>
             <span class="font-semibold">{{ stats.storage.movies.total_in_library ?? stats.storage.movies.count ?? 0 }}</span>
           </div>
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Sur disque</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.onDisk') }}</span>
             <span class="font-semibold">{{ stats.storage.movies.count ?? 0 }}</span>
           </div>
           <div v-if="(stats.storage.movies.total_in_library ?? 0) > (stats.storage.movies.count ?? 0)" class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Manquants</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.missing') }}</span>
             <span class="font-semibold text-orange-400">{{ (stats.storage.movies.total_in_library ?? 0) - (stats.storage.movies.count ?? 0) }}</span>
           </div>
           <div class="border-t border-[var(--border)] pt-2 mt-2 flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Monitored</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.monitored') }}</span>
             <span class="font-semibold text-green-400">{{ stats.storage.movies.monitored ?? 0 }}</span>
           </div>
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Non monitored</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.unmonitored') }}</span>
             <span class="font-semibold text-[var(--muted)]">{{ stats.storage.movies.unmonitored ?? 0 }}</span>
           </div>
         </div>
@@ -101,32 +101,32 @@
       <div v-if="stats.storage.series" class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-5">
         <div class="flex items-center gap-2 mb-4">
           <i class="fas fa-tv text-[var(--accent)] text-sm" />
-          <h2 class="font-semibold text-sm">Séries (Sonarr)</h2>
+          <h2 class="font-semibold text-sm">{{ t('media.series') }} (Sonarr)</h2>
           <span class="ml-auto text-xs font-medium text-[var(--muted)]">{{ formatBytes(stats.storage.series.size) }}</span>
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Séries</span>
+            <span class="text-[var(--muted)]">{{ t('media.series') }}</span>
             <span class="font-semibold">{{ stats.storage.series.count ?? 0 }}</span>
           </div>
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Épisodes sur disque</span>
-            <span class="font-semibold">{{ (stats.storage.series.episodes ?? 0).toLocaleString('fr-FR') }}</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.episodesOnDisk') }}</span>
+            <span class="font-semibold">{{ (stats.storage.series.episodes ?? 0).toLocaleString(locale.value) }}</span>
           </div>
           <div v-if="stats.storage.series.episodes_total" class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Total épisodes</span>
-            <span class="font-semibold">{{ stats.storage.series.episodes_total.toLocaleString('fr-FR') }}</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.totalEpisodes') }}</span>
+            <span class="font-semibold">{{ stats.storage.series.episodes_total.toLocaleString(locale.value) }}</span>
           </div>
           <div v-if="stats.storage.series.episodes_aired" class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Épisodes diffusés</span>
-            <span class="font-semibold">{{ stats.storage.series.episodes_aired.toLocaleString('fr-FR') }}</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.episodesAired') }}</span>
+            <span class="font-semibold">{{ stats.storage.series.episodes_aired.toLocaleString(locale.value) }}</span>
           </div>
           <div class="border-t border-[var(--border)] pt-2 mt-2 flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Monitored</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.monitored') }}</span>
             <span class="font-semibold text-green-400">{{ stats.storage.series.monitored ?? 0 }}</span>
           </div>
           <div class="flex items-center justify-between text-sm">
-            <span class="text-[var(--muted)]">Non monitored</span>
+            <span class="text-[var(--muted)]">{{ t('dashboard.library.unmonitored') }}</span>
             <span class="font-semibold text-[var(--muted)]">{{ stats.storage.series.unmonitored ?? 0 }}</span>
           </div>
         </div>
@@ -182,10 +182,10 @@ v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
               <span
 class="px-1.5 py-0.5 rounded text-[10px]"
                 :class="item.status === 'deleted' ? 'bg-green-500/20 text-green-400' : item.status === 'error' ? 'bg-red-700/20 text-red-300' : 'bg-yellow-500/20 text-yellow-400'">
-                {{ item.status === 'deleted' ? 'Supprimé' : item.status === 'error' ? 'Erreur' : 'En attente' }}
+                {{ item.status === 'deleted' ? t('status.deleted') : item.status === 'error' ? t('status.error') : t('status.pending') }}
               </span>
               <div v-if="item.detected_at" class="text-[10px] text-[var(--muted)] mt-0.5">
-                Ajouté {{ formatDate(item.detected_at) }}
+                {{ t('dashboard.queue.added') }} {{ formatDate(item.detected_at) }}
               </div>
             </td>
             <!-- Days remaining -->
@@ -202,7 +202,7 @@ class="px-1.5 py-0.5 rounded text-[10px]"
 
     <!-- Disk usage -->
     <div v-if="stats.storage.disks?.length" class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-5 space-y-3">
-      <h2 class="font-semibold text-sm">Espace disque</h2>
+      <h2 class="font-semibold text-sm">{{ t('dashboard.diskUsage.title') }}</h2>
       <div v-for="disk in stats.storage.disks" :key="disk.path" class="space-y-1">
         <div class="flex justify-between text-xs text-[var(--muted)]">
           <span>{{ disk.path }} <span class="text-[var(--border)]">({{ disk.source }})</span></span>
@@ -222,10 +222,12 @@ class="px-1.5 py-0.5 rounded text-[10px]"
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useStatsStore } from '@/stores/stats'
 import StatCard from '@/components/ui/StatCard.vue'
 import api from '@/api/client'
 
+const { t, locale } = useI18n()
 const stats   = useStatsStore()
 const loading = ref(false)
 const error   = ref('')
@@ -263,10 +265,10 @@ function daysRemaining(deleteAt) {
 function daysLabel(deleteAt) {
   const d = daysRemaining(deleteAt)
   if (d === null) return '—'
-  if (d < 0)  return 'Dépassé'
-  if (d === 0) return "Aujourd'hui"
-  if (d === 1) return 'Demain'
-  return `Dans ${d}j`
+  if (d < 0)  return t('days.exceeded')
+  if (d === 0) return t('days.today')
+  if (d === 1) return t('days.tomorrow')
+  return t('days.inDays', { n: d })
 }
 function daysClass(deleteAt) {
   const d = daysRemaining(deleteAt)
@@ -278,7 +280,7 @@ function daysClass(deleteAt) {
 }
 function formatDate(iso) {
   if (!iso) return ''
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return new Date(iso).toLocaleDateString(locale.value, { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 onMounted(async () => {
@@ -289,7 +291,7 @@ onMounted(async () => {
     const { data } = await api.get('/media', { params: { status: 'pending', limit: 5, sort: 'delete_at', dir: 'asc' } })
     recentQueue.value = data?.items || data || []
   } catch {
-    error.value = 'Impossible de charger les données du tableau de bord.'
+    error.value = t('dashboard.error.loadFailed')
   } finally {
     loading.value = false
   }

@@ -141,7 +141,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const dayHeaders = computed(() => [
   t('calendar.days.mon'),
@@ -172,13 +172,13 @@ const selectedDay = ref(null)
 
 const monthLabel = computed(() =>
   new Date(viewYear.value, viewMonth.value, 1)
-    .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+    .toLocaleDateString(locale.value, { month: 'long', year: 'numeric' })
 )
 
 const selectedDayLabel = computed(() => {
   if (!selectedDay.value) return ''
   return new Date(selectedDay.value.dateStr + 'T12:00:00')
-    .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    .toLocaleDateString(locale.value, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 })
 
 const totalThisMonth = computed(() => {

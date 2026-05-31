@@ -177,11 +177,11 @@ const navItems = computed(() => [
 function formatCountdown(isoDate) {
   if (!isoDate) return null
   const diff = new Date(isoDate) - now.value
-  if (diff <= 0) return 'imminent'
+  if (diff <= 0) return t('days.imminent')
   const h = Math.floor(diff / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
-  if (h > 0) return `dans ${h}h${m > 0 ? String(m).padStart(2, '0') + 'm' : ''}`
-  return `dans ${m}m`
+  if (h > 0) return `${t('days.in')} ${h}h${m > 0 ? String(m).padStart(2, '0') + 'm' : ''}`
+  return `${t('days.in')} ${m}m`
 }
 
 const scanCountdown     = computed(() => formatCountdown(scanNext.value))

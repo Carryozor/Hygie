@@ -599,6 +599,11 @@ async def _migrate_libraries_to_expert_rules(db) -> int:
     if not await _table_exists(db, "libraries") or not await _table_exists(db, "expert_rules"):
         return 0
 
+    # Guard: skip if v3 migration already done
+    async with db.execute("SELECT value FROM settings WHERE key='v3_migration_done'") as cur:
+        if await cur.fetchone():
+            return 0
+
     _orig_factory = db.row_factory
     db.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
     try:

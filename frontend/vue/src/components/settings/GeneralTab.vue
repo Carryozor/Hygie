@@ -120,7 +120,7 @@
             <input
               v-model="form.public_dashboard_slug"
               type="text"
-              placeholder="mon-calendrier"
+              :placeholder="t('settings.general.publicDashboard.slugPlaceholder')"
               class="field flex-1 font-mono text-xs"
             />
           </div>

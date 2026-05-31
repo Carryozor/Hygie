@@ -10,7 +10,7 @@
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
           <h3 class="font-semibold text-base">
-            {{ editRule ? 'Modifier la règle' : 'Nouvelle règle' }}
+            {{ editRule ? t('rules.edit') : t('rules.new') }}
           </h3>
           <button type="button" class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="$emit('close')">
             <i class="fas fa-times" />
@@ -21,7 +21,7 @@
         <div class="p-6 space-y-6">
           <!-- Step 1: type selector (only for new rules) -->
           <template v-if="!editRule">
-            <p class="text-xs text-[var(--muted)] uppercase tracking-wide">Type de règle</p>
+            <p class="text-xs text-[var(--muted)] uppercase tracking-wide">{{ t('rules.type') }}</p>
             <RuleTypeSelector v-model="ruleType" />
           </template>
 
@@ -47,7 +47,7 @@
             class="px-4 py-2 rounded-lg text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors"
             @click="$emit('close')"
           >
-            Annuler
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -61,7 +61,7 @@
             @click="save"
           >
             <i v-if="saving" class="fas fa-spinner fa-spin mr-1" />
-            {{ editRule ? 'Enregistrer' : 'Créer' }}
+            {{ editRule ? t('common.save') : t('common.save') }}
           </button>
         </div>
       </div>
@@ -71,9 +71,12 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import RuleTypeSelector from './RuleTypeSelector.vue'
 import SimpleRuleForm from './SimpleRuleForm.vue'
 import ExpertRuleBuilder from './ExpertRuleBuilder.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   open:     { type: Boolean, default: false },

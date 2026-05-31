@@ -136,6 +136,7 @@
         "description": "Page without login showing the deletion calendar",
         "url": "Full URL:",
         "slug": "URL segment (optional)",
+        "slugPlaceholder": "my-calendar",
         "password": "Password (optional)",
         "passwordHelp": "If set, visitors will need to enter this password to access the dashboard."
       }
@@ -258,6 +259,8 @@
     "libraries": "Libs.",
     "title": "Rules",
     "new": "New rule",
+    "edit": "Edit rule",
+    "type": "Rule type",
     "nameLabel": "Rule name",
     "namePlaceholder": "My rule…",
     "actionLabel": "Action",
@@ -308,6 +311,10 @@
       "libraries": "Libs.:",
       "noneSelected": "none selected",
       "allLibraries": "All libraries"
+    },
+    "type": {
+      "simpleDesc": "Custom grace period per Seerr user and library.",
+      "expertDesc": "Advanced conditions on days not watched, rating, size, media type…"
     }
   },
   "queue": {
@@ -416,6 +423,16 @@
     },
     "diskUsage": { "title": "Disk usage" },
     "error": { "loadFailed": "Cannot load dashboard data." },
-    "queue": { "added": "Added" }
+    "queue": { "added": "Added" },
+    "library": {
+      "inLibrary": "In library",
+      "onDisk": "On disk",
+      "missing": "Missing",
+      "monitored": "Monitored",
+      "unmonitored": "Unmonitored",
+      "episodesOnDisk": "Episodes on disk",
+      "totalEpisodes": "Total episodes",
+      "episodesAired": "Episodes aired"
+    }
   }
 }

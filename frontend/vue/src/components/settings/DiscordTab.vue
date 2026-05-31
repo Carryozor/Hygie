@@ -40,26 +40,48 @@
           </button>
         </div>
       </div>
+
+      <!-- Alert rows — inline template instead of defineComponent/h() -->
       <div class="space-y-3">
-        <AlertRow
-          v-model:enabled="form.discord_alert_deletion_error"
-          v-model:mention="form.discord_alert_deletion_error_mention"
-          v-model:msg="form.discord_alert_deletion_error_msg"
-          :label="t('settings.discord.alerts.deletionError')"
-        />
-        <AlertRow
-          v-model:enabled="form.discord_alert_scan_failure"
-          v-model:mention="form.discord_alert_scan_failure_mention"
-          v-model:msg="form.discord_alert_scan_failure_msg"
-          :label="t('settings.discord.alerts.scanFailure')"
-        />
-        <AlertRow
-          v-model:enabled="form.discord_alert_seerr_failure"
-          v-model:mention="form.discord_alert_seerr_failure_mention"
-          v-model:msg="form.discord_alert_seerr_failure_msg"
-          :label="t('settings.discord.alerts.seerrFailure')"
-        />
+
+        <!-- Erreur de suppression -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
+            <span class="text-sm">{{ t('settings.discord.alerts.deletionError') }}</span>
+            <ToggleSlider v-model="deletionErrorEnabled" />
+          </div>
+          <div v-if="deletionErrorEnabled" class="grid grid-cols-2 gap-2 px-1">
+            <input v-model="form.discord_alert_deletion_error_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
+            <input v-model="form.discord_alert_deletion_error_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
+          </div>
+        </div>
+
+        <!-- Échec de scan -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
+            <span class="text-sm">{{ t('settings.discord.alerts.scanFailure') }}</span>
+            <ToggleSlider v-model="scanFailureEnabled" />
+          </div>
+          <div v-if="scanFailureEnabled" class="grid grid-cols-2 gap-2 px-1">
+            <input v-model="form.discord_alert_scan_failure_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
+            <input v-model="form.discord_alert_scan_failure_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
+          </div>
+        </div>
+
+        <!-- Échec Seerr -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
+            <span class="text-sm">{{ t('settings.discord.alerts.seerrFailure') }}</span>
+            <ToggleSlider v-model="seerrFailureEnabled" />
+          </div>
+          <div v-if="seerrFailureEnabled" class="grid grid-cols-2 gap-2 px-1">
+            <input v-model="form.discord_alert_seerr_failure_mention" type="text" :placeholder="t('settings.discord.mentionPlaceholder')" class="field text-xs" />
+            <input v-model="form.discord_alert_seerr_failure_msg" type="text" :placeholder="t('settings.discord.messagePlaceholder')" class="field text-xs" />
+          </div>
+        </div>
+
       </div>
+
       <div>
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.errorThreshold') }}</label>
         <input v-model.number="form.discord_alert_error_threshold" type="number" min="0" class="field" />
@@ -69,40 +91,30 @@
 </template>
 
 <script setup>
-import { ref, computed, defineComponent, h } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 
 const { t } = useI18n()
-defineProps({ form: { type: Object, required: true } })
+const props = defineProps({ form: { type: Object, required: true } })
 
 const showWebhook = ref(false)
 const showAlerts  = ref(false)
 
-const AlertRow = defineComponent({
-  props: { label: String, enabled: String, mention: String, msg: String },
-  emits: ['update:enabled', 'update:mention', 'update:msg'],
-  setup(props, { emit }) {
-    const isEnabled = computed({
-      get: () => props.enabled === 'true' || props.enabled === true,
-      set: v => emit('update:enabled', String(v)),
-    })
-    return () => h('div', { class: 'space-y-2' }, [
-      h('div', { class: 'flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg' }, [
-        h('span', { class: 'text-sm' }, props.label),
-        h(ToggleSlider, {
-          modelValue: isEnabled.value,
-          'onUpdate:modelValue': v => { isEnabled.value = v },
-        }),
-      ]),
-      isEnabled.value && h('div', { class: 'grid grid-cols-2 gap-2 px-1' }, [
-        h('input', { type: 'text', placeholder: t('settings.discord.mentionPlaceholder'), value: props.mention || '', onInput: e => emit('update:mention', e.target.value), class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
-        h('input', { type: 'text', placeholder: t('settings.discord.messagePlaceholder'), value: props.msg || '', onInput: e => emit('update:msg', e.target.value), class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
-      ]),
-    ])
-  },
+// Boolean computed wrappers for ToggleSlider (form stores 'true'/'false' strings)
+const deletionErrorEnabled = computed({
+  get: () => props.form.discord_alert_deletion_error === 'true' || props.form.discord_alert_deletion_error === true,
+  set: v => { props.form.discord_alert_deletion_error = String(v) },
+})
+const scanFailureEnabled = computed({
+  get: () => props.form.discord_alert_scan_failure === 'true' || props.form.discord_alert_scan_failure === true,
+  set: v => { props.form.discord_alert_scan_failure = String(v) },
+})
+const seerrFailureEnabled = computed({
+  get: () => props.form.discord_alert_seerr_failure === 'true' || props.form.discord_alert_seerr_failure === true,
+  set: v => { props.form.discord_alert_seerr_failure = String(v) },
 })
 </script>
 

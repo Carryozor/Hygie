@@ -55,6 +55,11 @@ jobs:
         working-directory: frontend/vue
         run: npm run test:unit
 
+      - name: Lint
+        working-directory: frontend/vue
+        run: npm run lint
+        continue-on-error: true   # Don't fail CI on existing warnings
+
       - name: Build frontend
         working-directory: frontend/vue
         run: npm run build

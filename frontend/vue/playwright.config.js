@@ -12,18 +12,13 @@ export default defineConfig({
     headless: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    storageState: undefined,
   },
 
   projects: [
     {
-      name: 'setup',
-      testMatch: /.*\.setup\.js/,
-      use: { storageState: undefined },
-    },
-    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      dependencies: ['setup'],
     },
   ],
 })

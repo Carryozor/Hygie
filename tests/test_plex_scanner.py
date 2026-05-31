@@ -36,7 +36,7 @@ async def test_plex_server_calls_plex_client(tmp_path):
     with patch.object(PlexClient, "scan_library", new_callable=AsyncMock) as mock_scan:
         mock_scan.return_value = mock_items
 
-        from backend.scanner import _scan_plex_library
+        from backend.scanner._plex_scanner import _scan_plex_library
         server = {"id": "plex1", "type": "plex", "url": "http://plex.local:32400", "api_key": "tok"}
         library = {
             "id": "lib-plex-1",
@@ -91,7 +91,7 @@ async def test_plex_never_watched_item_queued(tmp_path):
         from backend.db.schema import init_db
         await init_db()
 
-        from backend.scanner import _scan_plex_library
+        from backend.scanner._plex_scanner import _scan_plex_library
         server = {"id": "p2", "type": "plex", "url": "http://plex.local:32400", "api_key": "tok"}
         library = {
             "id": "lib-p2",

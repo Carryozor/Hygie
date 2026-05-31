@@ -3,9 +3,9 @@
     <!-- Bibliothèques ciblées -->
     <div v-if="libraryIds !== null" class="flex items-center gap-1.5 flex-wrap">
       <i class="fas fa-folder text-[9px] text-[var(--accent)]/70" />
-      <span class="text-[var(--accent)]/80 font-medium">Bib. :</span>
+      <span class="text-[var(--accent)]/80 font-medium">{{ t('rules.recap.libraries') }}</span>
       <template v-if="!libraryIds || libraryIds.length === 0">
-        <span class="italic">aucune sélectionnée</span>
+        <span class="italic">{{ t('rules.recap.noneSelected') }}</span>
       </template>
       <template v-else>
         <span
@@ -17,7 +17,7 @@
     </div>
     <div v-else class="flex items-center gap-1.5">
       <i class="fas fa-folder-open text-[9px] text-[var(--muted)]" />
-      <span class="italic">Toutes les bibliothèques</span>
+      <span class="italic">{{ t('rules.recap.allLibraries') }}</span>
     </div>
 
     <!-- Résumé des conditions -->
@@ -41,12 +41,15 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useServersStore } from '@/stores/servers'
+
+const { t } = useI18n()
 
 const props = defineProps({
   conditionGroups: { type: Array,  default: () => [] },
   operator:        { type: String, default: 'AND' },
-  libraryIds:      { type: Array,  default: null },  // null = all; [] or string[] = specific
+  libraryIds:      { type: Array,  default: null },
 })
 
 const serversStore = useServersStore()
@@ -55,7 +58,6 @@ const hasContent = computed(() =>
   props.conditionGroups.length > 0 || props.libraryIds !== undefined
 )
 
-// Resolve library IDs to names using the servers store
 const libraryNames = computed(() => {
   if (!Array.isArray(props.libraryIds)) return []
   const allLibs = serversStore.libraries || []
@@ -65,22 +67,22 @@ const libraryNames = computed(() => {
   })
 })
 
-const FIELD_LABELS = {
-  days_not_watched: 'jours non-vu',
-  play_count:       'nb lectures',
-  rating:           'note',
-  file_size_gb:     'taille (Go)',
-  added_days_ago:   'ajouté il y a (j)',
-  media_type:       'type',
-  seerr_user_id:    'user Seerr',
-}
+const fieldLabels = computed(() => ({
+  days_not_watched: t('conditions.daysNotWatchedShort'),
+  play_count:       t('conditions.playCount'),
+  rating:           t('conditions.rating'),
+  file_size_gb:     t('conditions.fileSize'),
+  added_days_ago:   t('conditions.addedDaysAgoShort'),
+  media_type:       t('conditions.type'),
+  seerr_user_id:    t('conditions.seerrUserShort'),
+}))
 
 const OP_LABELS = {
   gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', in: '∈', not_in: '∉',
 }
 
 function humanize(c) {
-  const field = FIELD_LABELS[c.field] ?? c.field
+  const field = fieldLabels.value[c.field] ?? c.field
   const op    = OP_LABELS[c.op] ?? c.op
   const val   = Array.isArray(c.value) ? `{${c.value.join(', ')}}` : c.value
   return `${field} ${op} ${val}`

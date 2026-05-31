@@ -13,18 +13,18 @@
         <input
           v-model="srv.name"
           type="text"
-          placeholder="Nom de l'instance"
+          :placeholder="t('settings.arr.instanceName')"
           class="flex-1 bg-transparent text-sm font-semibold focus:outline-none placeholder:text-[var(--muted)]"
           @input="sync"
         />
         <label class="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer select-none">
           <input v-model="srv.enabled" type="checkbox" class="accent-[var(--accent)]" @change="sync" />
-          Actif
+          {{ t('common.enabled') }}
         </label>
         <button
           type="button"
           class="text-[var(--muted)] hover:text-red-400 transition-colors"
-          title="Supprimer"
+          :title="t('common.delete')"
           @click="removeServer(idx)"
         >
           <i class="fas fa-trash-can text-sm" />
@@ -33,13 +33,13 @@
 
       <!-- URL -->
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">URL</label>
-        <input v-model="srv.url" type="url" placeholder="http://radarr:7878" class="field font-mono" @input="sync" />
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.url') }}</label>
+        <input v-model="srv.url" type="url" :placeholder="t('settings.arr.radarr.urlPlaceholder')" class="field font-mono" @input="sync" />
       </div>
 
       <!-- API Key -->
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Clé API</label>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.apiKey') }}</label>
         <div class="flex gap-2">
           <input
             v-model="srv.api_key"
@@ -68,7 +68,7 @@
                   'border-[var(--border)] text-[var(--muted)] hover:text-white'"
           @click="testInstance(idx)"
         >
-          {{ srv._state === 'loading' ? '…' : srv._state === 'ok' ? '✓ OK' : srv._state === 'error' ? '✗ Erreur' : 'Tester' }}
+          {{ srv._state === 'loading' ? '…' : srv._state === 'ok' ? t('common.ok') : srv._state === 'error' ? `✗ ${t('common.failed')}` : t('common.test') }}
         </button>
         <span v-if="srv._msg" class="text-xs" :class="srv._state === 'ok' ? 'text-green-400' : 'text-red-400'">
           {{ srv._msg }}
@@ -81,16 +81,18 @@
       class="w-full py-2.5 border border-dashed border-[var(--border)] rounded-xl text-sm text-[var(--muted)] hover:text-white hover:border-[var(--accent)] transition-colors"
       @click="addServer"
     >
-      <i class="fas fa-plus mr-2" />Ajouter une instance Radarr
+      <i class="fas fa-plus mr-2" />{{ t('settings.arr.radarr.add') }}
     </button>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 
+const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
 let _keyCounter = 0

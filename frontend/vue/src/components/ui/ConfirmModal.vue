@@ -13,12 +13,12 @@
           <button
             class="px-4 py-2 text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors"
             @click="$emit('cancel')"
-          >{{ cancelLabel }}</button>
+          >{{ cancelLabel || t('common.cancel') }}</button>
           <button
             class="px-4 py-2 text-sm rounded-lg transition-colors"
             :class="confirmClass"
             @click="$emit('confirm')"
-          >{{ confirmLabel }}</button>
+          >{{ confirmLabel || t('common.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -26,11 +26,15 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 defineProps({
   show:         { type: Boolean, required: true },
   message:      { type: String,  default: '' },
-  confirmLabel: { type: String,  default: 'Confirmer' },
-  cancelLabel:  { type: String,  default: 'Annuler' },
+  confirmLabel: { type: String,  default: '' },
+  cancelLabel:  { type: String,  default: '' },
   confirmClass: { type: String,  default: 'bg-red-500 hover:bg-red-600 text-white' },
 })
 defineEmits(['confirm', 'cancel'])

@@ -7,7 +7,7 @@
       <!-- Status tabs -->
       <div class="flex bg-[var(--bg2)] border border-[var(--border)] rounded-lg p-0.5">
         <button
-          v-for="f in STATUS_FILTERS"
+          v-for="f in statusFilters"
           :key="f.value"
           class="px-3 py-1.5 text-xs rounded transition-colors"
           :class="statusFilter === f.value ? 'bg-[var(--accent)] text-white' : 'text-[var(--muted)] hover:text-white'"
@@ -18,12 +18,12 @@
       <!-- Search -->
       <input
         v-model="search"
-        placeholder="Rechercher…"
+        :placeholder="t('common.search')"
         class="bg-[var(--bg2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:border-[var(--accent)]"
       />
 
       <div class="ml-auto flex items-center gap-2">
-        <span class="text-sm text-[var(--muted)]">{{ total }} élément(s)</span>
+        <span class="text-sm text-[var(--muted)]">{{ total }} {{ t('common.items') }}</span>
 
         <!-- View toggle -->
         <button :class="['w-8 h-8 rounded border flex items-center justify-center transition-colors', !gridView ? 'bg-[var(--accent)] border-[var(--accent)]' : 'bg-[var(--bg2)] border-[var(--border)] text-[var(--muted)] hover:text-white']" @click="gridView = false">
@@ -38,7 +38,7 @@
           class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg2)] border border-[var(--border)] hover:border-red-500/50 hover:text-red-400 rounded-lg text-xs text-[var(--muted)] transition-colors"
           @click="confirmPurge = true"
         >
-          <i class="fas fa-trash-alt text-xs" /> Purger supprimés
+          <i class="fas fa-trash-alt text-xs" /> {{ t('queue.purgeDeleted') }}
         </button>
       </div>
     </div>
@@ -56,25 +56,25 @@
             <tr class="text-xs text-[var(--muted)] border-b border-[var(--border)]">
               <th class="w-14 px-3 py-2" />
               <th class="text-left px-4 py-2">
-                <SortHeader label="Titre" field="title" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.title')" field="title" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden md:table-cell">
-                <SortHeader label="Bibliothèque" field="library_name" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.library')" field="library_name" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden lg:table-cell">
-                <SortHeader label="Demandeur" field="seerr_username" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.requester')" field="seerr_username" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden xl:table-cell">
-                <SortHeader label="Vu le" field="last_played" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.lastPlayed')" field="last_played" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden xl:table-cell">
-                <SortHeader label="Ajouté le" field="detected_at" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.addedAt')" field="detected_at" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2">
-                <SortHeader label="Statut" field="status" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.status')" field="status" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2">
-                <SortHeader label="Suppression" field="delete_at" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.deletion')" field="delete_at" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="w-24 px-3 py-2" />
             </tr>
@@ -127,7 +127,7 @@
               <td
 class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap"
                   :class="item.last_played ? 'text-[var(--muted)]' : 'text-red-400 font-medium'">
-                {{ item.last_played ? formatDate(item.last_played) : 'Jamais vu' }}
+                {{ item.last_played ? formatDate(item.last_played) : t('queue.neverWatched') }}
               </td>
               <!-- Detected at -->
               <td class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap text-[var(--muted)]">
@@ -150,12 +150,12 @@ class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap"
               <td class="px-3 py-2">
                 <div v-if="item.status === 'pending'" class="flex items-center gap-1.5">
                   <button
-                    title="Supprimer maintenant"
+                    :title="t('queue.deleteNow')"
                     class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
                     @click="triggerDelete(item)"
                   ><i class="fas fa-trash text-xs" /></button>
                   <button
-                    title="Ignorer"
+                    :title="t('queue.ignoreTitle')"
                     class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
                     @click="openIgnore(item)"
                   ><i class="fas fa-ban text-xs" /></button>
@@ -193,10 +193,10 @@ class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap"
 
             <!-- Actions overlay (on hover) -->
             <div v-if="item.status === 'pending'" class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pb-8">
-              <button title="Supprimer" class="w-9 h-9 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors" @click.stop="triggerDelete(item)">
+              <button :title="t('common.delete')" class="w-9 h-9 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors" @click.stop="triggerDelete(item)">
                 <i class="fas fa-trash text-sm text-white" />
               </button>
-              <button title="Ignorer" class="w-9 h-9 rounded-full bg-yellow-500 hover:bg-yellow-600 flex items-center justify-center transition-colors" @click.stop="openIgnore(item)">
+              <button :title="t('queue.ignoreTitle')" class="w-9 h-9 rounded-full bg-yellow-500 hover:bg-yellow-600 flex items-center justify-center transition-colors" @click.stop="openIgnore(item)">
                 <i class="fas fa-ban text-sm text-white" />
               </button>
             </div>
@@ -231,19 +231,19 @@ v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
     <!-- Ignore modal -->
     <ConfirmModal
       :show="!!ignoreTarget"
-      confirm-label="Ignorer"
+      :confirm-label="t('queue.ignoreTitle')"
       confirm-class="bg-yellow-500 hover:bg-yellow-600 text-white"
       @confirm="doIgnore"
       @cancel="ignoreTarget = null"
     >
       <div class="space-y-4">
-        <h3 class="font-semibold">Ignorer — {{ ignoreTarget?.title }}</h3>
+        <h3 class="font-semibold">{{ t('queue.ignoreTitle') }} — {{ ignoreTarget?.title }}</h3>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Raison (optionnel)</label>
-          <input v-model="ignoreReason" type="text" placeholder="Raison…" class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]" />
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('queue.ignoreReason') }}</label>
+          <input v-model="ignoreReason" type="text" :placeholder="t('queue.reasonPlaceholder')" class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]" />
         </div>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Expiration (jours, 0 = permanent)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('queue.expiration') }}</label>
           <input v-model.number="ignoreDays" type="number" min="0" class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]" />
         </div>
       </div>
@@ -252,8 +252,8 @@ v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
     <!-- Delete confirm modal -->
     <ConfirmModal
       :show="!!deleteTarget"
-      :message="deleteTarget ? `Supprimer ${deleteTarget.title} du serveur maintenant ?` : ''"
-      confirm-label="Supprimer"
+      :message="deleteTarget ? `${t('queue.confirmDelete').replace('?', '')} ${deleteTarget.title} ?` : ''"
+      :confirm-label="t('common.delete')"
       @confirm="doDelete"
       @cancel="deleteTarget = null"
     />
@@ -261,8 +261,8 @@ v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
     <!-- Purge confirm modal -->
     <ConfirmModal
       :show="confirmPurge"
-      message='Purger toutes les entrées avec statut "Supprimé" de la file d&apos;attente ?'
-      confirm-label="Purger"
+      :message="t('queue.confirmPurge')"
+      :confirm-label="t('queue.purge')"
       @confirm="doPurge"
       @cancel="confirmPurge = false"
     />
@@ -271,19 +271,21 @@ v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
 import SortHeader   from '@/components/ui/SortHeader.vue'
 import ConfirmModal from '@/components/ui/ConfirmModal.vue'
 
+const { t } = useI18n()
 const settings = useSettingsStore()
 
-const STATUS_FILTERS = [
-  { value: '',        label: 'Tous' },
-  { value: 'pending', label: 'En attente' },
-  { value: 'deleted', label: 'Supprimés' },
-  { value: 'error',   label: 'Erreurs' },
-]
+const statusFilters = computed(() => [
+  { value: '',        label: t('queue.filters.all') },
+  { value: 'pending', label: t('queue.filters.pending') },
+  { value: 'deleted', label: t('queue.filters.deleted') },
+  { value: 'error',   label: t('queue.filters.errors') },
+])
 
 const items        = ref([])
 const total        = ref(0)
@@ -331,29 +333,31 @@ function setSort(field) {
 }
 function setFilter(v) { statusFilter.value = v; page.value = 1 }
 
-const STATUS_LABELS = { pending: 'En attente', deleted: 'Supprimé', error: 'Erreur' }
 const STATUS_CLASSES = {
   pending: 'bg-yellow-500/20 text-yellow-400',
   deleted: 'bg-green-500/20 text-green-400',
   error:   'bg-red-700/20 text-red-300',
 }
-function statusLabel(s) { return STATUS_LABELS[s] || s }
+function statusLabel(s) {
+  const map = { pending: t('status.pending'), deleted: t('status.deleted'), error: t('status.error') }
+  return map[s] || s
+}
 function statusClass(s) { return STATUS_CLASSES[s] || 'bg-[var(--bg3)] text-[var(--muted)]' }
-function isSeries(t) { return t === 'Episode' || t === 'Series' || t === 'Season' }
+function isSeries(tp) { return tp === 'Episode' || tp === 'Series' || tp === 'Season' }
 
 function daysRemaining(deleteAt) {
   if (!deleteAt) return null
   return Math.ceil((new Date(deleteAt) - new Date()) / (1000 * 60 * 60 * 24))
 }
 function daysLabel(deleteAt, status) {
-  if (status === 'deleted') return 'Supprimé'
+  if (status === 'deleted') return t('status.deleted')
   if (!deleteAt) return '—'
   const d = daysRemaining(deleteAt)
   if (d === null) return '—'
-  if (d < 0)  return 'Dépassé'
-  if (d === 0) return "Aujourd'hui"
-  if (d === 1) return 'Demain'
-  return `Dans ${d}j`
+  if (d < 0)  return t('days.exceeded')
+  if (d === 0) return t('days.today')
+  if (d === 1) return t('days.tomorrow')
+  return t('days.inDays', { n: d })
 }
 function daysClass(deleteAt, status) {
   if (status === 'deleted') return 'text-[var(--muted)]'
@@ -396,7 +400,7 @@ async function load() {
     const { data } = await api.get('/media', { params })
     items.value = data.items || data || []
     total.value = data.total  || items.value.length
-  } catch { error.value = "Impossible de charger la file d'attente." }
+  } catch { error.value = t('queue.error.loadFailed') }
   finally { loading.value = false }
 }
 

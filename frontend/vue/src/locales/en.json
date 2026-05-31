@@ -134,7 +134,10 @@
         "title": "Public dashboard",
         "enable": "Enable public dashboard",
         "description": "Page without login showing the deletion calendar",
-        "url": "URL:"
+        "url": "Full URL:",
+        "slug": "URL segment (optional)",
+        "password": "Password (optional)",
+        "passwordHelp": "If set, visitors will need to enter this password to access the dashboard."
       }
     },
     "servers": {

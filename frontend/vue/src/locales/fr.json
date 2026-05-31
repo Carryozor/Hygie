@@ -134,7 +134,10 @@
         "title": "Dashboard public",
         "enable": "Activer le dashboard public",
         "description": "Page sans connexion avec le calendrier des suppressions",
-        "url": "URL :"
+        "url": "URL complète :",
+        "slug": "Segment d'URL (optionnel)",
+        "password": "Mot de passe (optionnel)",
+        "passwordHelp": "Si défini, le visiteur devra entrer ce mot de passe pour accéder au dashboard."
       }
     },
     "servers": {

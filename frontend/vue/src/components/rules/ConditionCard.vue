@@ -13,7 +13,7 @@
         class="flex-1 bg-[var(--bg2)] border border-[var(--border)] rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)]"
         @change="update('field', $event.target.value)"
       >
-        <option v-for="f in FIELDS" :key="f.value" :value="f.value">{{ f.label }}</option>
+        <option v-for="f in fields" :key="f.value" :value="f.value">{{ f.label }}</option>
       </select>
 
       <!-- Operator -->
@@ -53,9 +53,9 @@
           class="text-[10px] px-2 py-0.5 rounded border border-[var(--border)] text-[var(--muted)] hover:text-white transition-colors"
           @click="displayMode = displayMode === 'id' ? 'name' : 'id'"
         >
-          {{ displayMode === 'id' ? 'Afficher noms' : 'Afficher IDs' }}
+          {{ displayMode === 'id' ? t('conditions.showNames') : t('conditions.showIds') }}
         </button>
-        <span v-if="selectedIds.length" class="text-[10px] text-[var(--accent)]">{{ selectedIds.length }} sélectionné(s)</span>
+        <span v-if="selectedIds.length" class="text-[10px] text-[var(--accent)]">{{ t('conditions.selectedCount', { n: selectedIds.length }) }}</span>
       </div>
       <div class="max-h-36 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg2)] divide-y divide-[var(--border)]">
         <label
@@ -73,7 +73,7 @@
           <span class="text-xs truncate">{{ displayMode === 'id' ? u.id : u.username }}</span>
           <span v-if="displayMode === 'name'" class="text-[10px] text-[var(--muted)] ml-auto flex-shrink-0">#{{ u.id }}</span>
         </label>
-        <div v-if="!seerrUsers.length" class="text-xs text-[var(--muted)] text-center py-2">Aucun utilisateur Seerr</div>
+        <div v-if="!seerrUsers.length" class="text-xs text-[var(--muted)] text-center py-2">{{ t('conditions.noUsers') }}</div>
       </div>
     </div>
   </div>
@@ -81,6 +81,9 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   condition:   { type: Object, required: true },
@@ -91,35 +94,35 @@ const emit = defineEmits(['update', 'remove'])
 
 const displayMode = ref('name') // 'id' | 'name'
 
-const FIELDS = [
-  { value: 'days_not_watched', label: 'Jours non-vu' },
-  { value: 'play_count',       label: 'Nb lectures' },
-  { value: 'rating',           label: 'Note' },
-  { value: 'file_size_gb',     label: 'Taille (Go)' },
-  { value: 'added_days_ago',   label: 'Ajouté il y a (jours)' },
-  { value: 'media_type',       label: 'Type de média' },
-  { value: 'seerr_user_id',    label: 'Utilisateur Seerr' },
-]
+const fields = computed(() => [
+  { value: 'days_not_watched', label: t('conditions.daysNotWatched') },
+  { value: 'play_count',       label: t('conditions.playCount') },
+  { value: 'rating',           label: t('conditions.rating') },
+  { value: 'file_size_gb',     label: t('conditions.fileSize') },
+  { value: 'added_days_ago',   label: t('conditions.addedDaysAgo') },
+  { value: 'media_type',       label: t('conditions.mediaType') },
+  { value: 'seerr_user_id',    label: t('conditions.seerrUser') },
+])
 
 const LIST_OPS = ['in', 'not_in']
 
-const ALL_OPS = [
+const ALL_OPS = computed(() => [
   { value: 'gt',     label: '>' },
   { value: 'gte',    label: '>=' },
   { value: 'lt',     label: '<' },
   { value: 'lte',    label: '<=' },
   { value: 'eq',     label: '=' },
-  { value: 'in',     label: 'dans' },
-  { value: 'not_in', label: 'pas dans' },
-]
+  { value: 'in',     label: t('operators.in') },
+  { value: 'not_in', label: t('operators.notIn') },
+])
 
 const TEXT_FIELDS = ['media_type', 'seerr_user_id']
 
 const availableOps = computed(() => {
   if (TEXT_FIELDS.includes(props.condition.field)) {
-    return ALL_OPS.filter(o => ['eq', 'in', 'not_in'].includes(o.value))
+    return ALL_OPS.value.filter(o => ['eq', 'in', 'not_in'].includes(o.value))
   }
-  return ALL_OPS
+  return ALL_OPS.value
 })
 
 const isList = computed(() => LIST_OPS.includes(props.condition.op))

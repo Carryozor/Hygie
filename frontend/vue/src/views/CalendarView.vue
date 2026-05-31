@@ -13,7 +13,7 @@
           v-if="!isCurrentMonth"
           class="px-2.5 py-1 text-xs rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
           @click="goToToday"
-        >Aujourd'hui</button>
+        >{{ t('common.today') }}</button>
       </div>
       <button class="w-8 h-8 rounded-lg bg-[var(--bg2)] border border-[var(--border)] hover:bg-[var(--bg3)] transition-colors flex items-center justify-center" @click="nextMonth">
         <i class="fas fa-chevron-right text-xs" />
@@ -30,7 +30,7 @@
       <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden">
         <!-- Day headers -->
         <div class="grid grid-cols-7 border-b border-[var(--border)]">
-          <div v-for="d in DAYS" :key="d" class="text-center text-xs font-semibold py-2 text-[var(--muted)] uppercase tracking-wide">
+          <div v-for="d in dayHeaders" :key="d" class="text-center text-xs font-semibold py-2 text-[var(--muted)] uppercase tracking-wide">
             {{ d }}
           </div>
         </div>
@@ -63,7 +63,7 @@
                     :title="item.title"
                   >{{ item.title }}</div>
                   <div v-if="cell.events.length > 3" class="text-[10px] text-[var(--muted)] px-1">
-                    +{{ cell.events.length - 3 }} autres
+                    {{ t('calendar.more', { n: cell.events.length - 3 }) }}
                   </div>
                 </div>
               </template>
@@ -74,7 +74,7 @@
 
       <!-- Summary bar -->
       <div class="text-xs text-[var(--muted)] text-right">
-        {{ totalThisMonth }} suppression(s) planifiée(s) ce mois
+        {{ totalThisMonth }} {{ t('calendar.summary') }}
       </div>
 
       <!-- Day detail panel (inline, below calendar) -->
@@ -123,7 +123,7 @@
             <!-- Type + days -->
             <div class="flex flex-col items-end gap-1 flex-shrink-0">
               <span class="text-xs px-2 py-0.5 rounded bg-[var(--bg3)] text-[var(--muted)]">
-                {{ TYPE_LABELS[item.media_type] || item.media_type }}
+                {{ typeLabel(item.media_type) }}
               </span>
               <span v-if="item.delete_at" class="text-[10px]" :class="deleteSoonClass(item.delete_at)">
                 {{ deleteSoonLabel(item.delete_at) }}
@@ -138,10 +138,30 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 
-const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-const TYPE_LABELS = { Movie: 'Film', Series: 'Série', Episode: 'Épisode', Season: 'Saison' }
+const { t } = useI18n()
+
+const dayHeaders = computed(() => [
+  t('calendar.days.mon'),
+  t('calendar.days.tue'),
+  t('calendar.days.wed'),
+  t('calendar.days.thu'),
+  t('calendar.days.fri'),
+  t('calendar.days.sat'),
+  t('calendar.days.sun'),
+])
+
+function typeLabel(type) {
+  const map = {
+    Movie: t('media.movie'),
+    Series: t('media.series'),
+    Episode: t('media.episode'),
+    Season: t('media.season'),
+  }
+  return map[type] || type
+}
 
 const today      = new Date()
 const viewYear   = ref(today.getFullYear())
@@ -200,8 +220,8 @@ const grid = computed(() => {
 
 function isToday(cell) {
   if (!cell) return false
-  const t = today
-  return cell.day === t.getDate() && viewMonth.value === t.getMonth() && viewYear.value === t.getFullYear()
+  const tp = today
+  return cell.day === tp.getDate() && viewMonth.value === tp.getMonth() && viewYear.value === tp.getFullYear()
 }
 
 function isPast(cell) {
@@ -252,9 +272,9 @@ function deleteSoonClass(deleteAt) {
 
 function deleteSoonLabel(deleteAt) {
   const days = Math.ceil((new Date(deleteAt) - new Date()) / 86400000)
-  if (days <= 0) return 'imminent'
-  if (days === 1) return 'demain'
-  return `dans ${days}j`
+  if (days <= 0) return t('days.imminent')
+  if (days === 1) return t('days.tomorrow')
+  return t('days.inDays', { n: days })
 }
 
 const isCurrentMonth = computed(() =>

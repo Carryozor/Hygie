@@ -5,16 +5,16 @@
         <div class="w-9 h-9 rounded-lg bg-[#8B5CF6]/20 flex items-center justify-center">
           <ServiceIcon name="overseerr" :size="22" />
         </div>
-        <h2 class="font-semibold">Overseerr / Jellyseerr</h2>
+        <h2 class="font-semibold">{{ t('settings.seerr.title') }}</h2>
       </div>
       <TestBtn service="seerr" />
     </div>
     <div>
-      <label class="block text-xs text-[var(--muted)] mb-1">URL</label>
-      <input v-model="form.seerr_url" type="url" placeholder="http://seerr:5055" class="field font-mono" />
+      <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.url') }}</label>
+      <input v-model="form.seerr_url" type="url" :placeholder="t('settings.seerr.urlPlaceholder')" class="field font-mono" />
     </div>
     <div>
-      <label class="block text-xs text-[var(--muted)] mb-1">Clé API</label>
+      <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.apiKey') }}</label>
       <div class="flex gap-2">
         <input v-model="form.seerr_api_key" :type="showKey ? 'text' : 'password'" placeholder="••••••••" class="flex-1 field font-mono" />
         <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showKey = !showKey">
@@ -23,8 +23,8 @@
       </div>
     </div>
     <div>
-      <label class="block text-xs text-[var(--muted)] mb-1">URL externe (liens dans les notifications)</label>
-      <input v-model="form.seerr_external_url" type="url" placeholder="https://seerr.mondomaine.fr" class="field font-mono" />
+      <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.seerr.externalUrl') }}</label>
+      <input v-model="form.seerr_external_url" type="url" :placeholder="t('settings.seerr.externalUrlPlaceholder')" class="field font-mono" />
     </div>
 
     <!-- Sync Radarr/Sonarr -->
@@ -32,10 +32,9 @@
       <div class="flex items-start gap-3">
         <i class="fas fa-link text-[var(--accent)] mt-0.5 text-sm" />
         <div class="flex-1 space-y-1">
-          <div class="text-sm font-medium">Importer Radarr &amp; Sonarr depuis Seerr</div>
+          <div class="text-sm font-medium">{{ t('settings.seerr.importRadarrSonarr') }}</div>
           <div class="text-xs text-[var(--muted)] leading-relaxed">
-            Seerr connaît déjà vos instances Radarr et Sonarr (y compris Radarr 4K, Sonarr 4K…).
-            Cliquez pour les importer automatiquement — les instances déjà configurées dans Hygie ne seront pas écrasées.
+            {{ t('settings.seerr.importDescription') }}
           </div>
         </div>
       </div>
@@ -50,7 +49,7 @@
           @click="syncFromSeerr"
         >
           <i :class="['fas', syncing ? 'fa-spinner fa-spin' : syncState === 'ok' ? 'fa-check' : syncState === 'error' ? 'fa-times' : 'fa-download', 'text-xs']" />
-          {{ syncing ? 'Import en cours…' : syncState === 'ok' ? 'Importé !' : syncState === 'error' ? 'Échec' : 'Importer les instances' }}
+          {{ syncing ? t('settings.seerr.importing') : syncState === 'ok' ? t('settings.seerr.imported') : syncState === 'error' ? t('common.failed') : t('settings.seerr.import') }}
         </button>
         <span v-if="syncMsg" class="text-xs" :class="syncState === 'ok' ? 'text-green-400' : 'text-red-400'">
           {{ syncMsg }}
@@ -62,14 +61,14 @@
     <div class="border-t border-[var(--border)] pt-4 space-y-3">
       <div class="flex items-center justify-between">
         <div>
-          <div class="text-sm font-semibold">IDs Discord des utilisateurs</div>
-          <div class="text-xs text-[var(--muted)]">Associez un ID Discord à chaque utilisateur Seerr pour les notifications personnalisées</div>
+          <div class="text-sm font-semibold">{{ t('settings.seerr.discordIds.title') }}</div>
+          <div class="text-xs text-[var(--muted)]">{{ t('settings.seerr.discordIds.description') }}</div>
         </div>
         <button
 :disabled="loadingUsers" class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[var(--bg3)] border border-[var(--border)] hover:bg-[var(--border)] transition-colors disabled:opacity-50"
           @click="loadUsers">
           <i :class="['fas', loadingUsers ? 'fa-spinner fa-spin' : 'fa-rotate', 'text-[10px]']" />
-          {{ loadingUsers ? 'Chargement…' : 'Récupérer les utilisateurs' }}
+          {{ loadingUsers ? t('common.loading') : t('settings.seerr.loadUsers') }}
         </button>
       </div>
 
@@ -79,28 +78,28 @@
         <div v-for="u in users" :key="u.id" class="flex items-center gap-3 py-2 px-3 bg-[var(--bg3)] rounded-lg">
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate">{{ u.username }}</div>
-            <div class="text-xs text-[var(--muted)]">ID Seerr : {{ u.id }}</div>
+            <div class="text-xs text-[var(--muted)]">{{ t('settings.seerr.seerrId') }} {{ u.id }}</div>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0">
             <input
-v-model="u._discord_id" type="text" placeholder="ID Discord (ex: 123456789012345678)"
+v-model="u._discord_id" type="text" :placeholder="t('settings.seerr.discordIdPlaceholder')"
               class="w-52 bg-[var(--bg2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-[var(--accent)]" />
             <button
 :disabled="u._saving" class="text-xs px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
               :class="u._saved ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30'"
               @click="saveDiscordId(u)">
               <i :class="['fas', u._saving ? 'fa-spinner fa-spin' : u._saved ? 'fa-check' : 'fa-save', 'text-[10px]']" />
-              {{ u._saving ? '' : u._saved ? 'Sauvé' : 'Sauver' }}
+              {{ u._saving ? '' : u._saved ? t('common.saved') : t('common.save') }}
             </button>
           </div>
         </div>
         <p class="text-xs text-[var(--muted)]">
-          <i class="fas fa-info-circle mr-1" />Pour trouver un ID Discord : activez le mode développeur dans Discord, puis clic droit sur l'utilisateur → Copier l'identifiant.
+          <i class="fas fa-info-circle mr-1" />{{ t('settings.seerr.howToFindDiscordId') }}
         </p>
       </div>
 
       <div v-else-if="!loadingUsers && fetched" class="text-xs text-[var(--muted)] text-center py-3">
-        Aucun utilisateur Seerr trouvé. Vérifiez la configuration.
+        {{ t('settings.seerr.noUsers') }}
       </div>
     </div>
   </section>
@@ -108,10 +107,12 @@ v-model="u._discord_id" type="text" placeholder="ID Discord (ex: 123456789012345
 
 <script setup>
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import api from '@/api/client'
 
+const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
 const showKey      = ref(false)
@@ -134,12 +135,11 @@ async function syncFromSeerr() {
     })
     syncState.value = 'ok'
     syncMsg.value   = data.message || ''
-    // Update form with merged lists so the Radarr/Sonarr tabs reflect the new servers
     if (data.radarr_servers) props.form.radarr_servers = JSON.stringify(data.radarr_servers)
     if (data.sonarr_servers) props.form.sonarr_servers = JSON.stringify(data.sonarr_servers)
   } catch (e) {
     syncState.value = 'error'
-    syncMsg.value   = e?.response?.data?.detail || 'Impossible de contacter Seerr'
+    syncMsg.value   = e?.response?.data?.detail || t('settings.seerr.error.contactFailed')
   } finally {
     syncing.value = false
     setTimeout(() => { syncState.value = 'idle'; syncMsg.value = '' }, 6000)
@@ -159,7 +159,7 @@ async function loadUsers() {
     }))
     fetched.value = true
   } catch (e) {
-    usersError.value = e?.response?.data?.detail || 'Impossible de contacter Seerr'
+    usersError.value = e?.response?.data?.detail || t('settings.seerr.error.contactFailed')
     fetched.value = true
   } finally {
     loadingUsers.value = false

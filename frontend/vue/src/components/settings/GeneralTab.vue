@@ -1,9 +1,9 @@
 <template>
   <div class="space-y-6">
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
-      <h2 class="font-semibold">Journaux</h2>
+      <h2 class="font-semibold">{{ t('settings.general.logs.title') }}</h2>
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Niveau de log</label>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.logs.level') }}</label>
         <select v-model="form.log_level" class="field">
           <option value="DEBUG">DEBUG</option>
           <option value="INFO">INFO</option>
@@ -12,34 +12,34 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Scans parallèles max</label>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.maxParallelScans') }}</label>
         <input v-model.number="form.max_parallel_library_scans" type="number" min="1" max="10" class="field" />
       </div>
     </section>
 
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-4">
-      <h2 class="font-semibold">Planification</h2>
+      <h2 class="font-semibold">{{ t('settings.general.scheduling.title') }}</h2>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Intervalle scan (min)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.scheduling.scanInterval') }}</label>
           <input v-model.number="form.scan_interval_minutes" type="number" min="10" class="field" />
         </div>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Intervalle suppression (min)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.scheduling.deletionInterval') }}</label>
           <input v-model.number="form.deletion_check_interval_minutes" type="number" min="10" class="field" />
         </div>
       </div>
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Rétention médias supprimés (jours)</label>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.scheduling.deletedRetention') }}</label>
         <input v-model.number="form.deleted_retention_days" type="number" min="0" class="field" />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Rétention journaux (jours)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.scheduling.logRetention') }}</label>
           <input v-model.number="form.log_retention_days" type="number" min="1" class="field" />
         </div>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Rétention historique (jours)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.scheduling.historyRetention') }}</label>
           <input v-model.number="form.job_history_retention_days" type="number" min="1" class="field" />
         </div>
       </div>
@@ -51,27 +51,27 @@
     >
       <div class="flex items-center gap-2">
         <i :class="['fas', form.backup_enabled ? 'fa-shield-alt text-green-400' : 'fa-exclamation-triangle text-red-400']" />
-        <h2 class="font-semibold">Sauvegarde de la base de données</h2>
+        <h2 class="font-semibold">{{ t('settings.general.backup.title') }}</h2>
       </div>
       <div class="flex items-center justify-between">
         <div>
-          <div class="text-sm font-medium">Sauvegarde automatique</div>
-          <div class="text-xs text-[var(--muted)]">Avant chaque cycle de suppression</div>
+          <div class="text-sm font-medium">{{ t('settings.general.backup.auto') }}</div>
+          <div class="text-xs text-[var(--muted)]">{{ t('settings.general.backup.before') }}</div>
         </div>
         <ToggleSlider v-model="form.backup_enabled" />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Intervalle (heures)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.backup.interval') }}</label>
           <input v-model.number="form.backup_interval_hours" type="number" min="1" class="field" />
         </div>
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Nombre de sauvegardes conservées</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.backup.retention') }}</label>
           <input v-model.number="form.backup_retention_count" type="number" min="1" class="field" />
         </div>
       </div>
       <div>
-        <label class="block text-xs text-[var(--muted)] mb-1">Dossier de sauvegarde</label>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.backup.path') }}</label>
         <input v-model="form.backup_path" type="text" placeholder="/app/data/backups" class="field" />
       </div>
       <div class="flex items-center gap-3">
@@ -81,19 +81,19 @@
           @click="triggerBackup"
         >
           <i class="fas fa-database text-xs" />
-          {{ backingUp ? 'En cours…' : 'Sauvegarde manuelle' }}
+          {{ backingUp ? t('common.inProgress') : t('settings.general.backup.manual') }}
         </button>
         <span v-if="backupMsg" class="text-xs" :class="backupOk ? 'text-green-400' : 'text-red-400'">{{ backupMsg }}</span>
       </div>
       <div v-if="backups.length" class="space-y-1">
-        <div class="text-xs text-[var(--muted)] font-semibold uppercase tracking-wide mb-2">Sauvegardes existantes</div>
+        <div class="text-xs text-[var(--muted)] font-semibold uppercase tracking-wide mb-2">{{ t('settings.general.backup.existing') }}</div>
         <div v-for="b in backups" :key="b.filename" class="flex items-center justify-between text-xs px-3 py-1.5 bg-[var(--bg3)] rounded-lg group">
           <span class="font-mono flex-1 truncate">{{ b.filename }}</span>
           <span class="text-[var(--muted)] mr-3">{{ b.size_mb ? b.size_mb + ' MB' : '' }}</span>
           <button
             type="button"
             class="opacity-0 group-hover:opacity-100 transition-opacity text-red-400/70 hover:text-red-400 w-6 h-6 flex items-center justify-center rounded"
-            title="Supprimer cette sauvegarde"
+            :title="t('common.delete')"
             @click.stop="deleteBackup(b.filename)"
           >
             <i class="fas fa-trash-can text-[10px]" />
@@ -103,18 +103,18 @@
     </section>
 
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-5">
-      <h2 class="font-semibold">Dashboard public</h2>
+      <h2 class="font-semibold">{{ t('settings.general.publicDashboard.title') }}</h2>
       <div class="flex items-center justify-between">
         <div>
-          <div class="text-sm font-medium">Activer le dashboard public</div>
-          <div class="text-xs text-[var(--muted)]">Page sans connexion avec le calendrier des suppressions</div>
+          <div class="text-sm font-medium">{{ t('settings.general.publicDashboard.enable') }}</div>
+          <div class="text-xs text-[var(--muted)]">{{ t('settings.general.publicDashboard.description') }}</div>
         </div>
         <ToggleSlider v-model="form.public_dashboard_enabled" />
       </div>
       <template v-if="form.public_dashboard_enabled">
         <!-- Custom slug -->
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Segment d'URL (optionnel)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.publicDashboard.slug', 'Segment d\'URL (optionnel)') }}</label>
           <div class="flex items-center gap-2">
             <span class="text-xs text-[var(--muted)] font-mono shrink-0">{{ origin }}/public/</span>
             <input
@@ -125,13 +125,13 @@
             />
           </div>
           <div class="mt-1 text-xs text-[var(--muted)]">
-            URL complète :
+            {{ t('settings.general.publicDashboard.url') }}
             <code class="bg-[var(--bg3)] px-1.5 py-0.5 rounded">{{ publicUrl }}</code>
           </div>
         </div>
         <!-- Password -->
         <div>
-          <label class="block text-xs text-[var(--muted)] mb-1">Mot de passe (optionnel)</label>
+          <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.publicDashboard.password', 'Mot de passe (optionnel)') }}</label>
           <div class="flex gap-2">
             <input
               v-model="form.public_dashboard_password"
@@ -143,7 +143,7 @@
               <i :class="['fas', showPwd ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
             </button>
           </div>
-          <div class="mt-1 text-xs text-[var(--muted)]">Si défini, le visiteur devra entrer ce mot de passe pour accéder au dashboard.</div>
+          <div class="mt-1 text-xs text-[var(--muted)]">{{ t('settings.general.publicDashboard.passwordHelp', 'Si défini, le visiteur devra entrer ce mot de passe pour accéder au dashboard.') }}</div>
         </div>
       </template>
     </section>
@@ -152,9 +152,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 import api from '@/api/client'
 
+const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
 const backingUp = ref(false)
@@ -173,10 +175,10 @@ async function triggerBackup() {
   backingUp.value = true; backupMsg.value = ''; backupOk.value = false
   try {
     const { data } = await api.post('/backup')
-    backupMsg.value = `Sauvegarde créée : ${data.filename}`
+    backupMsg.value = `${t('settings.general.backup.created')} : ${data.filename}`
     backupOk.value  = true
     await loadBackups()
-  } catch { backupMsg.value = 'Sauvegarde échouée'; backupOk.value = false }
+  } catch { backupMsg.value = t('settings.general.backup.failed'); backupOk.value = false }
   finally { backingUp.value = false }
 }
 

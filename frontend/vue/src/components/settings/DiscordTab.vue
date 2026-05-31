@@ -75,52 +75,17 @@
 </template>
 
 <script setup>
-import { ref, computed, defineComponent, h } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
-import ToggleSlider from '@/components/ui/ToggleSlider.vue'
+import AlertRow from './AlertRow.vue'
 
 const { t } = useI18n()
 defineProps({ form: { type: Object, required: true } })
 
 const showWebhook = ref(false)
 const showAlerts  = ref(false)
-
-// AlertRow: structure identique à l'original qui fonctionnait.
-// Les placeholders traduits sont passés en props depuis le parent.
-const AlertRow = defineComponent({
-  props: {
-    label:              String,
-    enabled:            String,
-    mention:            String,
-    msg:                String,
-    mentionPlaceholder: { type: String, default: 'Mention (@role / @user)' },
-    msgPlaceholder:     { type: String, default: 'Message personnalisé' },
-  },
-  emits: ['update:enabled', 'update:mention', 'update:msg'],
-  setup(props, { emit }) {
-    const isEnabled = computed({
-      get: () => props.enabled === 'true' || props.enabled === true,
-      set: v => emit('update:enabled', String(v)),
-    })
-    return () => h('div', { class: 'space-y-2' }, [
-      h('div', { class: 'flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg' }, [
-        h('span', { class: 'text-sm' }, props.label),
-        h(ToggleSlider, {
-          modelValue: isEnabled.value,
-          'onUpdate:modelValue': v => { isEnabled.value = v },
-        }),
-      ]),
-      isEnabled.value
-        ? h('div', { class: 'grid grid-cols-2 gap-2 px-1' }, [
-            h('input', { type: 'text', placeholder: props.mentionPlaceholder, value: props.mention || '', onInput: e => emit('update:mention', e.target.value), class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
-            h('input', { type: 'text', placeholder: props.msgPlaceholder,     value: props.msg || '',     onInput: e => emit('update:msg', e.target.value),     class: 'w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[var(--accent)]' }),
-          ])
-        : null,
-    ])
-  },
-})
 </script>
 
 <style scoped>

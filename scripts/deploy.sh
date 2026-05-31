@@ -25,7 +25,7 @@ for f in "$REPO_ROOT"/backend/*.py; do
 done
 
 # Copy backend subdirectories
-for dir in routers arr_clients db rules; do
+for dir in routers arr_clients db rules services; do
     if [ -d "$REPO_ROOT/backend/$dir" ]; then
         for f in "$REPO_ROOT/backend/$dir/"*.py; do
             [ -f "$f" ] || continue
@@ -40,6 +40,15 @@ if [ -d "$REPO_ROOT/backend/scanner" ]; then
     for f in "$REPO_ROOT/backend/scanner/"*.py; do
         [ -f "$f" ] || continue
         docker cp "$f" "$CONTAINER:/app/backend/scanner/$(basename "$f")" 2>/dev/null || true
+    done
+fi
+
+# Copy services package (subpackage with __init__.py)
+if [ -d "$REPO_ROOT/backend/services" ]; then
+    docker exec -u root "$CONTAINER" mkdir -p /app/backend/services 2>/dev/null || true
+    for f in "$REPO_ROOT/backend/services/"*.py; do
+        [ -f "$f" ] || continue
+        docker cp "$f" "$CONTAINER:/app/backend/services/$(basename "$f")" 2>/dev/null || true
     done
 fi
 

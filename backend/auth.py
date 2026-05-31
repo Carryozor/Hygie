@@ -9,6 +9,7 @@ Public API:
   require_auth — FastAPI dependency
   rate_limit(key) -> bool   — True if rate limited
 """
+import hashlib
 import os
 import time
 import secrets
@@ -63,6 +64,8 @@ def _load_or_create_secret() -> str:
 SECRET_KEY = _load_or_create_secret()
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_MINUTES = 60        # 1 heure
+REFRESH_TOKEN_EXPIRE_DAYS   = 30        # 30 jours
 
 _ph = PasswordHasher()
 _bearer = HTTPBearer(auto_error=False)
@@ -84,21 +87,98 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
-def create_token(username: str) -> str:
+def create_access_token(username: str) -> str:
+    """Create a short-lived JWT access token (1 hour)."""
     payload = {
-        "sub": username,
-        "exp": datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRE_DAYS),
-        "iat": datetime.now(timezone.utc),
+        "sub":  username,
+        "type": "access",
+        "exp":  datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        "iat":  datetime.now(timezone.utc),
     }
     return _pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def create_token(username: str) -> str:
+    """Backward-compat alias for create_access_token."""
+    return create_access_token(username)
+
+
 def verify_token(token: str) -> Optional[str]:
+    """Verify an access token. Returns username or None."""
     try:
         payload = _pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Accept tokens with type="access" or no type (backward compat)
+        token_type = payload.get("type")
+        if token_type and token_type != "access":
+            return None
         return payload.get("sub")
     except JWTError:
         return None
+
+
+# ─── Refresh token ────────────────────────────────────────────────────────────
+def _hash_token(token: str) -> str:
+    """SHA-256 hash for DB storage — never store raw tokens."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def create_refresh_token(username: str) -> str:
+    """Create a long-lived refresh token (30 days), stored hashed in DB."""
+    raw    = secrets.token_urlsafe(32)
+    hashed = _hash_token(raw)
+    expires = (datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+
+    async with get_db() as db:
+        user = await db.fetch_one("SELECT id FROM users WHERE username=?", (username,))
+        if not user:
+            raise ValueError(f"User {username!r} not found")
+        await db.execute(
+            "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+            (user["id"], hashed, expires),
+        )
+        await db.commit()
+    return raw
+
+
+async def verify_refresh_token(raw: str) -> Optional[str]:
+    """Returns username if token is valid, not expired, not revoked. Else None."""
+    hashed = _hash_token(raw)
+    async with get_db() as db:
+        row = await db.fetch_one(
+            """SELECT u.username, rt.expires_at, rt.revoked
+               FROM refresh_tokens rt
+               JOIN users u ON u.id = rt.user_id
+               WHERE rt.token_hash = ?""",
+            (hashed,),
+        )
+    if not row or row["revoked"]:
+        return None
+    expires = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) > expires:
+        return None
+    return row["username"]
+
+
+async def revoke_refresh_token(raw: str) -> None:
+    """Mark a specific refresh token as revoked."""
+    hashed = _hash_token(raw)
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE refresh_tokens SET revoked=1 WHERE token_hash=?", (hashed,)
+        )
+        await db.commit()
+
+
+async def revoke_all_refresh_tokens(username: str) -> None:
+    """Revoke all active refresh tokens for a user (e.g., on password change)."""
+    async with get_db() as db:
+        user = await db.fetch_one("SELECT id FROM users WHERE username=?", (username,))
+        if user:
+            await db.execute(
+                "UPDATE refresh_tokens SET revoked=1 WHERE user_id=? AND revoked=0",
+                (user["id"],),
+            )
+            await db.commit()
 
 
 # ─── FastAPI dependency ───────────────────────────────────────────────────────

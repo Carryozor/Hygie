@@ -49,7 +49,12 @@ async def no_auth_client():
 
 _PAYLOAD = {
     "name": "Old movies",
-    "conditions": [{"field": "days_not_watched", "op": "gt", "value": 365}],
+    "condition_groups": [
+        {
+            "conditions": [{"field": "days_not_watched", "op": "gt", "value": 365}],
+            "operator": "AND"
+        }
+    ],
     "operator": "AND",
     "action": "queue",
     "enabled": True,

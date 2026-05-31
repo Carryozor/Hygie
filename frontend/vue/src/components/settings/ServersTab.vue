@@ -185,12 +185,14 @@ import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useServersStore } from '@/stores/servers'
+import { useStatusStore } from '@/stores/status'
 import api from '@/api/client'
 
 const props = defineProps({ form: { type: Object, required: true } })
 
 const settings          = useSettingsStore()
 const servers           = useServersStore()
+const statusStore       = useStatusStore()
 const showWebhookSecret = ref(false)
 const mediaServers      = ref([])
 const savingServers     = ref(false)
@@ -228,6 +230,8 @@ async function testServer(srv) {
     srv._testOk  = data.ok
     srv._testMsg = data.message || ''
     if (data.server_type) srv.type = data.server_type
+    // Refresh logo status immediately after test
+    await statusStore.checkServerHealth()
   } catch { srv._testOk = false; srv._testMsg = '' }
   finally { srv._testing = false }
 }

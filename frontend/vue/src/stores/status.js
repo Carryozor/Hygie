@@ -73,15 +73,15 @@ export const useStatusStore = defineStore('status', () => {
         const { data } = await api.post(`/settings/media-servers/${srv.id}/test`)
         const isOk = !!data.ok
         isOk ? ok++ : fail++
-        results.push({ ok: isOk })
+        results.push({ ok: isOk, type: srv.type || 'emby' })
       } catch {
         fail++
-        results.push({ ok: false })
+        results.push({ ok: false, type: srv.type || 'emby' })
       }
     }
     serverError.value   = fail > 0
     serverStatus.value  = fail === 0 ? 'ok' : ok > 0 ? 'unknown' : 'error'
-    serverResults.value = results.slice(0, 3)   // max 3 arcs
+    serverResults.value = results.slice(0, 3)
   }
 
   // ── Unseen error logs ─────────────────────────────────────────────────────

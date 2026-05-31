@@ -90,33 +90,40 @@ const arc1Start = -90 + 10
 // Dim (offline)  : violet #7c3aed at 35% opacity
 // Error          : red #ef4444 + blink
 
-const VIVID  = ['#6366f1', '#22c55e', '#38bdf8']
-const DIM_C  = '#7c3aed'
-const RED    = '#ef4444'
+// Brand colors per server type
+const TYPE_COLOR = {
+  plex:     '#E5A00D',   // Plex orange
+  emby:     '#52B54B',   // Emby green
+  jellyfin: '#AA5CC3',   // Jellyfin purple
+}
+const DIM_C = '#7c3aed'  // violet pâle (non connecté)
+const RED   = '#ef4444'  // rouge erreur
+
+function typeColor(type) {
+  return TYPE_COLOR[type] || '#6366f1'
+}
 
 function arcState(idx) {
-  // Error state overrides everything
   if (status.value === 'error') {
     return { color: RED, opacity: 1, cls: 'arc-error' }
   }
 
   const results = props.serverResults
   if (!results.length) {
-    // No data yet — dim violet until health check completes
     return { color: DIM_C, opacity: 0.35, cls: '' }
   }
 
   const srv = results[idx]
   if (!srv) {
-    // No server at this position — very faint violet (slot unused)
+    // Slot vide — très pâle
     return { color: DIM_C, opacity: 0.15, cls: '' }
   }
 
   if (srv.ok) {
-    // Server OK — vivid color, static
-    return { color: VIVID[idx] || VIVID[0], opacity: 1, cls: '' }
+    // Serveur OK — couleur vive du type (Plex = orange, Emby = vert, Jellyfin = violet)
+    return { color: typeColor(srv.type), opacity: 1, cls: '' }
   } else {
-    // Server KO — dim violet
+    // Serveur KO — violet pâle
     return { color: DIM_C, opacity: 0.35, cls: '' }
   }
 }

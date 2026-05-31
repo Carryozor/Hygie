@@ -1,6 +1,6 @@
 import pytest
 from backend.rules.models import (
-    Condition, ExpertRule, RuleAction, RuleOperator,
+    Condition, ConditionGroup, ExpertRule, RuleAction, RuleOperator,
     ConditionField, ConditionOp,
 )
 from backend.rules.engine import evaluate_condition, evaluate_rule
@@ -48,28 +48,56 @@ def test_evaluate_condition_missing_field_returns_false():
     assert evaluate_condition(c, {}) is False
 
 def test_evaluate_rule_and_all_match():
-    rule = ExpertRule(name="r", conditions=[
-        Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
-        Condition(field=ConditionField.RATING, op=ConditionOp.LT, value=5.0),
-    ], operator=RuleOperator.AND)
+    rule = ExpertRule(
+        name="r",
+        condition_groups=[ConditionGroup(
+            conditions=[
+                Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
+                Condition(field=ConditionField.RATING, op=ConditionOp.LT, value=5.0),
+            ],
+            operator=RuleOperator.AND,
+        )],
+        operator=RuleOperator.AND,
+    )
     assert evaluate_rule(rule, MOVIE) is True
 
 def test_evaluate_rule_and_partial_match():
-    rule = ExpertRule(name="r", conditions=[
-        Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
-        Condition(field=ConditionField.RATING, op=ConditionOp.GT, value=8.0),
-    ], operator=RuleOperator.AND)
+    rule = ExpertRule(
+        name="r",
+        condition_groups=[ConditionGroup(
+            conditions=[
+                Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
+                Condition(field=ConditionField.RATING, op=ConditionOp.GT, value=8.0),
+            ],
+            operator=RuleOperator.AND,
+        )],
+        operator=RuleOperator.AND,
+    )
     assert evaluate_rule(rule, MOVIE) is False
 
 def test_evaluate_rule_or_partial_match():
-    rule = ExpertRule(name="r", conditions=[
-        Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
-        Condition(field=ConditionField.RATING, op=ConditionOp.GT, value=8.0),
-    ], operator=RuleOperator.OR)
+    rule = ExpertRule(
+        name="r",
+        condition_groups=[ConditionGroup(
+            conditions=[
+                Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365),
+                Condition(field=ConditionField.RATING, op=ConditionOp.GT, value=8.0),
+            ],
+            operator=RuleOperator.OR,
+        )],
+        operator=RuleOperator.OR,
+    )
     assert evaluate_rule(rule, MOVIE) is True
 
 def test_evaluate_rule_disabled_always_false():
-    rule = ExpertRule(name="r", enabled=False, conditions=[
-        Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=1),
-    ])
+    rule = ExpertRule(
+        name="r",
+        enabled=False,
+        condition_groups=[ConditionGroup(
+            conditions=[
+                Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=1),
+            ],
+            operator=RuleOperator.AND,
+        )],
+    )
     assert evaluate_rule(rule, MOVIE) is False

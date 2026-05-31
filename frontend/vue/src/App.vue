@@ -8,17 +8,40 @@
       </main>
     </div>
   </div>
+  <ToastNotification />
 </template>
-<script setup>
-import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import AppSidebar from '@/components/layout/AppSidebar.vue'
-import AppTopbar  from '@/components/layout/AppTopbar.vue'
 
-const route = useRoute()
-const auth  = useAuthStore()
+<script setup>
+import { computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { useStatusStore } from '@/stores/status'
+import AppSidebar        from '@/components/layout/AppSidebar.vue'
+import AppTopbar         from '@/components/layout/AppTopbar.vue'
+import ToastNotification from '@/components/ui/ToastNotification.vue'
+
+const route  = useRoute()
+const router = useRouter()
+const auth   = useAuthStore()
+const status = useStatusStore()
 
 const showLayout = computed(() => !route.meta.public)
-onMounted(() => { if (auth.isLoggedIn) auth.fetchMe() })
+
+function onUnauthorized() {
+  auth.logout()
+  router.push('/login')
+}
+
+onMounted(() => {
+  window.addEventListener('hygie:unauthorized', onUnauthorized)
+  if (auth.isLoggedIn) {
+    auth.fetchMe()
+    status.start()
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('hygie:unauthorized', onUnauthorized)
+  status.stop()
+})
 </script>

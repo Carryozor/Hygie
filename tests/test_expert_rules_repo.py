@@ -5,12 +5,17 @@ from backend.db.repositories import (
     save_expert_rule, get_expert_rules, delete_expert_rule, get_expert_rule_by_id,
 )
 from backend.rules.models import (
-    ExpertRule, Condition, ConditionField, ConditionOp, RuleOperator, RuleAction,
+    ExpertRule, Condition, ConditionField, ConditionGroup, ConditionOp, RuleOperator, RuleAction,
 )
 
 _RULE = ExpertRule(
     name="Test rule",
-    conditions=[Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365)],
+    condition_groups=[
+        ConditionGroup(
+            conditions=[Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp.GT, value=365)],
+            operator=RuleOperator.AND,
+        )
+    ],
 )
 
 @pytest_asyncio.fixture
@@ -29,7 +34,7 @@ async def test_save_and_get_expert_rules(db_path):
     rules = await get_expert_rules()
     assert len(rules) == 1
     assert rules[0].name == "Test rule"
-    assert len(rules[0].conditions) == 1
+    assert len(rules[0].condition_groups) == 1
 
 @pytest.mark.asyncio
 async def test_save_returns_id(db_path):

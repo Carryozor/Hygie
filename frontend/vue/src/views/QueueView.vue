@@ -68,7 +68,7 @@
                 <SortHeader :label="t('queue.columns.lastPlayed')" field="last_played" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden xl:table-cell">
-                <SortHeader :label="t('queue.columns.addedAt')" field="detected_at" :sort="sort" :dir="dir" @sort="setSort" />
+                <SortHeader :label="t('queue.columns.addedAt')" field="added_date" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2">
                 <SortHeader :label="t('queue.columns.status')" field="status" :sort="sort" :dir="dir" @sort="setSort" />
@@ -131,7 +131,7 @@ class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap"
               </td>
               <!-- Detected at -->
               <td class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap text-[var(--muted)]">
-                {{ item.detected_at ? formatDate(item.detected_at) : '—' }}
+                {{ item.added_date ? formatDate(item.added_date) : '—' }}
               </td>
               <!-- Status -->
               <td class="px-4 py-2">

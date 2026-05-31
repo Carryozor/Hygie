@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,16 +40,32 @@ from .scheduler import (
     sync_plex_overlays,
 )
 from . import proxy
-
-
 from .version import VERSION
+from .routers import (
+    auth,
+    backup,
+    calendar,
+    expert_rules,
+    health as health_router,
+    ignored,
+    libraries,
+    logs,
+    media,
+    metrics,
+    seerr_rules,
+    settings,
+    stats,
+    storage,
+    unmonitored,
+)
 
 
 def _static_version() -> str:
     """Compute a short hash of app.js for cache-busting on each deploy."""
     try:
         path = os.path.join(os.path.dirname(__file__), "..", "frontend", "static", "js", "app.js")
-        h = hashlib.md5(open(path, "rb").read()).hexdigest()[:10]
+        with open(path, "rb") as f:
+            h = hashlib.md5(f.read()).hexdigest()[:10]
         return f"{VERSION}-{h}"
     except Exception:
         return VERSION
@@ -70,22 +87,6 @@ async def _internal_cleanup():
         await sync_plex_overlays()
     except Exception as e:
         logger.debug(f"_internal_cleanup: sync_plex_overlays: {e}")
-from .routers import (
-    auth,
-    backup,
-    calendar,
-    expert_rules,
-    ignored,
-    libraries,
-    logs,
-    media,
-    metrics,
-    seerr_rules,
-    settings,
-    stats,
-    storage,
-    unmonitored,
-)
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -208,6 +209,7 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
     app.state.scheduler = scheduler
+    health_router.set_scheduler(scheduler)
 
     logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
     if not os.environ.get("HYGIE_ENCRYPTION_KEY"):
@@ -235,6 +237,22 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# CORS — restrict to same origin by default (self-hosted).
+# Override with HYGIE_ALLOWED_ORIGINS env var for reverse-proxy setups.
+_allowed_origins = [
+    o.strip() for o in
+    os.environ.get("HYGIE_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+] or ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ─── Security headers middleware ──────────────────────────────────────────────
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -248,6 +266,7 @@ async def security_headers(request: Request, call_next):
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
+app.include_router(health_router.router)
 app.include_router(settings.router)
 app.include_router(libraries.router)
 app.include_router(media.router)
@@ -275,73 +294,48 @@ app.mount(
 )
 templates = Jinja2Templates(directory="frontend/templates")
 
-# ─── Health ───────────────────────────────────────────────────────────────────
-@app.get("/health")
-async def health():
-    """Public healthcheck — for Uptime Kuma, Docker, etc."""
-    status_info = {
-        "status": "healthy",
-        "version": VERSION,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-    # DB check
-    try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT count(*) FROM sqlite_master WHERE type='table'"
-            ) as cur:
-                row = await cur.fetchone()
-                status_info["database"] = f"{row[0]} tables" if row else "empty"
-    except Exception as e:
-        status_info["database"] = f"error: {e}"
-        status_info["status"] = "degraded"
-
-    # Scheduler check — verify critical jobs exist and have a valid next_run_time
-    try:
-        jobs = {j.id: j for j in scheduler.get_jobs()}
-        critical = ("scan_job", "deletion_job")
-        missing = [jid for jid in critical if jid not in jobs or jobs[jid].next_run_time is None]
-        if missing:
-            status_info["scheduler"] = f"degraded (jobs sans next_run: {', '.join(missing)})"
-            status_info["status"] = "degraded"
-        else:
-            status_info["scheduler"] = f"{len(jobs)} jobs"
-    except Exception:
-        status_info["scheduler"] = "unavailable"
-
-    # Disk check
-    try:
-        import shutil
-
-        total, used, free = shutil.disk_usage(os.path.dirname(DB_PATH))
-        free_mb = free // (1024 * 1024)
-        status_info["disk_free_mb"] = free_mb
-        if free_mb < 50:
-            status_info["disk"] = "low"
-            status_info["status"] = "degraded"
-        else:
-            status_info["disk"] = "ok"
-    except Exception:
-        status_info["disk"] = "unavailable"
-
-    # Encryption check
-    if os.environ.get("HYGIE_ENCRYPTION_KEY"):
-        status_info["encryption"] = "enabled"
-    else:
-        status_info["encryption"] = "disabled (HYGIE_ENCRYPTION_KEY not set)"
-        if status_info["status"] == "healthy":
-            status_info["status"] = "degraded"
-
-    code = 200 if status_info["status"] == "healthy" else 503
-    return JSONResponse(status_info, status_code=code)
-
-
 # ─── Version ──────────────────────────────────────────────────────────────────
 @app.get("/api/version")
 async def version_info():
     """Public — version display in UI."""
     return {"version": VERSION}
+
+
+# ─── Public dashboard ─────────────────────────────────────────────────────────
+@app.get("/api/public/upcoming")
+async def public_upcoming():
+    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true."""
+    enabled = await get_setting("public_dashboard_enabled")
+    if enabled != "true":
+        return JSONResponse({"error": "Public dashboard disabled"}, status_code=403)
+
+    from collections import defaultdict
+    from .db.utils import parse_iso_dt
+    from .db.engine import get_db
+
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            "SELECT id, title, media_type, library_name, delete_at, poster_url, "
+            "seerr_username, tmdb_id, seerr_request_url "
+            "FROM media_queue WHERE status='pending' ORDER BY delete_at ASC"
+        )
+        libs = await db.fetch_all(
+            "SELECT id, name FROM libraries ORDER BY name"
+        )
+
+    grouped: dict = defaultdict(list)
+    for d in rows:
+        d = dict(d)
+        dt = parse_iso_dt(d.get("delete_at"))
+        if not dt:
+            continue
+        key = dt.strftime("%Y-%m-%d")
+        grouped[key].append(d)
+
+    return {
+        "events": {date: items for date, items in sorted(grouped.items())},
+        "libraries": [dict(r) for r in libs],
+    }
 
 
 
@@ -382,11 +376,14 @@ async def websocket_endpoint(ws: WebSocket):
 @app.get("/api/scheduler/status")
 async def scheduler_status(user: str = Depends(auth.require_auth)):
     """List scheduled jobs and their next run times (returns array for frontend)."""
+    from ._job_state import is_scan_running, is_deletion_running
+    running_map = {"scan_job": is_scan_running(), "deletion_job": is_deletion_running()}
     jobs = []
     for job in scheduler.get_jobs():
         jobs.append({
             "id": job.id,
             "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+            "is_running": running_map.get(job.id, False),
         })
     return jobs
 
@@ -499,7 +496,8 @@ if os.path.isdir(os.path.join(_DIST, "assets")):
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
+    from fastapi.responses import Response
     index = os.path.join(_DIST, "index.html")
     if os.path.isfile(index):
-        return FileResponse(index)
-    return FileResponse("frontend/templates/index.html")
+        return FileResponse(index, headers={"Cache-Control": "no-store"})
+    return FileResponse("frontend/templates/index.html", headers={"Cache-Control": "no-store"})

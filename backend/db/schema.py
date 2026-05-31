@@ -734,6 +734,10 @@ async def _migrate_libraries_to_expert_rules_dbconn() -> int:
     from .engine import get_db
     try:
         async with get_db() as db:
+            # Guard: skip if already migrated
+            done = await db.fetch_one("SELECT value FROM settings WHERE key='v3_migration_done'")
+            if done:
+                return 0
             rows = await db.fetch_all(
                 "SELECT id, name, conditions, logic, seerr_conditions, enabled FROM libraries"
             )

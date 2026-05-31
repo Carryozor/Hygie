@@ -137,7 +137,9 @@ async def _scan_library(
                     season_number_val: Optional[int]    = None
 
                     if media_type_item == "Movie":
-                        radarr_id_val = radarr_find_by_path_cached(file_path, radarr_cache) if radarr_cache is not None else None
+                        _radarr_result = radarr_find_by_path_cached(file_path, radarr_cache) if radarr_cache is not None else None
+                        # radarr_find_by_path_cached returns (radarr_id, url, key) tuple or None
+                        radarr_id_val = _radarr_result[0] if _radarr_result else None
                     else:
                         sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
                         if sonarr_entry:

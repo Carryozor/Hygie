@@ -94,8 +94,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
+import { useStatusStore } from '@/stores/status'
 
 const { t } = useI18n()
+const statusStore = useStatusStore()
 
 const LEVELS = computed(() => [
   { value: '',        label: t('logs.all') },
@@ -158,6 +160,7 @@ async function markSeen(log) {
   try {
     await api.patch(`/logs/${log.id}`, { seen_status: 'seen' })
     log.seen_status = 'seen'
+    if (log.level === 'ERROR') await statusStore.checkUnseenErrors()
   } catch { /* silent */ }
 }
 
@@ -165,6 +168,7 @@ async function clearStatus(log) {
   try {
     await api.patch(`/logs/${log.id}`, { seen_status: null })
     log.seen_status = null
+    if (log.level === 'ERROR') await statusStore.checkUnseenErrors()
   } catch { /* silent */ }
 }
 
@@ -173,6 +177,8 @@ async function markSeenAll() {
   try {
     await api.post('/logs/mark-seen-errors')
     logs.value.forEach(l => { if (l.level === 'ERROR' && !l.seen_status) l.seen_status = 'seen' })
+    // Mise à jour immédiate du logo sans attendre le polling (20s)
+    await statusStore.checkUnseenErrors()
   } catch { /* silent */ } finally { bulkWorking.value = false }
 }
 
@@ -181,6 +187,7 @@ async function ackAll() {
   try {
     await api.post('/logs/ack-errors')
     logs.value.forEach(l => { if (l.level === 'ERROR' && !l.seen_status) l.seen_status = 'acked' })
+    await statusStore.checkUnseenErrors()
   } catch { /* silent */ } finally { bulkWorking.value = false }
 }
 

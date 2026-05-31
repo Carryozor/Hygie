@@ -23,8 +23,14 @@ def evaluate_condition(condition: Condition, item: dict) -> bool:
         if op in _NUMERIC_OPS:
             return _NUMERIC_OPS[op](raw, val)
         if op == ConditionOp.IN:
+            # None means "no value" — never matches an inclusion list
+            if raw is None:
+                return False
             return raw in val
         if op == ConditionOp.NOT_IN:
+            # None means "no value" — skip items with no value for exclusion checks
+            if raw is None:
+                return False
             return raw not in val
     except Exception as e:
         logger.debug("evaluate_condition(%s): %s", condition.field, e)

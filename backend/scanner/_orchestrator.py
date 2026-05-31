@@ -25,6 +25,60 @@ from ._plex_scanner import _scan_plex_library
 logger = logging.getLogger(__name__)
 
 
+async def _purge_stale_seerr_items() -> None:
+    """Remove pending queue items that no longer satisfy active expert rules.
+
+    Specifically: if ALL active expert rules for a library require a seerr_user_id
+    (have an IN condition on that field), then pending items with seerr_user_id = NULL
+    should be removed — they were added before the Seerr filter was configured.
+    """
+    from ..db.repositories import get_expert_rules
+    from ..rules.models import ConditionField, ConditionOp
+
+    try:
+        rules = await get_expert_rules(enabled_only=True)
+        # Find libraries where every active rule requires a specific seerr_user_id
+        # (i.e., at least one condition group has seerr_user_id IN [...])
+        libraries_requiring_seerr: set = set()
+        for rule in rules:
+            has_seerr_filter = any(
+                any(
+                    c.field == ConditionField.SEERR_USER_ID and c.op == ConditionOp.IN
+                    for c in group.conditions
+                )
+                for group in rule.condition_groups
+            )
+            if has_seerr_filter:
+                if rule.library_ids:
+                    for lid in rule.library_ids:
+                        libraries_requiring_seerr.add(str(lid))
+                elif rule.library_id:
+                    libraries_requiring_seerr.add(str(rule.library_id))
+
+        if not libraries_requiring_seerr:
+            return
+
+        from ..db.engine import get_db
+        async with get_db() as db:
+            # Remove pending items with no seerr_user_id in targeted libraries
+            placeholders = ",".join("?" * len(libraries_requiring_seerr))
+            result = await db.execute_write(
+                f"DELETE FROM media_queue WHERE status='pending' "
+                f"AND (seerr_user_id IS NULL OR seerr_user_id = 0) "
+                f"AND library_id IN ({placeholders})",
+                list(libraries_requiring_seerr),
+            )
+            await db.commit()
+            if result:
+                await add_log(
+                    "INFO",
+                    f"Nettoyage : {result} média(s) retiré(s) de la queue (aucun utilisateur Seerr correspondant)",
+                    "scan",
+                )
+    except Exception as e:
+        logger.warning("_purge_stale_seerr_items: %s", e)
+
+
 async def run_scan() -> None:
     """Full scan of all enabled libraries across all enabled servers."""
     if _scan_lock.locked():
@@ -114,6 +168,7 @@ async def run_scan() -> None:
 
             await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
             _scan_status, _scan_msg = "success", f"{added} queued"
+            await _purge_stale_seerr_items()
             await sync_emby_collection()
             await _send_pending_notifications()
         except Exception as e:

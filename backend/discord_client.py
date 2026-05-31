@@ -160,8 +160,10 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
     footer_label, color = _get_kind_meta(kind)
     single = len(media_list) == 1
 
+    # Discord limits embeds to 10 per message — reserve last slot for overflow summary
+    MAX_EMBEDS = 9 if len(media_list) > 9 else 10
     embeds: list = []
-    for m in media_list[:10]:
+    for m in media_list[:MAX_EMBEDS]:
         try:
             embed = await _build_embed(m, color, footer_label, kind, single)
             embeds.append(embed)
@@ -171,12 +173,13 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
     if not embeds:
         return False
 
-    if len(media_list) > 10:
-        extras = ", ".join(m.get("title", "?") for m in media_list[10:15])
-        if len(media_list) > 15:
-            extras += f" et {len(media_list) - 15} autre(s)"
+    if len(media_list) > MAX_EMBEDS:
+        overflow = len(media_list) - MAX_EMBEDS
+        extras = ", ".join(m.get("title", "?") for m in media_list[MAX_EMBEDS:MAX_EMBEDS + 5])
+        if overflow > 5:
+            extras += f" et {overflow - 5} autre(s)"
         embeds.append({
-            "title": f"… et {len(media_list) - 10} média(s) supplémentaire(s)",
+            "title": f"… et {overflow} média(s) supplémentaire(s)",
             "description": extras,
             "color": color,
         })

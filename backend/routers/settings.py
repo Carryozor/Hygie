@@ -1,17 +1,18 @@
 """Settings — read/write configuration, test connections."""
+import json
 from typing import Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
-import json
 from ..db.settings_store import get_all_settings, set_setting, get_setting
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
 from ..emby_client import test_connection as test_emby
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
-from ..qbit_client import test_qbit
+from ..qbit_client import test_qbit, test_qui
 from ..discord_client import test_discord, test_discord_alerts
+from ..services.arr_service import test_arr_instance as _test_arr, sync_arr_from_seerr as _sync_arr
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -23,8 +24,10 @@ class SettingsUpdate(BaseModel):
     emby_leaving_soon_overlay: Optional[str] = None
     radarr_url: Optional[str] = None
     radarr_api_key: Optional[str] = None
+    radarr_servers: Optional[str] = None
     sonarr_url: Optional[str] = None
     sonarr_api_key: Optional[str] = None
+    sonarr_servers: Optional[str] = None
     seerr_url: Optional[str] = None
     seerr_api_key: Optional[str] = None
     seerr_external_url: Optional[str] = None
@@ -63,6 +66,10 @@ class SettingsUpdate(BaseModel):
     backup_interval_hours: Optional[str] = None
     backup_retention_count: Optional[str] = None
     backup_enabled: Optional[str] = None
+    plex_tv_token: Optional[str] = None
+    plex_webhook_secret: Optional[str] = None
+    plex_overlay_enabled: Optional[str] = None
+    public_dashboard_enabled: Optional[str] = None
 
 
 _TESTERS = {
@@ -71,6 +78,7 @@ _TESTERS = {
     "sonarr": test_sonarr,
     "seerr": test_seerr,
     "qbit": test_qbit,
+    "qui": test_qui,
     "discord": test_discord,
     "discord_alerts": test_discord_alerts,
 }
@@ -85,15 +93,14 @@ async def get_settings(user: str = Depends(require_auth)):
     for key in SENSITIVE_KEYS:
         if key not in settings or not settings[key]:
             continue
-        if key == "media_servers":
-            # media_servers is a JSON array — mask api_key inside each server object
-            import json as _json
+        if key in ("media_servers", "radarr_servers", "sonarr_servers"):
+            # JSON array — mask api_key inside each server object
             try:
-                servers = _json.loads(settings[key])
+                servers = json.loads(settings[key])
                 for s in servers:
                     if s.get("api_key"):
                         s["api_key"] = _MASK
-                settings[key] = _json.dumps(servers)
+                settings[key] = json.dumps(servers)
             except Exception:
                 settings[key] = _MASK
         else:
@@ -124,6 +131,22 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
     # Read current interval values BEFORE saving to detect real changes
     old_scan = await get_setting("scan_interval_minutes") or "360"
     old_del  = await get_setting("deletion_check_interval_minutes") or "60"
+
+    # Restore masked api_keys inside radarr_servers / sonarr_servers JSON arrays
+    for arr_key in ("radarr_servers", "sonarr_servers"):
+        if arr_key not in incoming:
+            continue
+        try:
+            new_arr = json.loads(incoming[arr_key] or "[]")
+            existing_raw = await get_setting(arr_key) or "[]"
+            existing_by_id = {s.get("id"): s for s in (json.loads(existing_raw) or [])}
+            for s in new_arr:
+                if s.get("api_key") == _MASK:
+                    existing = existing_by_id.get(s.get("id")) or {}
+                    s["api_key"] = existing.get("api_key", "")
+            incoming[arr_key] = json.dumps(new_arr)
+        except Exception:
+            pass
 
     updated = []
     for key, value in incoming.items():
@@ -189,6 +212,24 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
 
 # ─── Media servers CRUD ────────────────────────────────────────────────────────
 
+class MediaServerBody(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
+    api_key: Optional[str] = None
+    ext_url: Optional[str] = None
+    type: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+def _validate_server_url(value: Optional[str], field: str) -> str:
+    if not value:
+        return ""
+    val = value.strip()
+    if val and urlparse(val).scheme.lower() not in ("http", "https"):
+        raise HTTPException(status_code=422, detail=f"{field}: le schéma doit être http ou https")
+    return val.rstrip("/")
+
+
 @router.get("/media-servers")
 async def list_media_servers(user: str = Depends(require_auth)):
     servers = await get_media_servers()
@@ -196,35 +237,41 @@ async def list_media_servers(user: str = Depends(require_auth)):
 
 
 @router.post("/media-servers")
-async def add_media_server(body: dict, user: str = Depends(require_auth)):
+async def add_media_server(body: MediaServerBody, user: str = Depends(require_auth)):
+    url = _validate_server_url(body.url, "url")
+    ext_url = _validate_server_url(body.ext_url, "ext_url")
     servers = await get_media_servers()
     new_id = str(max([int(s.get("id", 0)) for s in servers], default=-1) + 1)
     servers.append({
         "id": new_id,
-        "name": body.get("name") or f"Serveur {new_id}",
-        "url": (body.get("url") or "").rstrip("/"),
-        "api_key": body.get("api_key") or "",
-        "ext_url": (body.get("ext_url") or "").rstrip("/"),
-        "type": "",
-        "enabled": body.get("enabled", True),
+        "name": body.name or f"Serveur {new_id}",
+        "url": url,
+        "api_key": body.api_key or "",
+        "ext_url": ext_url,
+        "type": body.type or "",
+        "enabled": body.enabled if body.enabled is not None else True,
     })
     await save_media_servers(servers)
     return {"id": new_id, "servers": servers}
 
 
 @router.put("/media-servers/{server_id}")
-async def update_media_server(server_id: str, body: dict, user: str = Depends(require_auth)):
+async def update_media_server(server_id: str, body: MediaServerBody, user: str = Depends(require_auth)):
     servers = await get_media_servers()
     for s in servers:
         if str(s.get("id")) == server_id:
-            for k in ("name", "url", "api_key", "ext_url", "enabled"):
-                if k in body:
-                    val = body[k]
-                    if k == "api_key" and val == _MASK:
-                        continue  # user didn't change the key
-                    if k in ("url", "ext_url") and isinstance(val, str):
-                        val = val.rstrip("/")
-                    s[k] = val
+            if body.name is not None:
+                s["name"] = body.name
+            if body.url is not None:
+                s["url"] = _validate_server_url(body.url, "url")
+            if body.api_key is not None and body.api_key != _MASK:
+                s["api_key"] = body.api_key
+            if body.ext_url is not None:
+                s["ext_url"] = _validate_server_url(body.ext_url, "ext_url")
+            if body.type is not None:
+                s["type"] = body.type
+            if body.enabled is not None:
+                s["enabled"] = body.enabled
     await save_media_servers(servers)
     return {"servers": servers}
 
@@ -239,7 +286,13 @@ async def delete_media_server(server_id: str, user: str = Depends(require_auth))
 
 @router.post("/media-servers/{server_id}/test")
 async def test_media_server(server_id: str, user: str = Depends(require_auth)):
-    ok, message, server_type = await test_emby(server_id=server_id)
+    servers = await get_media_servers()
+    server = next((s for s in servers if str(s.get("id")) == server_id), None)
+    if server and server.get("type") == "plex":
+        from ..plex_client import test_plex_server
+        ok, message, server_type = await test_plex_server(server)
+    else:
+        ok, message, server_type = await test_emby(server_id=server_id)
     return {"ok": ok, "message": message, "server_type": server_type}
 
 
@@ -253,3 +306,31 @@ async def test_service(service: str, user: str = Depends(require_auth)):
     # test_connection returns (bool, str, str); others return (bool, str)
     ok, message = result[0], result[1]
     return {"ok": ok, "message": message}
+
+
+class ArrTestRequest(BaseModel):
+    type: str   # "radarr" | "sonarr"
+    url: str
+    api_key: str
+
+
+@router.post("/test-arr")
+async def test_arr_instance(body: ArrTestRequest, user: str = Depends(require_auth)):
+    """Test a specific Radarr/Sonarr instance by URL and API key."""
+    return await _test_arr(body.type, body.url, body.api_key)
+
+
+class SeerrSyncRequest(BaseModel):
+    seerr_url: str
+    seerr_api_key: str
+
+
+@router.post("/sync-arr-from-seerr")
+async def sync_arr_from_seerr(body: SeerrSyncRequest, user: str = Depends(require_auth)):
+    """Import Radarr/Sonarr instances from Seerr configuration and merge with existing ones."""
+    try:
+        return await _sync_arr(body.seerr_url, body.seerr_api_key)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Impossible de contacter Seerr : {e}")

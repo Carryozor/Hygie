@@ -51,6 +51,10 @@ jobs:
         working-directory: frontend/vue
         run: npm ci
 
+      - name: Run unit tests
+        working-directory: frontend/vue
+        run: npm run test:unit
+
       - name: Build frontend
         working-directory: frontend/vue
         run: npm run build

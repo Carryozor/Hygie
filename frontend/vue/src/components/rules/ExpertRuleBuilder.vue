@@ -127,7 +127,7 @@
     </div>
 
     <!-- Logic recap -->
-    <LogicRecap :condition-groups="form.condition_groups" :operator="form.operator" />
+    <LogicRecap :condition-groups="form.condition_groups" :operator="form.operator" :library-ids="form.library_ids" />
 
     <!-- Priority + grace_days + enabled -->
     <div class="flex items-end gap-4">

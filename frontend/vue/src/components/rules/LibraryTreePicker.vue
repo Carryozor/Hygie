@@ -13,28 +13,30 @@
 
     <!-- Server nodes -->
     <div v-for="srv in serversWithLibraries" :key="srv.id" class="mt-1">
-      <!-- Server header -->
-      <div
-        class="flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer hover:bg-[var(--bg3)] transition-colors select-none"
-        @click="toggleServer(srv)"
-      >
+      <!-- Server header — checkbox zone + label zone + chevron zone sont séparés -->
+      <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-[var(--bg3)] transition-colors select-none">
+        <!-- Checkbox : sélectionne/désélectionne toutes les bibliothèques du serveur -->
         <div
-          class="w-4 h-4 flex-shrink-0 rounded border flex items-center justify-center transition-colors"
+          class="w-4 h-4 flex-shrink-0 rounded border flex items-center justify-center transition-colors cursor-pointer"
           :class="serverCheckState(srv) === 'all'
             ? 'bg-[var(--accent)] border-[var(--accent)]'
             : serverCheckState(srv) === 'partial'
               ? 'bg-[var(--accent)]/40 border-[var(--accent)]'
               : 'border-[var(--border)] bg-transparent'"
+          @click.stop="toggleServer(srv)"
         >
           <i v-if="serverCheckState(srv) === 'all'" class="fas fa-check text-[8px] text-white" />
           <i v-else-if="serverCheckState(srv) === 'partial'" class="fas fa-minus text-[8px] text-white" />
         </div>
+        <!-- Label : clic = expand/collapse uniquement -->
         <i :class="['fab', typeIcon(srv.type), 'text-xs text-[var(--muted)] w-3 text-center']" />
-        <span class="text-sm font-medium flex-1">{{ srv.name }}</span>
-        <span class="text-[10px] text-[var(--muted)]">{{ srv.libs.length }} bib.</span>
+        <span class="text-sm font-medium flex-1 cursor-pointer" @click.stop="toggleExpand(srv)">{{ srv.name }}</span>
+        <span class="text-[10px] text-[var(--muted)] cursor-pointer" @click.stop="toggleExpand(srv)">{{ srv.libs.length }} bib.</span>
+        <!-- Chevron : expand/collapse uniquement -->
         <i
-          class="fas fa-chevron-right text-[10px] text-[var(--muted)] transition-transform duration-150"
+          class="fas fa-chevron-right text-[10px] text-[var(--muted)] transition-transform duration-150 cursor-pointer px-1"
           :class="expanded[srv.id] ? 'rotate-90' : ''"
+          @click.stop="toggleExpand(srv)"
         />
       </div>
 
@@ -106,22 +108,23 @@ function serverCheckState(srv) {
   return 'partial'
 }
 
+function toggleExpand(srv) {
+  expanded[srv.id] = !expanded[srv.id]
+}
+
 function toggleServer(srv) {
   const libIds = srv.libs.map(l => String(l.id))
-  const state = serverCheckState(srv)
+  const state  = serverCheckState(srv)
   const current = Array.isArray(props.modelValue) ? [...props.modelValue] : []
 
   if (state === 'all') {
-    // deselect all libs of this server
     const next = current.filter(id => !libIds.includes(id))
     emit('update:modelValue', next.length ? next : null)
   } else {
-    // select all libs of this server
     const next = [...new Set([...current, ...libIds])]
     emit('update:modelValue', next)
   }
-
-  expanded[srv.id] = true
+  // Ne pas auto-expand : le chevron gère l'expansion séparément
 }
 
 function toggleLib(libId) {

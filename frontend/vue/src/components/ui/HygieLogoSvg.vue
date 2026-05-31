@@ -113,8 +113,8 @@ function arcState(idx) {
   }
 
   if (srv.ok) {
-    // Server OK — vivid color + breathe animation
-    return { color: VIVID[idx] || VIVID[0], opacity: 1, cls: 'arc-ok' }
+    // Server OK — vivid color, static
+    return { color: VIVID[idx] || VIVID[0], opacity: 1, cls: '' }
   } else {
     // Server KO — dim violet
     return { color: DIM_C, opacity: 0.35, cls: '' }

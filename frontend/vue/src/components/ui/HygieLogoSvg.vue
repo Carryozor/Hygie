@@ -7,11 +7,10 @@
     xmlns="http://www.w3.org/2000/svg"
     class="flex-shrink-0"
   >
-    <!-- ── 3 arc segments ─────────────────────────────────────────────── -->
-    <!-- Arc 1 — top — indigo -->
+    <!-- ── 3 arc segments ─────────────────────────────────────────────────── -->
     <circle
       :cx="C" :cy="C" :r="R"
-      stroke="#6366f1"
+      :stroke="arc1Color"
       :stroke-opacity="arcOpacity"
       :stroke-width="arcW"
       stroke-linecap="round"
@@ -19,10 +18,9 @@
       :transform="`rotate(${arc1Start} ${C} ${C})`"
       :class="arcClass"
     />
-    <!-- Arc 2 — bottom-right — green -->
     <circle
       :cx="C" :cy="C" :r="R"
-      stroke="#22c55e"
+      :stroke="arc2Color"
       :stroke-opacity="arcOpacity"
       :stroke-width="arcW"
       stroke-linecap="round"
@@ -30,10 +28,9 @@
       :transform="`rotate(${arc1Start + 120} ${C} ${C})`"
       :class="arcClass"
     />
-    <!-- Arc 3 — bottom-left — sky blue -->
     <circle
       :cx="C" :cy="C" :r="R"
-      stroke="#38bdf8"
+      :stroke="arc3Color"
       :stroke-opacity="arcOpacity"
       :stroke-width="arcW"
       stroke-linecap="round"
@@ -42,7 +39,7 @@
       :class="arcClass"
     />
 
-    <!-- ── Hygie logo (centered via nested SVG) ───────────────────────── -->
+    <!-- ── Hygie logo (centered via nested SVG) ───────────────────────────── -->
     <svg
       :x="C - size / 2"
       :y="C - size / 2"
@@ -72,7 +69,7 @@ const props = defineProps({
 
 const status = computed(() => props.hasError ? 'error' : props.statusDot)
 
-// ── Geometry ──────────────────────────────────────────────────────────────
+// ── Geometry ──────────────────────────────────────────────────────────────────
 const arcW      = 3
 const pad       = 9
 const total     = computed(() => props.size + pad * 2)
@@ -81,16 +78,36 @@ const R         = computed(() => C.value - arcW / 2 - 1)
 const circ      = computed(() => 2 * Math.PI * R.value)
 const arcLen    = computed(() => (100 / 360) * circ.value)
 const gapLen    = computed(() => circ.value - arcLen.value)
-const arc1Start = -90 + 10   // start at top, slight offset
+const arc1Start = -90 + 10
 
-// ── Opacity: brillant OK, pâle sinon ─────────────────────────────────────
-const arcOpacity = computed(() => {
-  if (status.value === 'ok')    return 1
-  if (status.value === 'error') return 1     // couleur propre mais clignotante
-  return 0.28                                // pâle : non connecté / inconnu
+// ── Arc colors per state ───────────────────────────────────────────────────────
+// OK  : vivid individual colors (indigo / green / sky-blue)
+// none/unknown : all violet-dim (same hue as logo, pâle)
+// error : all red (#ef4444), blinking
+const arc1Color = computed(() => {
+  if (status.value === 'ok')    return '#6366f1'  // indigo — logo color
+  if (status.value === 'error') return '#ef4444'  // red
+  return '#7c3aed'                                // violet dim (not connected)
+})
+const arc2Color = computed(() => {
+  if (status.value === 'ok')    return '#22c55e'  // green
+  if (status.value === 'error') return '#ef4444'
+  return '#7c3aed'
+})
+const arc3Color = computed(() => {
+  if (status.value === 'ok')    return '#38bdf8'  // sky blue
+  if (status.value === 'error') return '#ef4444'
+  return '#7c3aed'
 })
 
-// ── CSS animation class ───────────────────────────────────────────────────
+// ── Opacity ────────────────────────────────────────────────────────────────────
+const arcOpacity = computed(() => {
+  if (status.value === 'ok')    return 1
+  if (status.value === 'error') return 1
+  return 0.35   // violet pâle quand non connecté
+})
+
+// ── Animation ──────────────────────────────────────────────────────────────────
 const arcClass = computed(() => {
   if (status.value === 'ok')    return 'arc-ok'
   if (status.value === 'error') return 'arc-error'
@@ -99,16 +116,16 @@ const arcClass = computed(() => {
 </script>
 
 <style scoped>
-/* OK : respiration lente avec glow */
+/* OK : respiration douce avec glow indigo */
 @keyframes arc-breathe {
   0%, 100% { opacity: 1;   filter: drop-shadow(0 0 4px currentColor); }
-  50%       { opacity: 0.5; filter: none; }
+  50%       { opacity: 0.55; filter: none; }
 }
 .arc-ok {
   animation: arc-breathe 2.8s ease-in-out infinite;
 }
 
-/* Erreur : clignotement dans la couleur propre de l'arc */
+/* Erreur : clignotement rouge */
 @keyframes arc-blink {
   0%, 49%   { opacity: 1; }
   50%, 100% { opacity: 0; }

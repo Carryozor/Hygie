@@ -36,6 +36,18 @@ _TABLES = [
         [],
     ),
     (
+        "refresh_tokens",
+        """CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT    NOT NULL UNIQUE,
+            expires_at TEXT    NOT NULL,
+            created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            revoked    INTEGER NOT NULL DEFAULT 0
+        )""",
+        [],
+    ),
+    (
         "libraries",
         """CREATE TABLE IF NOT EXISTS libraries (
             id TEXT PRIMARY KEY,

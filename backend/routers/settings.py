@@ -70,6 +70,8 @@ class SettingsUpdate(BaseModel):
     plex_webhook_secret: Optional[str] = None
     plex_overlay_enabled: Optional[str] = None
     public_dashboard_enabled: Optional[str] = None
+    public_dashboard_slug:    Optional[str] = None
+    public_dashboard_password: Optional[str] = None
 
 
 _TESTERS = {

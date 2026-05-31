@@ -87,9 +87,17 @@
       </div>
       <div v-if="backups.length" class="space-y-1">
         <div class="text-xs text-[var(--muted)] font-semibold uppercase tracking-wide mb-2">Sauvegardes existantes</div>
-        <div v-for="b in backups" :key="b.filename" class="flex items-center justify-between text-xs px-3 py-1.5 bg-[var(--bg3)] rounded-lg">
-          <span class="font-mono">{{ b.filename }}</span>
-          <span class="text-[var(--muted)]">{{ b.size_mb ? b.size_mb + ' MB' : '' }}</span>
+        <div v-for="b in backups" :key="b.filename" class="flex items-center justify-between text-xs px-3 py-1.5 bg-[var(--bg3)] rounded-lg group">
+          <span class="font-mono flex-1 truncate">{{ b.filename }}</span>
+          <span class="text-[var(--muted)] mr-3">{{ b.size_mb ? b.size_mb + ' MB' : '' }}</span>
+          <button
+            type="button"
+            class="opacity-0 group-hover:opacity-100 transition-opacity text-red-400/70 hover:text-red-400 w-6 h-6 flex items-center justify-center rounded"
+            title="Supprimer cette sauvegarde"
+            @click.stop="deleteBackup(b.filename)"
+          >
+            <i class="fas fa-trash-can text-[10px]" />
+          </button>
         </div>
       </div>
     </section>
@@ -103,9 +111,41 @@
         </div>
         <ToggleSlider v-model="form.public_dashboard_enabled" />
       </div>
-      <div v-if="form.public_dashboard_enabled" class="text-xs text-[var(--muted)]">
-        URL : <code class="bg-[var(--bg3)] px-1.5 py-0.5 rounded">{{ publicUrl }}</code>
-      </div>
+      <template v-if="form.public_dashboard_enabled">
+        <!-- Custom slug -->
+        <div>
+          <label class="block text-xs text-[var(--muted)] mb-1">Segment d'URL (optionnel)</label>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-[var(--muted)] font-mono shrink-0">{{ origin }}/public/</span>
+            <input
+              v-model="form.public_dashboard_slug"
+              type="text"
+              placeholder="mon-calendrier"
+              class="field flex-1 font-mono text-xs"
+            />
+          </div>
+          <div class="mt-1 text-xs text-[var(--muted)]">
+            URL complète :
+            <code class="bg-[var(--bg3)] px-1.5 py-0.5 rounded">{{ publicUrl }}</code>
+          </div>
+        </div>
+        <!-- Password -->
+        <div>
+          <label class="block text-xs text-[var(--muted)] mb-1">Mot de passe (optionnel)</label>
+          <div class="flex gap-2">
+            <input
+              v-model="form.public_dashboard_password"
+              :type="showPwd ? 'text' : 'password'"
+              placeholder="Laisser vide pour désactiver"
+              class="field flex-1"
+            />
+            <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showPwd = !showPwd">
+              <i :class="['fas', showPwd ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
+            </button>
+          </div>
+          <div class="mt-1 text-xs text-[var(--muted)]">Si défini, le visiteur devra entrer ce mot de passe pour accéder au dashboard.</div>
+        </div>
+      </template>
     </section>
   </div>
 </template>
@@ -121,8 +161,13 @@ const backingUp = ref(false)
 const backupMsg = ref('')
 const backupOk  = ref(false)
 const backups   = ref([])
+const showPwd   = ref(false)
 
-const publicUrl = computed(() => `${window.location.origin}/public`)
+const origin    = window.location.origin
+const publicUrl = computed(() => {
+  const slug = (props.form.public_dashboard_slug || '').trim()
+  return slug ? `${origin}/public/${slug}` : `${origin}/public`
+})
 
 async function triggerBackup() {
   backingUp.value = true; backupMsg.value = ''; backupOk.value = false
@@ -137,6 +182,13 @@ async function triggerBackup() {
 
 async function loadBackups() {
   try { const { data } = await api.get('/backup'); backups.value = data || [] } catch { /* silent */ }
+}
+
+async function deleteBackup(filename) {
+  try {
+    await api.delete(`/backup/${encodeURIComponent(filename)}`)
+    backups.value = backups.value.filter(b => b.filename !== filename)
+  } catch { /* silent */ }
 }
 
 onMounted(loadBackups)

@@ -21,6 +21,35 @@
       <p class="text-sm">Le tableau de bord public n'est pas activé.</p>
     </div>
 
+    <!-- Password form -->
+    <div v-else-if="needPassword" class="flex items-center justify-center py-20">
+      <div class="w-full max-w-sm bg-[var(--bg2)] border border-[var(--border)] rounded-2xl p-8 space-y-5">
+        <div class="text-center">
+          <i class="fas fa-key text-3xl text-[var(--accent)] mb-3 block" />
+          <h2 class="text-lg font-semibold">Accès protégé</h2>
+          <p class="text-xs text-[var(--muted)] mt-1">Entrez le mot de passe pour accéder au calendrier.</p>
+        </div>
+        <div class="space-y-3">
+          <input
+            v-model="passwordInput"
+            type="password"
+            placeholder="Mot de passe…"
+            class="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)]"
+            :class="wrongPassword ? 'border-red-500/50' : ''"
+            @keydown.enter="submitPassword"
+            autofocus
+          />
+          <p v-if="wrongPassword" class="text-xs text-red-400">Mot de passe incorrect.</p>
+          <button
+            class="w-full bg-[var(--accent)] hover:opacity-90 rounded-lg py-2.5 text-sm font-semibold transition-opacity"
+            @click="submitPassword"
+          >
+            Accéder
+          </button>
+        </div>
+      </div>
+    </div>
+
     <template v-else-if="!loading">
       <!-- Calendar -->
       <div class="mb-8">
@@ -134,14 +163,28 @@ v-for="lib in libraries" :key="lib.id"
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
-const events     = ref({})
-const libraries  = ref([])
-const loading    = ref(true)
-const disabled   = ref(false)
-const selectedDay = ref(null)
+const events       = ref({})
+const libraries    = ref([])
+const loading      = ref(true)
+const disabled     = ref(false)
+const needPassword = ref(false)
+const wrongPassword = ref(false)
+const passwordInput = ref('')
+const selectedDay  = ref(null)
+
+// Slug from route param, password from sessionStorage
+const slug = computed(() => route.params.slug || '')
+const SESSION_KEY = 'hygie_public_pwd'
+
+function storedPassword() {
+  return sessionStorage.getItem(SESSION_KEY) || ''
+}
 
 const today     = new Date()
 const viewYear  = ref(today.getFullYear())
@@ -230,16 +273,36 @@ function formatBytes(b) {
   return b + ' o'
 }
 
-onMounted(async () => {
+async function loadDashboard(password = '') {
+  loading.value = true
+  const params = new URLSearchParams()
+  if (slug.value) params.set('slug', slug.value)
+  if (password)   params.set('password', password)
   try {
-    const res = await fetch('/api/public/upcoming')
-    if (res.status === 403) { disabled.value = true; return }
+    const res = await fetch(`/api/public/upcoming?${params}`)
     const data = await res.json()
+    if (res.status === 404)  { disabled.value = true; return }
+    if (res.status === 403 && data.error === 'disabled') { disabled.value = true; return }
+    if (res.status === 401 && data.error === 'password_required') { needPassword.value = true; return }
+    if (res.status === 403 && data.error === 'wrong_password') {
+      needPassword.value = true; wrongPassword.value = true; return
+    }
+    if (!res.ok) { disabled.value = true; return }
+    // Success — store password for next page load
+    if (password) sessionStorage.setItem(SESSION_KEY, password)
+    needPassword.value = false; wrongPassword.value = false
     events.value = data.events || {}
     libraries.value = data.libraries || []
   } catch { disabled.value = true }
   finally { loading.value = false }
-})
+}
+
+async function submitPassword() {
+  wrongPassword.value = false
+  await loadDashboard(passwordInput.value)
+}
+
+onMounted(() => loadDashboard(storedPassword()))
 </script>
 
 <style scoped>

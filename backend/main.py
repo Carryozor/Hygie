@@ -305,11 +305,27 @@ async def version_info():
 
 # ─── Public dashboard ─────────────────────────────────────────────────────────
 @app.get("/api/public/upcoming")
-async def public_upcoming():
-    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true."""
+async def public_upcoming(slug: str = "", password: str = ""):
+    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true.
+
+    Optional protection:
+    - slug: must match public_dashboard_slug if set
+    - password: must match public_dashboard_password if set
+    """
     enabled = await get_setting("public_dashboard_enabled")
     if enabled != "true":
-        return JSONResponse({"error": "Public dashboard disabled"}, status_code=403)
+        return JSONResponse({"error": "disabled"}, status_code=403)
+
+    cfg_slug = (await get_setting("public_dashboard_slug") or "").strip()
+    if cfg_slug and slug != cfg_slug:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
+    if cfg_pwd:
+        if not password:
+            return JSONResponse({"error": "password_required"}, status_code=401)
+        if password != cfg_pwd:
+            return JSONResponse({"error": "wrong_password"}, status_code=403)
 
     from collections import defaultdict
     from .db.utils import parse_iso_dt

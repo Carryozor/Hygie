@@ -7,27 +7,27 @@
     <!-- Queue stats -->
     <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
       <StatCard
-        label="En attente"
+        :label="t('dashboard.stats.pending')"
         :value="stats.global.queue?.pending ?? 0"
         icon="fa-clock"
         color="yellow"
-        :sub="`${stats.global.queue?.total ?? 0} au total`"
+        :sub="`${stats.global.queue?.total ?? 0} ${t('dashboard.stats.total')}`"
       />
       <StatCard
-        label="Suppressions totales"
+        :label="t('dashboard.stats.totalDeleted')"
         :value="stats.global.total_deleted ?? 0"
         icon="fa-check-circle"
         color="green"
-        :sub="`${currentMonthDeleted} ce mois`"
+        :sub="`${currentMonthDeleted} ${t('dashboard.stats.thisMonth')}`"
       />
       <StatCard
-        label="Ignorés"
+        :label="t('dashboard.stats.ignored')"
         :value="stats.global.total_ignored ?? 0"
         icon="fa-ban"
         color="gray"
       />
       <StatCard
-        label="Erreurs"
+        :label="t('dashboard.stats.errors')"
         :value="stats.global.queue?.error ?? 0"
         icon="fa-exclamation-circle"
         color="red"
@@ -37,28 +37,28 @@
     <!-- Storage row -->
     <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
       <StatCard
-        label="Espace récupérable"
+        :label="t('dashboard.stats.reclaimableSpace')"
         :value="stats.storage.queue?.reclaimable_size ?? 0"
         icon="fa-hdd"
         color="blue"
         format="bytes"
       />
       <StatCard
-        label="Films en bibliothèque"
+        :label="t('dashboard.stats.moviesInLibrary')"
         :value="stats.storage.movies?.total_in_library ?? stats.storage.movies?.count ?? 0"
         icon="fa-film"
         color="accent"
         :sub="stats.storage.movies?.size ? formatBytes(stats.storage.movies.size) : ''"
       />
       <StatCard
-        label="Séries en bibliothèque"
+        :label="t('dashboard.stats.seriesInLibrary')"
         :value="stats.storage.series?.count ?? 0"
         icon="fa-tv"
         color="accent"
         :sub="stats.storage.series?.size ? formatBytes(stats.storage.series.size) : ''"
       />
       <StatCard
-        label="Scans effectués"
+        :label="t('dashboard.stats.scansPerformed')"
         :value="stats.global.total_scans ?? 0"
         icon="fa-sync"
         color="accent"
@@ -136,15 +136,15 @@
     <!-- Top 5 upcoming deletions -->
     <div class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden">
       <div class="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
-        <h2 class="font-semibold text-sm">5 prochaines suppressions</h2>
+        <h2 class="font-semibold text-sm">{{ t('dashboard.upcoming.title') }}</h2>
         <router-link to="/queue" class="text-xs text-[var(--accent)] hover:underline flex items-center gap-1">
-          <i class="fas fa-list text-[10px]" /> Voir tout
+          <i class="fas fa-list text-[10px]" /> {{ t('dashboard.upcoming.viewAll') }}
         </router-link>
       </div>
-      <div v-if="loading" class="p-8 text-center text-[var(--muted)] text-sm">Chargement...</div>
+      <div v-if="loading" class="p-8 text-center text-[var(--muted)] text-sm">{{ t('common.loading') }}</div>
       <div v-else-if="!recentQueue.length" class="p-8 text-center text-[var(--muted)] text-sm">
         <i class="fas fa-check-circle text-2xl mb-2 block opacity-30" />
-        Aucune suppression planifiée
+        {{ t('dashboard.upcoming.empty') }}
       </div>
       <table v-else class="w-full text-sm">
         <tbody>

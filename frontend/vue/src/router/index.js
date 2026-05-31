@@ -12,7 +12,7 @@ const routes = [
   { path: '/settings',    name: 'settings',  component: () => import('@/views/SettingsView.vue')  },
   { path: '/logs',        name: 'logs',      component: () => import('@/views/LogsView.vue')      },
   { path: '/ignored',     name: 'ignored',   component: () => import('@/views/IgnoredView.vue')   },
-  { path: '/public',      name: 'public',    component: () => import('@/views/PublicView.vue'),    meta: { public: true } },
+  { path: '/public/:slug?', name: 'public',  component: () => import('@/views/PublicView.vue'),    meta: { public: true } },
 ]
 
 const router = createRouter({

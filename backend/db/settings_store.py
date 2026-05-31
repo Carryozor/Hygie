@@ -57,6 +57,8 @@ DEFAULT_SETTINGS = {
     "plex_webhook_secret": "",
     "plex_tv_token": "",
     "plex_overlay_enabled": "false",
+    "public_dashboard_slug": "",        # Custom URL segment, e.g. "mon-dashboard"
+    "public_dashboard_password": "",    # Optional password (empty = no auth)
 }
 
 # ─── Settings cache ───────────────────────────────────────────────────────────

@@ -4,11 +4,10 @@ import os
 import shutil
 from datetime import datetime, timezone
 
-import aiosqlite
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..db.utils import DB_PATH
+from ..db.engine import get_db, DIALECT
 from ..version import VERSION
 
 router = APIRouter(tags=["health"])
@@ -29,27 +28,41 @@ async def health():
     status_info: dict = {
         "status": "healthy",
         "version": VERSION,
+        "dialect": DIALECT,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # DB check
+    # DB check — dialect-aware via get_db() abstraction
     try:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'") as cur:
-                row = await cur.fetchone()
-                status_info["database"] = f"{row[0]} tables" if row else "empty"
+        async with get_db() as db:
+            if DIALECT == "mariadb":
+                row = await db.fetch_one(
+                    "SELECT COUNT(*) AS n FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA = DATABASE()"
+                )
+            else:
+                row = await db.fetch_one(
+                    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table'"
+                )
+            n = row["n"] if row else 0
+            mq_exists = await db.table_exists("media_queue")
+            if not mq_exists:
+                status_info["database"] = f"{DIALECT} / missing required tables"
+                status_info["status"] = "degraded"
+            else:
+                status_info["database"] = f"{DIALECT} / {n} tables"
     except Exception as e:
         status_info["database"] = f"error: {e}"
         status_info["status"] = "degraded"
 
-    # Scheduler check — verify critical jobs exist and have a valid next_run_time
+    # Scheduler check
     try:
         if _scheduler is not None:
             jobs = {j.id: j for j in _scheduler.get_jobs()}
             critical = ("scan_job", "deletion_job")
             missing = [jid for jid in critical if jid not in jobs or jobs[jid].next_run_time is None]
             if missing:
-                status_info["scheduler"] = f"degraded (jobs sans next_run: {', '.join(missing)})"
+                status_info["scheduler"] = f"degraded (no next_run: {', '.join(missing)})"
                 status_info["status"] = "degraded"
             else:
                 status_info["scheduler"] = f"{len(jobs)} jobs"
@@ -58,16 +71,15 @@ async def health():
     except Exception:
         status_info["scheduler"] = "unavailable"
 
-    # Disk check
+    # Disk check — always check /app/data regardless of dialect
     try:
-        _, _, free = shutil.disk_usage(os.path.dirname(DB_PATH))
+        disk_dir = os.path.dirname(os.environ.get("DB_PATH", "/app/data/hygie.db")) or "/app/data"
+        _, _, free = shutil.disk_usage(disk_dir)
         free_mb = free // (1024 * 1024)
         status_info["disk_free_mb"] = free_mb
+        status_info["disk"] = "low" if free_mb < 50 else "ok"
         if free_mb < 50:
-            status_info["disk"] = "low"
             status_info["status"] = "degraded"
-        else:
-            status_info["disk"] = "ok"
     except Exception:
         status_info["disk"] = "unavailable"
 

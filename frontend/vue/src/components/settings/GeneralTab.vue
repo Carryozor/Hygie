@@ -116,7 +116,7 @@
         <div>
           <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.publicDashboard.slug', 'Segment d\'URL (optionnel)') }}</label>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-[var(--muted)] font-mono shrink-0">{{ origin }}/public/</span>
+            <span class="text-xs text-[var(--muted)] font-mono shrink-0">{{ origin }}/</span>
             <input
               v-model="form.public_dashboard_slug"
               type="text"
@@ -168,7 +168,7 @@ const showPwd   = ref(false)
 const origin    = window.location.origin
 const publicUrl = computed(() => {
   const slug = (props.form.public_dashboard_slug || '').trim()
-  return slug ? `${origin}/public/${slug}` : `${origin}/public`
+  return slug ? `${origin}/${slug}` : origin
 })
 
 async function triggerBackup() {

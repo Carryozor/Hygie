@@ -9,6 +9,7 @@ from ..db.settings_store import get_all_settings, set_setting, get_setting
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
 from ..emby_client import test_connection as test_emby
+from ..db.media_servers import is_plex
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit, test_qui
 from ..discord_client import test_discord, test_discord_alerts
@@ -176,7 +177,7 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
             except (ValueError, TypeError):
                 pass
     if scan_min is not None or del_min is not None:
-        from ..main import reschedule_jobs
+        from .._scheduler_instance import reschedule_jobs
         reschedule_jobs(scan_minutes=scan_min, deletion_minutes=del_min)
 
     scheduler = getattr(request.app.state, "scheduler", None)
@@ -290,12 +291,14 @@ async def delete_media_server(server_id: str, user: str = Depends(require_auth))
 async def test_media_server(server_id: str, user: str = Depends(require_auth)):
     servers = await get_media_servers()
     server = next((s for s in servers if str(s.get("id")) == server_id), None)
-    if server and server.get("type") == "plex":
+    if server and is_plex(server):
         from ..plex_client import test_plex_server
-        ok, message, server_type = await test_plex_server(server)
+        result = await test_plex_server(server)
     else:
-        ok, message, server_type = await test_emby(server_id=server_id)
-    return {"ok": ok, "message": message, "server_type": server_type}
+        result = await test_emby(server_id=server_id)
+    ok, message, server_type = result[0], result[1], result[2]
+    error_code = result[3] if len(result) > 3 else ""
+    return {"ok": ok, "message": message, "server_type": server_type, "error_code": error_code}
 
 
 @router.post("/test/{service}")

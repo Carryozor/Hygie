@@ -10,6 +10,15 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-vue':  ['vue', 'vue-router', 'pinia'],
+          'vendor-i18n': ['vue-i18n'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

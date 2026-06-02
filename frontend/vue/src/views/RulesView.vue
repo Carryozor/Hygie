@@ -48,8 +48,9 @@
               {{ r.enabled ? t('common.enabled') : t('common.disabled') }}
             </button>
             <!-- Run -->
-            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="runningId === (r.library_id || 'all')" @click="runRule(r.library_id)">
-              <i :class="['fas', runningId === (r.library_id || 'all') ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="scanActive" @click="runRule(r.id, r.library_id, null)">
+              <span v-if="runningId === `simple-${r.id}` || (scanActive && runningId === `simple-${r.id}`)" class="dots-anim text-green-400 text-sm"><span>•</span><span>•</span><span>•</span></span>
+              <i v-else :class="['fas', scanActive ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editSimple(r)">
@@ -112,8 +113,9 @@
               {{ r.enabled ? t('common.enabled') : t('common.disabled') }}
             </button>
             <!-- Run -->
-            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="runningId === (r.library_id || 'all')" @click="runRule(r.library_id)">
-              <i :class="['fas', runningId === (r.library_id || 'all') ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+            <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="scanActive" @click="runRule(r.id, r.library_id, r.library_ids)">
+              <span v-if="runningId === `expert-${r.id}`" class="dots-anim text-green-400 text-sm"><span>•</span><span>•</span><span>•</span></span>
+              <i v-else :class="['fas', scanActive ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editExpert(r)">
@@ -165,23 +167,27 @@ import { reactive, computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRulesStore } from '@/stores/rules'
 import { useServersStore } from '@/stores/servers'
+import { useStatusStore } from '@/stores/status'
 import CreateRuleModal from '@/components/rules/CreateRuleModal.vue'
-import api from '@/api/client'
 
 const { t } = useI18n()
 const rules   = useRulesStore()
 const servers = useServersStore()
+const status  = useStatusStore()
 
 const migrating  = ref(false)
 const migrateMsg = ref(null)
 const runningId  = ref(null)
 
-async function runRule(libraryId) {
-  const key = libraryId || 'all'
-  runningId.value = key
+const scanActive = computed(() => status.scanRunning || !!runningId.value)
+
+async function runRule(ruleId, libraryId, libraryIds) {
+  const prefix = libraryId ? 'simple' : 'expert'
+  runningId.value = `${prefix}-${ruleId}`
   try {
-    if (libraryId) await api.post(`/libraries/${libraryId}/scan`)
-    else await api.post('/scan/trigger')
+    await rules.runScan(libraryId, libraryIds)
+    // Poll scheduler until scan actually starts
+    await status.fetchScheduler()
   } catch { /* silent — scan may already be running */ }
   finally { runningId.value = null }
 }
@@ -190,15 +196,13 @@ async function migrateFromLibraries() {
   migrating.value = true
   migrateMsg.value = null
   try {
-    const { data } = await api.post('/expert-rules/migrate-from-libraries')
-    const n = data.created ?? 0
+    const n = await rules.migrateFromLibraries()
     migrateMsg.value = {
       ok: true,
       text: n === 0
         ? t('rules.expertSection.migrateNone')
         : t('rules.expertSection.migrateSuccess', { n }),
     }
-    if (n > 0) await rules.fetchAll()
   } catch {
     migrateMsg.value = { ok: false, text: t('rules.expertSection.migrateError') }
   } finally {

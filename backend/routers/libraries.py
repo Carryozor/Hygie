@@ -11,7 +11,10 @@ from ..auth import require_auth
 from ..db.utils import DB_PATH
 from ..db.engine import get_db
 from ..db.logs import add_log
+from ..logmsg import lm
+
 from ..emby_client import get_libraries as emby_get_libraries
+from ..db.media_servers import is_plex as _is_plex
 from ..scheduler import (
     is_scan_running,
     reevaluate_library_queue,
@@ -72,7 +75,7 @@ async def list_plex_sections(server_id: str, user: str = Depends(require_auth)):
     from ..plex_client import build_plex_client
     servers = await get_media_servers()
     server = next((s for s in servers if str(s.get("id")) == server_id), None)
-    if not server or server.get("type") != "plex":
+    if not server or not _is_plex(server):
         raise HTTPException(404, "Serveur Plex introuvable")
     plex = build_plex_client(server)
     if not plex:
@@ -129,7 +132,7 @@ async def create_library(body: LibraryCreate, user: str = Depends(require_auth))
             ),
         )
         await db.commit()
-    await add_log("INFO", f"Bibliothèque créée : {body.name}", "library")
+    await add_log("INFO", lm("library.created", name=body.name), "library")
     return {"id": lib_id}
 
 
@@ -183,7 +186,7 @@ async def delete_library(library_id: str, user: str = Depends(require_auth)):
     async with get_db() as db:
         await db.execute("DELETE FROM libraries WHERE id=?", (library_id,))
         await db.commit()
-    await add_log("INFO", f"Bibliothèque supprimée : {library_id}", "library")
+    await add_log("INFO", lm("library.deleted", id=library_id), "library")
     return {"status": "ok"}
 
 
@@ -199,13 +202,14 @@ async def clone_library(library_id: str, user: str = Depends(require_auth)):
         new_id = str(uuid.uuid4())
         await db.execute(
             """INSERT INTO libraries
-               (id, name, emby_library_id, conditions, logic, grace_days,
+               (id, name, emby_library_id, server_id, conditions, logic, grace_days,
                 seerr_conditions, enabled, deletion_unit, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 new_id,
                 f"{src['name']} (copie)",
                 src["emby_library_id"],
+                src.get("server_id", "0"),
                 src["conditions"],
                 src["logic"],
                 src["grace_days"],

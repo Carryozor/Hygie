@@ -39,3 +39,4 @@ Thumbs.db
 frontend/dist/
 frontend/vue/node_modules/
 data-local/
+docs/superpowers/

@@ -14,6 +14,8 @@ from .db.utils import DB_PATH, now_utc
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting
 from .db.logs import add_log
+from .logmsg import lm
+
 from .discord_client import send_notification
 
 logger = logging.getLogger(__name__)
@@ -119,11 +121,7 @@ async def _send_pending_notifications():
                             (item["id"], threshold_key),
                         )
                     await db.commit()
-                await add_log(
-                    "INFO",
-                    f"Notification {days}j envoyée pour {len(to_notify)} média(s)",
-                    "job",
-                )
+                await add_log("INFO", lm("notif.sent", days=days, n=len(to_notify)), "job")
             else:
                 logger.warning(f"Threshold notification '{threshold_key}' failed — will retry next cycle")
     except Exception as e:

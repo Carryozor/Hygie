@@ -104,7 +104,8 @@
       "sonarr": "Sonarr",
       "seerr": "Seerr",
       "qbit": "qBittorrent",
-      "discord": "Discord"
+      "discord": "Discord",
+      "database": "Database"
     },
     "saveError": "Save failed",
     "general": {
@@ -178,6 +179,20 @@
       "plexSettings": "Plex Settings",
       "error": {
         "plex": "Cannot contact Plex server"
+      },
+      "errors": {
+        "dns_failure": "Server not found: the address cannot be resolved. Check the URL.",
+        "connection_refused": "Connection refused: check the port and that the service is running.",
+        "host_unreachable": "Host unreachable: check the IP address and network connectivity.",
+        "timeout": "Connection timed out: the server is not responding.",
+        "ssl_error": "SSL/TLS error: try http:// if the server has no certificate.",
+        "network_error": "Network error: unable to reach the server.",
+        "missing_config": "URL or API key missing.",
+        "http_401": "Invalid API key (401): check the key in settings.",
+        "http_403": "Access denied (403): the key lacks required permissions.",
+        "http_404": "Endpoint not found (404): check that the URL is correct.",
+        "http_502": "Bad gateway (502): a reverse proxy is returning an error.",
+        "http_503": "Service unavailable (503): the server is starting up."
       }
     },
     "arr": {
@@ -248,6 +263,67 @@
         "scanFailure": "Scan failure",
         "seerrFailure": "Seerr failure"
       }
+    },
+    "libraries": {
+      "description": "Configure the libraries to monitor",
+      "add": "Add",
+      "empty": "No library configured.",
+      "active": "Active",
+      "inactive": "Inactive",
+      "graceDaysBadge": "{n}d grace",
+      "scanRunning": "Scan running…",
+      "scanTrigger": "Start scan",
+      "scanLaunched": "Scan of \"{name}\" started.",
+      "noConditions": "No condition — all media will be processed",
+      "modalCreate": "New library",
+      "modalEdit": "Edit library",
+      "fieldServer": "Server",
+      "fieldLibrary": "Emby / Jellyfin / Plex library",
+      "fieldName": "Display name",
+      "fieldGraceDays": "Grace period (days)",
+      "fieldDeletionUnit": "Deletion unit",
+      "fieldEnabled": "Active library",
+      "unitEpisode": "Episode",
+      "unitSeason": "Season",
+      "unitSeries": "Series",
+      "choose": "— Choose —",
+      "libIdPlaceholder": "Library ID (e.g. 3e2c4a)",
+      "namePlaceholder": "Movies, Series…",
+      "nameRequired": "Name is required.",
+      "idRequired": "Library ID is required.",
+      "loadError": "Cannot load libraries from the media server.",
+      "deleteConfirm": "Delete library \"{name}\"? Queued media linked to it will not be deleted.",
+      "saving": "Saving…",
+      "saveError": "Error saving."
+    },
+    "database": {
+      "title": "Database",
+      "type": "Type",
+      "connection": "Connection",
+      "tables": "Tables",
+      "refresh": "Refresh",
+      "rowCount": "rows",
+      "migrate": "Migration",
+      "direction": "Direction",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "Target URL",
+      "targetPath": "Target SQLite path",
+      "testConn": "Test connection",
+      "testOk": "Connection successful",
+      "testFail": "Connection failed",
+      "dryRun": "Dry run",
+      "dryRunHint": "Test mode — no data written",
+      "startMigration": "Start migration",
+      "migrating": "Migration in progress…",
+      "success": "Migration complete",
+      "error": "Migration failed",
+      "alreadyRunning": "A migration is already running",
+      "restartHint": "Migration successful. Restart Hygie with",
+      "restartEnvHint": "in your .env to activate the new database.",
+      "noJob": "No migration has been run.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
     }
   },
   "logs": {

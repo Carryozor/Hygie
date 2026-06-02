@@ -104,7 +104,8 @@
       "sonarr": "Sonarr",
       "seerr": "Seerr",
       "qbit": "qBittorrent",
-      "discord": "Discord"
+      "discord": "Discord",
+      "database": "Datenbank"
     },
     "saveError": "Speichern fehlgeschlagen",
     "general": {
@@ -178,6 +179,20 @@
       "plexSettings": "Plex-Einstellungen",
       "error": {
         "plex": "Plex-Server nicht erreichbar"
+      },
+      "errors": {
+        "dns_failure": "Server nicht gefunden: Die Adresse konnte nicht aufgelöst werden. Überprüfen Sie die URL.",
+        "connection_refused": "Verbindung verweigert: Überprüfen Sie den Port und ob der Dienst läuft.",
+        "host_unreachable": "Host nicht erreichbar: Überprüfen Sie die IP-Adresse und Netzwerkkonnektivität.",
+        "timeout": "Verbindungs-Timeout: Der Server antwortet nicht.",
+        "ssl_error": "SSL/TLS-Fehler: Versuchen Sie http://, wenn der Server kein Zertifikat hat.",
+        "network_error": "Netzwerkfehler: Der Server ist nicht erreichbar.",
+        "missing_config": "URL oder API-Schlüssel fehlt.",
+        "http_401": "Ungültiger API-Schlüssel (401): Überprüfen Sie den Schlüssel in den Einstellungen.",
+        "http_403": "Zugriff verweigert (403): Der Schlüssel hat nicht die erforderlichen Berechtigungen.",
+        "http_404": "Endpunkt nicht gefunden (404): Überprüfen Sie, ob die URL korrekt ist.",
+        "http_502": "Bad Gateway (502): Ein Reverse-Proxy gibt einen Fehler zurück.",
+        "http_503": "Dienst nicht verfügbar (503): Der Server wird gestartet."
       }
     },
     "arr": {
@@ -248,6 +263,67 @@
         "scanFailure": "Scan-Fehler",
         "seerrFailure": "Seerr-Fehler"
       }
+    },
+    "libraries": {
+      "description": "Konfigurieren Sie die zu überwachenden Bibliotheken",
+      "add": "Hinzufügen",
+      "empty": "Keine Bibliothek konfiguriert.",
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "graceDaysBadge": "{n}T Gnadenfrist",
+      "scanRunning": "Scan läuft…",
+      "scanTrigger": "Scan starten",
+      "scanLaunched": "Scan von \"{name}\" gestartet.",
+      "noConditions": "Keine Bedingung — alle Medien werden verarbeitet",
+      "modalCreate": "Neue Bibliothek",
+      "modalEdit": "Bibliothek bearbeiten",
+      "fieldServer": "Server",
+      "fieldLibrary": "Emby / Jellyfin / Plex Bibliothek",
+      "fieldName": "Anzeigename",
+      "fieldGraceDays": "Gnadenfrist (Tage)",
+      "fieldDeletionUnit": "Löscheinheit",
+      "fieldEnabled": "Aktive Bibliothek",
+      "unitEpisode": "Episode",
+      "unitSeason": "Staffel",
+      "unitSeries": "Serie",
+      "choose": "— Auswählen —",
+      "libIdPlaceholder": "Bibliotheks-ID (z.B. 3e2c4a)",
+      "namePlaceholder": "Filme, Serien…",
+      "nameRequired": "Name ist erforderlich.",
+      "idRequired": "Bibliotheks-ID ist erforderlich.",
+      "loadError": "Bibliotheken können nicht vom Medienserver geladen werden.",
+      "deleteConfirm": "Bibliothek \"{name}\" löschen? Verknüpfte Medien in der Warteschlange werden nicht gelöscht.",
+      "saving": "Speichern…",
+      "saveError": "Fehler beim Speichern."
+    },
+    "database": {
+      "title": "Datenbank",
+      "type": "Typ",
+      "connection": "Verbindung",
+      "tables": "Tabellen",
+      "refresh": "Aktualisieren",
+      "rowCount": "Zeilen",
+      "migrate": "Migration",
+      "direction": "Richtung",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "Ziel-URL",
+      "targetPath": "Ziel-SQLite-Pfad",
+      "testConn": "Verbindung testen",
+      "testOk": "Verbindung erfolgreich",
+      "testFail": "Verbindung fehlgeschlagen",
+      "dryRun": "Dry run",
+      "dryRunHint": "Testmodus — keine Daten geschrieben",
+      "startMigration": "Migration starten",
+      "migrating": "Migration läuft…",
+      "success": "Migration abgeschlossen",
+      "error": "Migration fehlgeschlagen",
+      "alreadyRunning": "Eine Migration läuft bereits",
+      "restartHint": "Migration erfolgreich. Starten Sie Hygie neu mit",
+      "restartEnvHint": "in Ihrer .env, um die neue Datenbank zu aktivieren.",
+      "noJob": "Keine Migration durchgeführt.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
     }
   },
   "logs": {

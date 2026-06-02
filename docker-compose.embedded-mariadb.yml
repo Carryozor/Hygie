@@ -1,0 +1,37 @@
+# docker-compose.embedded-mariadb.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# MariaDB embarquée dans le même conteneur que Hygie.
+# Style "tout-en-un" : aucun service séparé, une seule image, un seul volume.
+#
+# Utilisation :
+#   1. Construire l'image avec le support MariaDB :
+#      docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml build
+#
+#   2. Démarrer :
+#      docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml up -d
+#
+# Les données MariaDB sont stockées dans ./data/mariadb/ (même volume que SQLite).
+# Le mot de passe est auto-généré et sauvegardé dans ./data/.mariadb_pass.
+# Pour le personnaliser : EMBEDDED_MARIADB_PASSWORD=monMotDePasse dans .env
+#
+# ⚠ Ce mode requiert que le container tourne en root (nécessaire pour mysqld).
+#   Les données Hygie restent dans /app/data (volume monté en lecture/écriture).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  hygie:
+    build:
+      context: .
+      args:
+        EMBEDDED_MARIADB_SUPPORT: "true"
+    image: hygie:embedded
+    # MariaDB doit démarrer sous l'user mysql — nécessite root dans le container
+    user: root
+    environment:
+      - EMBEDDED_MARIADB=true
+      - EMBEDDED_MARIADB_PASSWORD=${EMBEDDED_MARIADB_PASSWORD:-}
+      # DATABASE_URL est auto-configuré par entrypoint.sh — ne pas surcharger ici
+      - DATABASE_URL=
+    # Démarrage plus long (init MariaDB à la 1ère exécution)
+    healthcheck:
+      start_period: 60s

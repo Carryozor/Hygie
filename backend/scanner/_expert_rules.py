@@ -8,6 +8,35 @@ from ..rules.engine import evaluate_rule as _evaluate_rule
 from ..rules.models import RuleAction as _RuleAction
 
 
+def _build_plex_item_data(item: dict) -> dict:
+    """Build item_data from a preprocessed Plex scan item for expert rule evaluation.
+
+    Maps Plex-specific fields to the same schema as _build_item_data so that
+    expert rules work identically across Emby/Jellyfin and Plex libraries.
+    """
+    from ..db.utils import parse_iso_dt, now_utc
+    now = now_utc()
+    added_at       = parse_iso_dt(item.get("added_at") or "")
+    last_viewed_at = parse_iso_dt(item.get("last_viewed_at") or "")
+
+    if last_viewed_at:
+        days_not_watched = (now - last_viewed_at).days
+    elif added_at:
+        days_not_watched = (now - added_at).days
+    else:
+        days_not_watched = 0
+
+    return {
+        "days_not_watched": days_not_watched,
+        "play_count":       int(item.get("view_count") or 0),
+        "rating":           float(item.get("rating") or 0.0),
+        "file_size_gb":     0.0,  # not available from Plex scan API
+        "added_days_ago":   (now - added_at).days if added_at else 0,
+        "media_type":       item.get("media_type") or "Movie",
+        "seerr_user_id":    None,
+    }
+
+
 def _build_item_data(
     item: dict,
     play_count: int,

@@ -29,6 +29,21 @@ MARIADB_TABLES: list[tuple[str, str]] = [
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
     ),
     (
+        "refresh_tokens",
+        """CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id         INT          NOT NULL AUTO_INCREMENT,
+            user_id    INT          NOT NULL,
+            token_hash VARCHAR(255) NOT NULL,
+            expires_at VARCHAR(32)  NOT NULL,
+            created_at VARCHAR(32)  NOT NULL,
+            revoked    TINYINT      NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_rt_token (token_hash),
+            CONSTRAINT fk_rt_user FOREIGN KEY (user_id)
+                REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB CHARSET=utf8mb4""",
+    ),
+    (
         "libraries",
         """CREATE TABLE IF NOT EXISTS libraries (
             id              VARCHAR(255) NOT NULL,
@@ -197,6 +212,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
 ]
 
 MARIADB_INDEXES: list[str] = [
+    "CREATE INDEX IF NOT EXISTS idx_rt_user ON refresh_tokens(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_logs_ts        ON logs(ts)",
     "CREATE INDEX IF NOT EXISTS idx_media_status   ON media_queue(status)",
     "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)",

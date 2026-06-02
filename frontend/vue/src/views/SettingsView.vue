@@ -29,9 +29,10 @@
     <SonarrTab    v-show="activeTab === 'sonarr'"    :form="form" />
     <QbitTab      v-show="activeTab === 'qbit'"      :form="form" />
     <DiscordTab   v-show="activeTab === 'discord'"   :form="form" />
+    <DatabaseTab  v-show="activeTab === 'database'" />
 
     <button
-      v-if="activeTab !== 'servers'"
+      v-if="activeTab !== 'servers' && activeTab !== 'database'"
       :disabled="saving"
       class="w-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg px-6 py-3 text-sm font-semibold transition-opacity"
       @click="save"
@@ -53,6 +54,7 @@ import SonarrTab      from '@/components/settings/SonarrTab.vue'
 import SeerrTab       from '@/components/settings/SeerrTab.vue'
 import QbitTab        from '@/components/settings/QbitTab.vue'
 import DiscordTab     from '@/components/settings/DiscordTab.vue'
+import DatabaseTab    from '@/components/settings/DatabaseTab.vue'
 
 const { t }     = useI18n()
 const settings  = useSettingsStore()
@@ -69,7 +71,8 @@ const TABS = computed(() => [
   { id: 'radarr',  faIcon: null,        label: t('settings.tabs.radarr'),  service: 'radarr' },
   { id: 'sonarr',  faIcon: null,        label: t('settings.tabs.sonarr'),  service: 'sonarr' },
   { id: 'qbit',    faIcon: null,        label: t('settings.tabs.qbit'),    service: form.value.qbit_proxy_url ? 'qui' : 'qbittorrent' },
-  { id: 'discord', faIcon: null,        label: t('settings.tabs.discord'), service: 'discord' },
+  { id: 'discord',  faIcon: null,          label: t('settings.tabs.discord'),  service: 'discord' },
+  { id: 'database', faIcon: 'fa-database', label: t('settings.tabs.database'), service: null },
 ])
 
 function syncForm() {

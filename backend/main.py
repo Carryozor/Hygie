@@ -10,14 +10,12 @@ Endpoints:
   *    /api/...                — authenticated API
 """
 import asyncio
-import hashlib
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +27,8 @@ from .db import utils as _db_utils
 from .db.utils import DB_PATH
 from .db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
+from .logmsg import lm
+
 from .db.schema import init_db
 from .db.websocket import register_ws, unregister_ws
 from .auth import verify_token
@@ -39,12 +39,14 @@ from .scheduler import (
     sync_emby_collection,
     sync_plex_overlays,
 )
+from ._scheduler_instance import scheduler, reschedule_jobs  # noqa: F401 (used by routers/settings.py)
 from . import proxy
 from .version import VERSION
 from .routers import (
     auth,
     backup,
     calendar,
+    database as database_router,
     expert_rules,
     health as health_router,
     ignored,
@@ -52,6 +54,8 @@ from .routers import (
     logs,
     media,
     metrics,
+    public as public_router,
+    scheduler as scheduler_router,
     seerr_rules,
     settings,
     stats,
@@ -60,17 +64,6 @@ from .routers import (
 )
 
 
-def _static_version() -> str:
-    """Compute a short hash of app.js for cache-busting on each deploy."""
-    try:
-        path = os.path.join(os.path.dirname(__file__), "..", "frontend", "static", "js", "app.js")
-        with open(path, "rb") as f:
-            h = hashlib.md5(f.read()).hexdigest()[:10]
-        return f"{VERSION}-{h}"
-    except Exception:
-        return VERSION
-
-STATIC_VERSION = _static_version()
 
 
 async def _internal_cleanup():
@@ -100,24 +93,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-# ─── APScheduler ──────────────────────────────────────────────────────────────
-scheduler = AsyncIOScheduler()
-
-
-def reschedule_jobs(scan_minutes: int | None = None, deletion_minutes: int | None = None) -> None:
-    """Reschedule interval jobs live after settings change. Pass None to skip."""
-    try:
-        if scan_minutes is not None:
-            scheduler.reschedule_job("scan_job", trigger="interval", minutes=max(1, scan_minutes))
-            logger.info(f"scan_job rescheduled to {max(1, scan_minutes)}m interval")
-    except Exception as e:
-        logger.warning(f"reschedule scan_job: {e}")
-    try:
-        if deletion_minutes is not None:
-            scheduler.reschedule_job("deletion_job", trigger="interval", minutes=max(1, deletion_minutes))
-            logger.info(f"deletion_job rescheduled to {max(1, deletion_minutes)}m interval")
-    except Exception as e:
-        logger.warning(f"reschedule deletion_job: {e}")
+# ─── APScheduler (instance imported from _scheduler_instance) ─────────────────
 
 
 async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
@@ -129,15 +105,15 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     """
     now = datetime.now(timezone.utc)
     try:
-        async with aiosqlite.connect(_db_utils.DB_PATH) as db:
-            async with db.execute(
+        from .db.engine import get_db
+        async with get_db() as db:
+            row = await db.fetch_one(
                 "SELECT started_at FROM job_history WHERE job_type=? "
                 "ORDER BY started_at DESC LIMIT 1",
                 (job_type,),
-            ) as cur:
-                row = await cur.fetchone()
-        if row and row[0]:
-            last_ran = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
+            )
+        if row and row.get("started_at"):
+            last_ran = datetime.fromisoformat(row["started_at"].replace("Z", "+00:00"))
             if last_ran.tzinfo is None:
                 last_ran = last_ran.replace(tzinfo=timezone.utc)
             next_run = last_ran + timedelta(minutes=interval_minutes)
@@ -216,7 +192,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
     if not os.environ.get("HYGIE_ENCRYPTION_KEY"):
         logger.warning("HYGIE_ENCRYPTION_KEY not set — sensitive settings stored in plaintext")
-    await add_log("INFO", f"Hygie {VERSION} démarré", "system")
+    await add_log("INFO", lm("system.started", version=VERSION), "system")
 
     yield
 
@@ -283,6 +259,9 @@ app.include_router(unmonitored.router)
 app.include_router(metrics.router)
 app.include_router(backup.router)
 app.include_router(proxy.router)
+app.include_router(public_router.router)
+app.include_router(database_router.router)
+app.include_router(scheduler_router.router)
 
 from .routers import plex_webhook
 app.include_router(plex_webhook.router)
@@ -295,67 +274,6 @@ app.mount(
     name="static",
 )
 templates = Jinja2Templates(directory="frontend/templates")
-
-# ─── Version ──────────────────────────────────────────────────────────────────
-@app.get("/api/version")
-async def version_info():
-    """Public — version display in UI."""
-    return {"version": VERSION}
-
-
-# ─── Public dashboard ─────────────────────────────────────────────────────────
-@app.get("/api/public/upcoming")
-async def public_upcoming(slug: str = "", password: str = ""):
-    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true.
-
-    Optional protection:
-    - slug: must match public_dashboard_slug if set
-    - password: must match public_dashboard_password if set
-    """
-    enabled = await get_setting("public_dashboard_enabled")
-    if enabled != "true":
-        return JSONResponse({"error": "disabled"}, status_code=403)
-
-    cfg_slug = (await get_setting("public_dashboard_slug") or "").strip()
-    if cfg_slug and slug != cfg_slug:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-
-    cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
-    if cfg_pwd:
-        if not password:
-            return JSONResponse({"error": "password_required"}, status_code=401)
-        if password != cfg_pwd:
-            return JSONResponse({"error": "wrong_password"}, status_code=403)
-
-    from collections import defaultdict
-    from .db.utils import parse_iso_dt
-    from .db.engine import get_db
-
-    async with get_db() as db:
-        rows = await db.fetch_all(
-            "SELECT id, title, media_type, library_name, delete_at, poster_url, "
-            "seerr_username, tmdb_id, seerr_request_url "
-            "FROM media_queue WHERE status='pending' ORDER BY delete_at ASC"
-        )
-        libs = await db.fetch_all(
-            "SELECT id, name FROM libraries ORDER BY name"
-        )
-
-    grouped: dict = defaultdict(list)
-    for d in rows:
-        d = dict(d)
-        dt = parse_iso_dt(d.get("delete_at"))
-        if not dt:
-            continue
-        key = dt.strftime("%Y-%m-%d")
-        grouped[key].append(d)
-
-    return {
-        "events": {date: items for date, items in sorted(grouped.items())},
-        "libraries": [dict(r) for r in libs],
-    }
-
-
 
 # ─── WebSocket — log stream ───────────────────────────────────────────────────
 @app.websocket("/ws")
@@ -388,121 +306,6 @@ async def websocket_endpoint(ws: WebSocket):
         pass
     finally:
         unregister_ws(ws)
-
-
-# ─── Scheduler control endpoints ──────────────────────────────────────────────
-@app.get("/api/scheduler/status")
-async def scheduler_status(user: str = Depends(auth.require_auth)):
-    """List scheduled jobs and their next run times (returns array for frontend)."""
-    from ._job_state import is_scan_running, is_deletion_running
-    running_map = {"scan_job": is_scan_running(), "deletion_job": is_deletion_running()}
-    jobs = []
-    for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-            "is_running": running_map.get(job.id, False),
-        })
-    return jobs
-
-
-@app.post("/api/scheduler/run/{job_id}")
-async def scheduler_run(
-    job_id: str,
-    background_tasks: BackgroundTasks,
-    user: str = Depends(auth.require_auth),
-):
-    """Trigger a job manually."""
-    job_map = {
-        "scan": run_scan,
-        "deletion": run_deletion,
-        "collection_sync": sync_emby_collection,
-        "ignored_cleanup": run_ignored_cleanup,
-    }
-    fn = job_map.get(job_id)
-    if not fn:
-        return JSONResponse({"error": "Unknown job"}, status_code=404)
-
-    background_tasks.add_task(fn)
-    return {"status": "started"}
-
-
-# ─── Legacy endpoints (kept for frontend compatibility) ──────────────────────
-@app.post("/api/scan/trigger")
-async def scan_trigger(
-    background_tasks: BackgroundTasks,
-    user: str = Depends(auth.require_auth),
-):
-    """Manual scan trigger (legacy URL — use /api/scheduler/run/scan)."""
-    background_tasks.add_task(run_scan)
-    return {"status": "started"}
-
-
-@app.post("/api/deletion/trigger")
-async def deletion_trigger(
-    background_tasks: BackgroundTasks,
-    user: str = Depends(auth.require_auth),
-):
-    """Manual deletion check trigger."""
-    background_tasks.add_task(run_deletion)
-    return {"status": "started"}
-
-
-@app.post("/api/scan/library/{library_id}")
-async def scan_library_trigger(
-    library_id: str,
-    background_tasks: BackgroundTasks,
-    user: str = Depends(auth.require_auth),
-):
-    """Manual scan for a single library."""
-    from .scheduler import run_scan_library
-    background_tasks.add_task(run_scan_library, library_id)
-    return {"status": "started"}
-
-
-@app.post("/api/emby-collection/sync")
-async def emby_collection_sync(
-    background_tasks: BackgroundTasks,
-    user: str = Depends(auth.require_auth),
-):
-    """Manual sync of the Emby 'Bientôt supprimé' collection."""
-    background_tasks.add_task(sync_emby_collection)
-    return {"status": "started"}
-
-
-@app.get("/api/jobs/history")
-async def jobs_history(user: str = Depends(auth.require_auth), limit: int = 100):
-    """Recent job history, deduplicated. Returns job_name + result aliases."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM job_history ORDER BY started_at DESC LIMIT ?",
-            (limit,),
-        ) as cur:
-            rows = await cur.fetchall()
-    seen: set = set()
-    result = []
-    for row in rows:
-        d = dict(row)
-        d["job_name"] = d.get("job_type") or ""
-        d["result"] = d.get("message") or ""
-        d["status"] = d.get("status") or "interrupted"
-        # Dedup key: same job type within the same minute
-        key = f"{d['job_type']}|{(d.get('started_at') or '')[:16]}"
-        if key not in seen:
-            seen.add(key)
-            result.append(d)
-    return result
-
-
-@app.get("/api/media/job-status")
-async def media_job_status(user: str = Depends(auth.require_auth)):
-    """Whether scan/deletion is currently running."""
-    from .scheduler import is_deletion_running, is_scan_running
-    return {
-        "scan_running": is_scan_running(),
-        "deletion_running": is_deletion_running(),
-    }
 
 
 # ─── SPA fallback (must be last — catches all unmatched GET routes) ───────────

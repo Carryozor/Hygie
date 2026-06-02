@@ -23,6 +23,8 @@ from .discord_client import send_alert, send_notification
 from .notifications import _ensure_notif_columns, _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock
+from .logmsg import lm
+from .db.media_servers import is_plex
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +33,12 @@ logger = logging.getLogger(__name__)
 async def run_deletion():
     """Process queue: send 30d/7d/1d notifications, delete items past their delete_at."""
     if _deletion_lock.locked():
-        await add_log("WARN", "Vérification déjà en cours — ignorée", "job")
+        await add_log("WARN", lm("deletion.already_running"), "job")
         return
 
     async with _deletion_lock:
         run_id = await add_job_run("deletion_check")
-        await add_log("INFO", "Vérification suppressions démarrée", "job")
+        await add_log("INFO", lm("deletion.started"), "job")
         dry_run = await get_bool_setting("dry_run")
         deleted_count = 0
         await _ensure_notif_columns()
@@ -47,6 +49,15 @@ async def run_deletion():
 
             # ── Deletions ────────────────────────────────────────────────────
             to_delete = await get_pending_queue()
+
+            # Pre-load library → server_id map to avoid per-item DB queries in _delete_media
+            async with get_db() as _lib_db:
+                _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
+            _lib_server_map = {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
+            to_delete = [
+                {**dict(r), "_server_id": _lib_server_map.get(r.get("library_id"), "0")}
+                for r in to_delete
+            ]
 
             # Read qbit settings once for the whole batch
             _qbit_action = await get_setting("qbit_action") or "tag_only"
@@ -97,11 +108,7 @@ async def run_deletion():
                 )
 
             prefix = "[DRY RUN] " if dry_run else ""
-            await add_log(
-                "INFO",
-                f"{prefix}Vérification terminée — {deleted_count} suppression(s)",
-                "job",
-            )
+            await add_log("INFO", lm("deletion.done", prefix=prefix, n=deleted_count), "job")
             await finish_job_run(
                 run_id,
                 "success",
@@ -112,7 +119,7 @@ async def run_deletion():
                 await sync_emby_collection()
         except Exception as e:
             logger.exception("Deletion error")
-            await add_log("ERROR", f"Erreur vérification: {e}", "job")
+            await add_log("ERROR", lm("deletion.error", detail=e), "job")
             await finish_job_run(run_id, "error", str(e))
 
 
@@ -152,33 +159,33 @@ async def _delete_from_arr(row: dict) -> None:
         rid_stored = row.get("radarr_id")
         if rid_stored:
             await radarr_delete_by_id(int(rid_stored), delete_files=False)
-            await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
+            await add_log("DEBUG", lm("radarr.removed", title=title), "deletion")
         else:
             found = await radarr_find_by_path(file_path)
             if found:
                 rid, r_url, r_key = found
                 await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
-                await add_log("DEBUG", f"Radarr : {title} retiré", "deletion")
+                await add_log("DEBUG", lm("radarr.removed", title=title), "deletion")
     elif sonarr_series_id and season_number is not None:
         # Season-level consolidated entry — try all servers if no cache info
         ok = await sonarr_delete_season(int(sonarr_series_id), int(season_number))
-        await add_log("DEBUG" if ok else "WARN", f"Sonarr : {title} saison {season_number} {'retirée' if ok else 'erreur'}", "deletion")
+        await add_log("DEBUG" if ok else "WARN", lm("sonarr.season_ok" if ok else "sonarr.season_err", title=title, n=season_number), "deletion")
     elif sonarr_series_id:
         # Series-level consolidated entry
         ok = await sonarr_delete_series(int(sonarr_series_id))
-        await add_log("DEBUG" if ok else "WARN", f"Sonarr : {title} série {'retirée' if ok else 'erreur'}", "deletion")
+        await add_log("DEBUG" if ok else "WARN", lm("sonarr.series_ok" if ok else "sonarr.series_err", title=title), "deletion")
     else:
         sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
         if sid:
             await sonarr_delete_episode_file(int(sid))
-            await add_log("DEBUG", f"Sonarr : {title} retiré", "deletion")
+            await add_log("DEBUG", lm("sonarr.removed", title=title), "deletion")
 
 
 async def _delete_from_seerr(row: dict) -> None:
     """Delete the Seerr request linked to this media, if any."""
     if row.get("seerr_id"):
         await seerr_delete_request(row["seerr_id"])
-        await add_log("DEBUG", f"Seerr : requête {row.get('title','?')} supprimée", "deletion")
+        await add_log("DEBUG", lm("seerr.deleted", title=row.get('title','?')), "deletion")
 
 
 async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag: str) -> None:
@@ -186,16 +193,16 @@ async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag
     try:
         if qbit_action == "delete_torrent":
             ok = await qbit_delete_torrent(torrent_hash, delete_files=True)
-            msg = (f"qBittorrent : torrent + fichier supprimés pour {title}"
-                   if ok else f"qBittorrent : échec suppression {title}")
+            msg = (lm("qbit.torrent_deleted", title=title)
+                   if ok else lm("qbit.torrent_fail", title=title))
             await add_log("INFO" if ok else "WARN", msg, "deletion")
         else:
             ok = await qbit_add_tag(torrent_hash, qbit_tag)
-            msg = (f"qBittorrent : tag '{qbit_tag}' ajouté à {title}"
-                   if ok else f"qBittorrent : échec tag {title}")
+            msg = (lm("qbit.tag_added", tag=qbit_tag, title=title)
+                   if ok else lm("qbit.tag_fail", title=title))
             await add_log("INFO" if ok else "WARN", msg, "deletion")
     except Exception as e:
-        await add_log("WARN", f"qBittorrent erreur pour {title}: {e}", "deletion")
+        await add_log("WARN", lm("qbit.error", title=title, detail=e), "deletion")
 
 
 async def _get_size_bytes(row: dict) -> int:
@@ -241,7 +248,7 @@ async def _delete_media(
     emby_id = row.get("emby_id")
     dry_prefix = "[DRY RUN] " if dry_run else ""
     job_tag = f"[job:{run_id}] " if run_id else ""
-    await add_log("INFO", f"{job_tag}{dry_prefix}Suppression : {title}", "deletion")
+    await add_log("INFO", lm("deletion.item_start", prefix=job_tag+dry_prefix, title=title), "deletion")
 
     if dry_run:
         return True
@@ -250,18 +257,8 @@ async def _delete_media(
         qbit_action = qbit_action or "tag_only"
         qbit_tag = qbit_tag_val or "Supprimé-Hygie"
 
-        # Resolve library server_id for multi-server correctness
-        library_server_id = "0"
-        if row.get("library_id"):
-            try:
-                async with get_db() as _db:
-                    lrow = await _db.fetch_one(
-                        "SELECT server_id FROM libraries WHERE id=?", (row["library_id"],)
-                    )
-                    if lrow and lrow["server_id"]:
-                        library_server_id = str(lrow["server_id"])
-            except Exception as e:
-                logger.debug(f"_delete_media: library_server_id lookup: {e}")
+        # server_id pre-resolved by run_deletion via _lib_server_map
+        library_server_id = str(row.get("_server_id") or "0")
 
         size_bytes, torrent_hash = await asyncio.gather(
             _get_size_bytes(row),
@@ -271,7 +268,7 @@ async def _delete_media(
         try:
             await send_notification([row], "now", dry_run=False)
         except Exception as e:
-            await add_log("WARN", f"{job_tag}Discord (non bloquant) : {e}", "deletion")
+            await add_log("WARN", lm("deletion.discord_warn", prefix=job_tag, detail=e), "deletion")
 
         # Resolve server type to route Plex vs Emby/Jellyfin deletion
         _server_type = ""
@@ -285,16 +282,16 @@ async def _delete_media(
 
         # Skip deletion for consolidated season/series entries (synthetic IDs)
         if emby_id and not str(emby_id).startswith("sonarr-"):
-            if _server_type == "plex":
+            if is_plex(_srv or {}):
                 from .plex_client import build_plex_client as _bpc
                 _plex_client = _bpc(_srv or {})
                 if _plex_client:
                     rating_key = row.get("plex_rating_key") or emby_id
                     await _plex_client.delete_item(rating_key)
-                    await add_log("DEBUG", f"{job_tag}Plex : élément supprimé {rating_key}", "deletion")
+                    await add_log("DEBUG", lm("plex.deleted", key=rating_key), "deletion")
             else:
                 await delete_item(emby_id, server_id=library_server_id)
-                await add_log("DEBUG", f"{job_tag}Emby : hardlink retiré pour {title}", "deletion")
+                await add_log("DEBUG", lm("emby.hardlink", title=title), "deletion")
 
         await _delete_from_arr(row)
         await _delete_from_seerr(row)
@@ -302,9 +299,9 @@ async def _delete_media(
         if torrent_hash:
             await _handle_qbit(torrent_hash, title, qbit_action, qbit_tag)
         else:
-            await add_log("INFO", f"{job_tag}qBittorrent : torrent non trouvé pour {title} (ignoré)", "deletion")
+            await add_log("INFO", lm("deletion.qbit_not_found", prefix=job_tag, title=title), "deletion")
 
-        await add_log("INFO", f"{job_tag}Suppression complète : {title}", "deletion")
+        await add_log("INFO", lm("deletion.item_done", prefix=job_tag, title=title), "deletion")
 
         try:
             month = now_utc().strftime("%Y-%m")
@@ -323,7 +320,7 @@ async def _delete_media(
         return True
     except Exception as e:
         logger.exception(f"_delete_media {title}")
-        await add_log("ERROR", f"{job_tag}Erreur suppression {title}: {e}", "deletion")
+        await add_log("ERROR", lm("deletion.item_error", prefix=job_tag, title=title, detail=e), "deletion")
         return False
 
 
@@ -346,11 +343,7 @@ async def run_ignored_cleanup():
                 (now,),
             )
             await db.commit()
-            await add_log(
-                "INFO",
-                f"Expiration ignorés : {len(expired)} média(s) remis en circulation",
-                "system",
-            )
+            await add_log("INFO", lm("cleanup.ignored_expired", n=len(expired)), "system")
 
     # Purge deleted entries older than retention setting
     try:
@@ -371,11 +364,7 @@ async def run_ignored_cleanup():
                     )
                     await db.commit()
                     purged_rows += count
-                    await add_log(
-                        "INFO",
-                        f"Rétention : {count} entrée(s) supprimée(s) de l'historique (>{retention_days}j)",
-                        "system",
-                    )
+                    await add_log("INFO", lm("cleanup.retention", n=count, days=retention_days), "system")
     except Exception as e:
         logger.debug(f"Purge retention: {e}")
 
@@ -393,11 +382,7 @@ async def run_ignored_cleanup():
                     await db.execute("DELETE FROM logs WHERE ts < ?", (cutoff,))
                     await db.commit()
                     purged_rows += count
-                    await add_log(
-                        "INFO",
-                        f"Purge logs : {count} entrée(s) > {log_retention}j supprimée(s)",
-                        "system",
-                    )
+                    await add_log("INFO", lm("cleanup.logs", n=count, days=log_retention), "system")
     except Exception as e:
         logger.debug(f"Purge logs: {e}")
 
@@ -420,20 +405,24 @@ async def run_ignored_cleanup():
     except Exception as e:
         logger.debug(f"Purge job_history: {e}")
 
-    # VACUUM + WAL checkpoint to reclaim disk space after large purges
+    # VACUUM + WAL checkpoint — SQLite only (no equivalent on MariaDB)
     if purged_rows > 1000:
-        try:
-            loop = asyncio.get_running_loop()
-            import sqlite3 as _sqlite3
-            def _vacuum():
-                conn = _sqlite3.connect(DB_PATH, timeout=30)
-                conn.execute("VACUUM")
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                conn.close()
-            await loop.run_in_executor(None, _vacuum)
-            await add_log("INFO", f"VACUUM exécuté — {purged_rows} entrées purgées, espace disque libéré", "system")
-        except Exception as e:
-            logger.debug(f"VACUUM: {e}")
+        from .db.engine import DIALECT
+        if DIALECT == "sqlite":
+            try:
+                loop = asyncio.get_running_loop()
+                import sqlite3 as _sqlite3
+                def _vacuum():
+                    conn = _sqlite3.connect(DB_PATH, timeout=30)
+                    conn.execute("VACUUM")
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    conn.close()
+                await loop.run_in_executor(None, _vacuum)
+                await add_log("INFO", lm("cleanup.vacuum", n=purged_rows), "system")
+            except Exception as e:
+                logger.debug(f"VACUUM: {e}")
+        else:
+            logger.debug("VACUUM/WAL checkpoint skipped (dialect: %s)", DIALECT)
 
 
 async def _delete_single_item(*, item: dict, server: dict, dry_run: bool = False) -> bool:

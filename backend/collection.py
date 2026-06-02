@@ -17,6 +17,8 @@ from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_log
+from .logmsg import lm
+
 from .emby_client import get_client
 from .overlay import _overlay_poster
 
@@ -130,7 +132,7 @@ async def _restore_posters_for_removed(
                     content=b64,
                 )
                 if resp.status_code in (200, 204):
-                    await add_log("INFO", f"Affiche restaurée : {emby_id}", "system")
+                    await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
                 else:
                     logger.warning(f"Restore poster HTTP {resp.status_code} for {emby_id}")
             except Exception as e:
@@ -188,7 +190,7 @@ async def _apply_overlays(
                     content=b64,
                 )
                 if resp.status_code in (200, 204):
-                    await add_log("INFO", f"Overlay appliqué : {w.get('title')}", "system")
+                    await add_log("INFO", lm("collection.overlay_applied", title=w.get('title')), "system")
                 else:
                     logger.warning(
                         f"Overlay upload HTTP {resp.status_code} for {w.get('title')}: "

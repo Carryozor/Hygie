@@ -75,6 +75,11 @@ def _invalidate_settings_cache() -> None:
     _settings_cache_ts = 0.0
 
 
+def get_language_sync() -> str:
+    """Return ui_language from the in-process cache without DB I/O. Defaults to 'fr'."""
+    return (_settings_cache.get("ui_language") or "fr").split("-")[0]
+
+
 # ─── Settings ─────────────────────────────────────────────────────────────────
 async def get_setting(key: str) -> str:
     global _settings_cache, _settings_cache_ts

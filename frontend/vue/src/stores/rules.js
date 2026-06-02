@@ -64,10 +64,31 @@ export const useRulesStore = defineStore('rules', () => {
     await updateExpertRule(id, { ...rule, enabled: !rule.enabled })
   }
 
+  async function migrateFromLibraries() {
+    const { data } = await api.post('/expert-rules/migrate-from-libraries')
+    const n = data.created ?? 0
+    if (n > 0) await fetchAll()
+    return n
+  }
+
+  async function runScan(libraryId, libraryIds = null) {
+    if (libraryIds?.length) {
+      // Multi-library expert rule — scan each targeted library
+      for (const libId of libraryIds) {
+        await api.post(`/libraries/${libId}/scan`)
+      }
+    } else if (libraryId) {
+      await api.post(`/libraries/${libraryId}/scan`)
+    } else {
+      await api.post('/scan/trigger')
+    }
+  }
+
   return {
     simpleRules, expertRules, loading,
     fetchAll,
     createSimpleRule, updateSimpleRule, deleteSimpleRule,
     createExpertRule, updateExpertRule, deleteExpertRule, toggleExpertRule,
+    migrateFromLibraries, runScan,
   }
 })

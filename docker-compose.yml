@@ -1,6 +1,6 @@
 services:
   hygie:
-    image: ghcr.io/carryozor/hygie:2.5.1
+    image: ghcr.io/carryozor/hygie:3.0.0
     container_name: hygie
     restart: unless-stopped
     ports:
@@ -14,8 +14,15 @@ services:
       # 2. Generate a key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # Never hardcode the key here — use the .env file instead.
       - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
-      # Optional: set DATABASE_URL to use MariaDB instead of SQLite (requires mariadb profile)
+      # ── Base de données ──
+      # SQLite (défaut)   : laisser DATABASE_URL vide
+      # MariaDB embarquée : utiliser docker-compose.embedded-mariadb.yml
+      #                     docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml up
+      # MariaDB externe   : DATABASE_URL=mysql+aiomysql://user:pass@host:3306/hygie
+      # MariaDB conteneur : DATABASE_URL=mysql+aiomysql://hygie:${DB_MARIADB_PASSWORD:-hygie_secret}@mariadb:3306/hygie
       - DATABASE_URL=${DATABASE_URL:-}
+      - EMBEDDED_MARIADB=${EMBEDDED_MARIADB:-false}
+      - EMBEDDED_MARIADB_PASSWORD=${EMBEDDED_MARIADB_PASSWORD:-}
     mem_limit: 1g     # 512m is too tight for large libraries; 1-2g recommended in production
     cpus: '2.0'
     healthcheck:
@@ -41,7 +48,7 @@ services:
     volumes:
       - hygie_mariadb:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "hygie", "-phygie_secret"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "hygie", "-p${DB_MARIADB_PASSWORD:-hygie_secret}"]
       interval: 5s
       timeout: 5s
       retries: 10

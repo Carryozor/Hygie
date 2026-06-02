@@ -199,10 +199,20 @@ async def test_plex_server(server: dict) -> tuple[bool, str, str]:
                 data = resp.json()
                 mc = data.get("MediaContainer", {})
                 version = mc.get("version", "?")
-                return True, f"Plex Media Server v{version}", "plex"
-            return False, f"HTTP {resp.status_code}", "plex"
+                return True, f"Plex Media Server v{version}", "plex", ""
+            codes = {401: "http_401", 403: "http_403", 404: "http_404", 502: "http_502", 503: "http_503"}
+            return False, f"HTTP {resp.status_code}", "plex", codes.get(resp.status_code, f"http_{resp.status_code}")
     except Exception as e:
-        return False, str(e), "plex"
+        s = str(e).lower()
+        if "name or service not known" in s or "errno -2" in s:
+            code = "dns_failure"
+        elif "connection refused" in s or "errno 111" in s:
+            code = "connection_refused"
+        elif "timed out" in s or "timeout" in s:
+            code = "timeout"
+        else:
+            code = "network_error"
+        return False, str(e), "plex", code
 
 
 def build_plex_client(server: dict) -> Optional["PlexClient"]:

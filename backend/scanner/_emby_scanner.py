@@ -13,6 +13,8 @@ from ..db.utils import now_utc, parse_iso_dt
 from ..db.engine import get_db
 from ..db.settings_store import get_setting, get_bool_setting
 from ..db.logs import add_log
+from ..logmsg import lm
+
 from ..emby_client import (
     get_client,
     get_items_in_library,
@@ -58,7 +60,7 @@ async def _scan_library(
     added = 0
     start = 0
     prefix = f"{server_name} : " if server_name else ""
-    await add_log("INFO", f"Scan : {prefix}{lib['name']}", "scan")
+    await add_log("INFO", lm("scan.lib_scan", prefix=prefix, name=lib['name']), "scan")
 
     user_data_cache: dict = {}
     if user_ids:
@@ -171,7 +173,7 @@ async def _scan_library(
                         season_number=season_number_val,
                     )
                     eligible.append(expert_entry)
-                    await add_log("INFO", f"Expert rule match (queue) : {item.get('Name') or emby_id}", "scan")
+                    await add_log("INFO", lm("scan.expert_match", title=item.get('Name') or emby_id), "scan")
 
         start += 500
         if start >= total:
@@ -186,7 +188,7 @@ async def _scan_library(
             lib, eligible, sonarr_cache or {}, deletion_unit, queued_ids, dry_run
         )
 
-    await add_log("INFO", f"{prefix}{lib['name']} : {added} ajouté(s)", "scan")
+    await add_log("INFO", lm("scan.lib_result", prefix=prefix, name=lib['name'], n=added), "scan")
     return added
 
 
@@ -260,9 +262,9 @@ async def reevaluate_library_queue(library_id: str) -> int:
                 await db.execute("DELETE FROM media_queue WHERE id=?", (row["id"],))
                 await db.commit()
             removed += 1
-            await add_log("INFO", f"Retiré (conditions changées) : {row['title']}", "scan")
+            await add_log("INFO", lm("scan.removed_conditions", title=row['title']), "scan")
 
     if removed:
-        await add_log("INFO", f"Réévaluation {lib['name']} : {removed} média(s) retirés", "scan")
+        await add_log("INFO", lm("scan.reevaluated", name=lib['name'], n=removed), "scan")
         await sync_emby_collection()
     return removed

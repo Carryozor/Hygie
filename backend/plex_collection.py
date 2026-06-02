@@ -16,6 +16,8 @@ import httpx
 
 from .db.engine import get_db
 from .db.logs import add_log
+from .logmsg import lm
+
 from .db.media_servers import get_media_servers
 from .db.settings_store import get_bool_setting, get_setting
 from .db.utils import now_utc, parse_iso_dt
@@ -133,7 +135,7 @@ async def _apply_plex_overlays(plex: PlexClient, items: list, ui_lang: str) -> N
 
                 ok = await plex.upload_poster(rating_key, modified)
                 if ok:
-                    await add_log("INFO", f"Plex overlay appliqué : {item.get('title')}", "system")
+                    await add_log("INFO", lm("collection.plex_overlay", title=item.get('title')), "system")
             except Exception as e:
                 logger.warning("Plex overlay error for %s: %s", item.get("title", "?"), e)
 
@@ -146,6 +148,6 @@ async def _restore_plex_posters(plex: PlexClient, rating_keys: list[str]) -> Non
         try:
             ok = await plex.restore_poster(rating_key)
             if ok:
-                await add_log("INFO", f"Plex affiche restaurée : ratingKey={rating_key}", "system")
+                await add_log("INFO", lm("collection.plex_restored", key=rating_key), "system")
         except Exception as e:
             logger.warning("Plex poster restore error for %s: %s", rating_key, e)

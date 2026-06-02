@@ -22,9 +22,54 @@ from .db.encryption import _decrypt_value
 logger = logging.getLogger(__name__)
 
 
+def _classify_network_error(e: Exception) -> str:
+    """Return a stable error code for a network exception."""
+    s = str(e).lower()
+    if "name or service not known" in s or "errno -2" in s or "errno 8" in s or "nodename nor servname" in s:
+        return "dns_failure"
+    if "connection refused" in s or "errno 111" in s:
+        return "connection_refused"
+    if "no route to host" in s or "errno 113" in s:
+        return "host_unreachable"
+    if "ssl" in s or "certificate" in s:
+        return "ssl_error"
+    return "network_error"
+
+
+def _http_error_code(status_code: int) -> str:
+    codes = {401: "http_401", 403: "http_403", 404: "http_404", 502: "http_502", 503: "http_503"}
+    return codes.get(status_code, f"http_{status_code}")
+
+
 def _auth(key: str) -> dict:
     """Return the X-Emby-Token header dict for a given API key."""
     return {"X-Emby-Token": key}
+
+
+async def ensure_server_uid(server_id: str = "0") -> None:
+    """Populate server_uid from /System/Info if not already stored (idempotent)."""
+    servers = await get_media_servers()
+    for s in servers:
+        if str(s.get("id", "")) != str(server_id):
+            continue
+        if s.get("server_uid"):
+            return  # already set
+        url, key = (s.get("url") or "").rstrip("/"), s.get("api_key") or ""
+        if key.startswith("enc:"):
+            key = _decrypt_value(key)
+        if not url or not key:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
+                r = await client.get(f"{url}/System/Info", headers=_auth(key))
+                if r.status_code == 200:
+                    uid = r.json().get("Id", "")
+                    if uid:
+                        s["server_uid"] = uid
+                        await save_media_servers(servers)
+        except Exception:
+            pass
+        return
 
 
 async def get_client(server_id: str = "0") -> Tuple[str, str]:
@@ -88,19 +133,27 @@ async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
                 else:
                     server_type = "unknown"
                     label = f"Unknown {version}"
+                server_uid = info.get("Id", "")
                 servers = await get_media_servers()
                 updated = False
                 for s in servers:
                     if str(s.get("id", "")) == str(server_id):
                         s["type"] = server_type
+                        if server_uid:
+                            s["server_uid"] = server_uid
                         updated = True
                 if updated:
                     await save_media_servers(servers)
                 await set_setting("media_server_type", server_type)
-                return True, label, server_type
-            return False, f"HTTP {r.status_code}", ""
+                return True, label, server_type, ""
+            code = _http_error_code(r.status_code)
+            return False, f"HTTP {r.status_code}", "", code
+    except (httpx.ConnectError, httpx.NetworkError) as e:
+        return False, str(e), "", _classify_network_error(e)
+    except httpx.TimeoutException:
+        return False, "Connection timed out", "", "timeout"
     except Exception as e:
-        return False, str(e), ""
+        return False, str(e), "", ""
 
 
 async def get_libraries(server_id: str = "0") -> List[dict]:

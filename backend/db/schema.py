@@ -281,6 +281,19 @@ _TABLES = [
 ]
 
 
+# Public aliases for migration tools — avoids os.environ / importlib.reload tricks
+_SQLITE_TABLES = _TABLES
+_SQLITE_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_media_status ON media_queue(status)",
+    "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)",
+    "CREATE INDEX IF NOT EXISTS idx_media_emby_id ON media_queue(emby_id)",
+    "CREATE INDEX IF NOT EXISTS idx_media_library_id ON media_queue(library_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ignored_emby_id ON ignored_media(emby_id)",
+    "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)",
+]
+
 _KNOWN_TABLES = frozenset({
     "settings", "users", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",

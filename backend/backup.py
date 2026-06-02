@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Optional
 
 from .db.utils import DB_PATH
+from .db.engine import DIALECT, SQLITE_PATH
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
+from .logmsg import lm
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +46,19 @@ def _do_backup(src_path: str, dst_path: str) -> None:
 
 
 async def run_backup(force: bool = False) -> Optional[str]:
-    """Create a timestamped backup of the DB. Returns the backup filename or None on error.
+    """Create a timestamped backup of the DB (SQLite only).
+
+    Returns the backup filename or None on error/skip.
     If force=True, bypasses the backup_enabled / interval=0 guard (used for manual trigger).
     """
     import asyncio
 
-    if DB_PATH == ":memory:":
+    if DIALECT != "sqlite":
+        logger.info("Backup skipped: SQLite-only feature (active dialect: %s). "
+                    "Use your database provider's backup tools for MariaDB.", DIALECT)
+        return None
+
+    if SQLITE_PATH == ":memory:":
         return None
 
     backup_dir, interval, retention = await _backup_settings()
@@ -62,13 +72,13 @@ async def run_backup(force: bool = False) -> Optional[str]:
 
     try:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _do_backup, DB_PATH, dst)
+        await loop.run_in_executor(None, _do_backup, SQLITE_PATH, dst)
     except Exception as e:
         logger.error(f"Backup failed: {e}")
-        await add_log("ERROR", f"Backup échoué : {e}", "system")
+        await add_log("ERROR", lm("backup.error", detail=e), "system")
         return None
 
-    await add_log("INFO", f"Backup créé : hygie_{ts}.db", "system")
+    await add_log("INFO", lm("backup.done", ts=ts), "system")
 
     # Prune old backups
     backups = sorted(Path(backup_dir).glob("hygie_*.db"))

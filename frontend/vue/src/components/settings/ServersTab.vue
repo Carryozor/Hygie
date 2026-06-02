@@ -189,7 +189,7 @@ import { useServersStore } from '@/stores/servers'
 import { useStatusStore } from '@/stores/status'
 import api from '@/api/client'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
 const settings          = useSettingsStore()
@@ -230,7 +230,8 @@ async function testServer(srv) {
   try {
     const { data } = await api.post(`/settings/media-servers/${srv.id}/test`)
     srv._testOk  = data.ok
-    srv._testMsg = data.message || ''
+    const errKey = data.error_code ? `settings.servers.errors.${data.error_code}` : null
+    srv._testMsg = (!data.ok && errKey && te(errKey)) ? t(errKey) : (data.message || '')
     if (data.server_type) srv.type = data.server_type
     await statusStore.checkServerHealth()
   } catch { srv._testOk = false; srv._testMsg = '' }

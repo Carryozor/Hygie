@@ -104,7 +104,8 @@
       "sonarr": "Sonarr",
       "seerr": "Seerr",
       "qbit": "qBittorrent",
-      "discord": "Discord"
+      "discord": "Discord",
+      "database": "Baza danych"
     },
     "saveError": "Zapisywanie nie powiodło się",
     "general": {
@@ -178,6 +179,20 @@
       "plexSettings": "Ustawienia Plex",
       "error": {
         "plex": "Nie można skontaktować się z serwerem Plex"
+      },
+      "errors": {
+        "dns_failure": "Serwer nie znaleziony: adres nie może być rozwiązany. Sprawdź URL.",
+        "connection_refused": "Połączenie odrzucone: sprawdź port i czy usługa jest uruchomiona.",
+        "host_unreachable": "Host niedostępny: sprawdź adres IP i połączenie sieciowe.",
+        "timeout": "Przekroczono czas połączenia: serwer nie odpowiada.",
+        "ssl_error": "Błąd SSL/TLS: spróbuj z http://, jeśli serwer nie ma certyfikatu.",
+        "network_error": "Błąd sieci: nie można dotrzeć do serwera.",
+        "missing_config": "Brak URL lub klucza API.",
+        "http_401": "Nieprawidłowy klucz API (401): sprawdź klucz w ustawieniach.",
+        "http_403": "Odmowa dostępu (403): klucz nie ma wymaganych uprawnień.",
+        "http_404": "Endpoint nie znaleziony (404): sprawdź czy URL jest poprawny.",
+        "http_502": "Zła brama (502): odwrotny serwer proxy zwraca błąd.",
+        "http_503": "Usługa niedostępna (503): serwer jest uruchamiany."
       }
     },
     "arr": {
@@ -248,6 +263,67 @@
         "scanFailure": "Błąd skanowania",
         "seerrFailure": "Błąd Seerr"
       }
+    },
+    "libraries": {
+      "description": "Skonfiguruj biblioteki do monitorowania",
+      "add": "Dodaj",
+      "empty": "Brak skonfigurowanych bibliotek.",
+      "active": "Aktywna",
+      "inactive": "Nieaktywna",
+      "graceDaysBadge": "{n}d okresu karencji",
+      "scanRunning": "Skanowanie w toku…",
+      "scanTrigger": "Uruchom skanowanie",
+      "scanLaunched": "Skanowanie \"{name}\" uruchomione.",
+      "noConditions": "Brak warunku — wszystkie media zostaną przetworzone",
+      "modalCreate": "Nowa biblioteka",
+      "modalEdit": "Edytuj bibliotekę",
+      "fieldServer": "Serwer",
+      "fieldLibrary": "Biblioteka Emby / Jellyfin / Plex",
+      "fieldName": "Wyświetlana nazwa",
+      "fieldGraceDays": "Okres karencji (dni)",
+      "fieldDeletionUnit": "Jednostka usunięcia",
+      "fieldEnabled": "Aktywna biblioteka",
+      "unitEpisode": "Odcinek",
+      "unitSeason": "Sezon",
+      "unitSeries": "Serial",
+      "choose": "— Wybierz —",
+      "libIdPlaceholder": "ID biblioteki (np. 3e2c4a)",
+      "namePlaceholder": "Filmy, Seriale…",
+      "nameRequired": "Nazwa jest wymagana.",
+      "idRequired": "ID biblioteki jest wymagane.",
+      "loadError": "Nie można załadować bibliotek z serwera.",
+      "deleteConfirm": "Usunąć bibliotekę \"{name}\"? Powiązane media w kolejce nie zostaną usunięte.",
+      "saving": "Zapisywanie…",
+      "saveError": "Błąd podczas zapisywania."
+    },
+    "database": {
+      "title": "Baza danych",
+      "type": "Typ",
+      "connection": "Połączenie",
+      "tables": "Tabele",
+      "refresh": "Odśwież",
+      "rowCount": "wierszy",
+      "migrate": "Migracja",
+      "direction": "Kierunek",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "Docelowy URL",
+      "targetPath": "Docelowa ścieżka SQLite",
+      "testConn": "Testuj połączenie",
+      "testOk": "Połączenie udane",
+      "testFail": "Połączenie nieudane",
+      "dryRun": "Dry run",
+      "dryRunHint": "Tryb testowy — brak zapisu danych",
+      "startMigration": "Uruchom migrację",
+      "migrating": "Migracja w toku…",
+      "success": "Migracja zakończona",
+      "error": "Migracja nie powiodła się",
+      "alreadyRunning": "Migracja jest już w toku",
+      "restartHint": "Migracja udana. Zrestartuj Hygie z",
+      "restartEnvHint": "w pliku .env, aby aktywować nową bazę danych.",
+      "noJob": "Nie wykonano żadnej migracji.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
     }
   },
   "logs": {

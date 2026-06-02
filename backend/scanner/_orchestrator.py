@@ -9,7 +9,7 @@ from ..db.settings_store import get_setting, get_bool_setting
 from ..db.media_servers import get_media_servers
 from ..db.logs import add_job_run, add_log, finish_job_run
 from ..db.repositories import get_enabled_libraries, get_queued_and_ignored_ids
-from ..emby_client import get_users
+from ..emby_client import get_users, ensure_server_uid
 from ..arr_clients import (
     build_radarr_path_cache,
     build_seerr_request_cache,
@@ -19,6 +19,7 @@ from ..exceptions import ArrClientError
 from ..discord_client import send_alert
 from ..notifications import _ensure_notif_columns, _send_pending_notifications
 from ..collection import sync_emby_collection
+from ..logmsg import lm
 from ._emby_scanner import _scan_library
 from ._plex_scanner import _scan_plex_library
 
@@ -70,11 +71,7 @@ async def _purge_stale_seerr_items() -> None:
             )
             await db.commit()
             if result:
-                await add_log(
-                    "INFO",
-                    f"Nettoyage : {result} média(s) retiré(s) de la queue (aucun utilisateur Seerr correspondant)",
-                    "scan",
-                )
+                await add_log("INFO", lm("scan.seerr_cleanup", n=result), "scan")
     except Exception as e:
         logger.warning("_purge_stale_seerr_items: %s", e)
 
@@ -82,12 +79,12 @@ async def _purge_stale_seerr_items() -> None:
 async def run_scan() -> None:
     """Full scan of all enabled libraries across all enabled servers."""
     if _scan_lock.locked():
-        await add_log("WARN", "Scan déjà en cours — ignoré", "job")
+        await add_log("WARN", lm("scan.already_running"), "job")
         return
 
     async with _scan_lock:
         run_id = await add_job_run("scan")
-        await add_log("INFO", "Scan démarré", "job")
+        await add_log("INFO", lm("scan.started"), "job")
         added = 0
         _scan_status, _scan_msg = "error", ""
         await _ensure_notif_columns()
@@ -96,6 +93,21 @@ async def run_scan() -> None:
             enabled_servers = [s for s in servers if s.get("enabled", True)]
             if not enabled_servers:
                 enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
+
+            # Build Seerr cache once — Seerr is global, not per-server
+            seerr_cache: dict = {}
+            try:
+                seerr_cache = await build_seerr_request_cache()
+            except ArrClientError as _seerr_err:
+                await add_log("WARN", lm("scan.seerr_unreachable", detail=_seerr_err), "scan")
+                if await get_bool_setting("discord_alert_seerr_failure"):
+                    _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+                    _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
+                    await send_alert(
+                        "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                        mention=_mention, custom_msg=_msg,
+                        template_vars={"detail": str(_seerr_err)},
+                    )
 
             for server in enabled_servers:
                 server_id   = str(server.get("id", "0"))
@@ -113,8 +125,11 @@ async def run_scan() -> None:
                     continue
 
                 if server_type not in ("emby", "jellyfin", ""):
-                    await add_log("INFO", f"Serveur {server_id} ignoré (type: {server_type})", "scan")
+                    await add_log("INFO", lm("scan.lib_ignored_type", server_id=server_id, type=server_type), "scan")
                     continue
+
+                # Auto-populate server_uid (needed for public calendar links)
+                await ensure_server_uid(server_id)
 
                 libraries = await get_enabled_libraries(server_id)
                 if not libraries:
@@ -125,19 +140,6 @@ async def run_scan() -> None:
 
                 radarr_cache = await build_radarr_path_cache()
                 sonarr_cache = await build_sonarr_path_cache()
-                seerr_cache: dict = {}
-                try:
-                    seerr_cache = await build_seerr_request_cache()
-                except ArrClientError as _seerr_err:
-                    await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
-                    if await get_bool_setting("discord_alert_seerr_failure"):
-                        _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
-                        _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
-                        await send_alert(
-                            "🔌 Seerr inaccessible", str(_seerr_err), "warning",
-                            mention=_mention, custom_msg=_msg,
-                            template_vars={"detail": str(_seerr_err)},
-                        )
 
                 queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 
@@ -164,16 +166,16 @@ async def run_scan() -> None:
                     if isinstance(r, int):
                         added += r
                     elif isinstance(r, Exception):
-                        await add_log("ERROR", f"Erreur scan bibliothèque: {r}", "scan")
+                        await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
 
-            await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
+            await add_log("INFO", lm("scan.done", n=added), "job")
             _scan_status, _scan_msg = "success", f"{added} queued"
             await _purge_stale_seerr_items()
             await sync_emby_collection()
             await _send_pending_notifications()
         except Exception as e:
             logger.exception("Scan error")
-            await add_log("ERROR", f"Erreur scan: {e}", "job")
+            await add_log("ERROR", lm("scan.error", detail=e), "job")
             _scan_msg = str(e)
             if await get_bool_setting("discord_alert_scan_failure"):
                 _mention = await get_setting("discord_alert_scan_failure_mention") or ""
@@ -190,12 +192,12 @@ async def run_scan() -> None:
 async def run_scan_library(library_id: str) -> None:
     """Scan a single library by ID."""
     if _scan_lock.locked():
-        await add_log("WARN", "Scan déjà en cours — ignoré", "job")
+        await add_log("WARN", lm("scan.already_running"), "job")
         return
 
     async with _scan_lock:
         run_id = await add_job_run("scan_library")
-        await add_log("INFO", f"Scan bibliothèque : {library_id}", "job")
+        await add_log("INFO", lm("scan.lib_started", id=library_id), "job")
         _sl_status, _sl_msg = "error", ""
         try:
             async with get_db() as db:
@@ -205,7 +207,7 @@ async def run_scan_library(library_id: str) -> None:
                 )
 
             if not lib:
-                await add_log("WARN", f"Bibliothèque {library_id} introuvable", "scan")
+                await add_log("WARN", lm("scan.lib_not_found", id=library_id), "scan")
                 _sl_status, _sl_msg = "warning", "Library not found"
                 return
 
@@ -247,13 +249,13 @@ async def run_scan_library(library_id: str) -> None:
                 queued_ids=queued_ids, ignored_ids=ignored_ids,
             )
 
-            await add_log("INFO", f"Scan terminé — {added} média(s) ajouté(s)", "job")
+            await add_log("INFO", lm("scan.done", n=added), "job")
             _sl_status, _sl_msg = "success", f"{added} queued"
             await sync_emby_collection()
             await _send_pending_notifications()
         except Exception as e:
             logger.exception("Scan library error")
-            await add_log("ERROR", f"Erreur scan: {e}", "job")
+            await add_log("ERROR", lm("scan.error", detail=e), "job")
             _sl_msg = str(e)
         finally:
             await finish_job_run(run_id, _sl_status, _sl_msg)

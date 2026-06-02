@@ -267,6 +267,12 @@ def rate_limit(key: str) -> bool:
     if DB_PATH == ":memory:":
         return _memory_rate_limit(key, now, cutoff)
 
+    # rate_limit uses synchronous sqlite3 — skip SQLite file I/O on MariaDB
+    # to avoid creating a spurious hygie.db file in a MariaDB-only deployment.
+    from .db.engine import DIALECT
+    if DIALECT != "sqlite":
+        return _memory_rate_limit(key, now, cutoff)
+
     try:
         with _sqlite3.connect(DB_PATH, timeout=5) as conn:
             conn.execute("DELETE FROM rate_limit WHERE ts < ?", (cutoff,))

@@ -1,50 +1,52 @@
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <div class="text-sm text-[var(--muted)]">Configurez les bibliothèques à surveiller</div>
+      <div class="text-sm text-[var(--muted)]">{{ t('settings.libraries.description') }}</div>
       <button
-class="flex items-center gap-1.5 px-3 py-2 bg-[var(--accent)] hover:opacity-90 rounded-lg text-sm transition-opacity"
+        class="flex items-center gap-1.5 px-3 py-2 bg-[var(--accent)] hover:opacity-90 rounded-lg text-sm transition-opacity"
         @click="openCreate">
-        <i class="fas fa-plus text-xs" /> Ajouter
+        <i class="fas fa-plus text-xs" /> {{ t('settings.libraries.add') }}
       </button>
     </div>
 
     <div v-if="!libraries.length" class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-8 text-center text-[var(--muted)] text-sm">
       <i class="fas fa-layer-group text-3xl mb-3 block opacity-30" />
-      Aucune bibliothèque configurée.
+      {{ t('settings.libraries.empty') }}
     </div>
 
     <div
-v-for="lib in libraries" :key="lib.id"
+      v-for="lib in libraries" :key="lib.id"
       class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden">
       <div class="flex items-center gap-3 px-5 py-3 border-b border-[var(--border)] bg-[var(--bg3)]/30">
         <i class="fas fa-layer-group text-[var(--accent)] text-sm" />
         <div class="flex-1 min-w-0">
           <div class="font-semibold text-sm truncate">{{ lib.name }}</div>
           <div class="text-xs text-[var(--muted)] truncate">
-            {{ serverName(lib.server_id) }} · ID Emby: {{ lib.emby_library_id }}
-            · {{ lib.deletion_unit }} · {{ lib.grace_days }}j de grâce
+            {{ serverName(lib.server_id) }} · {{ lib.emby_library_id }}
+            · {{ lib.deletion_unit }} · {{ t('settings.libraries.graceDaysBadge', { n: lib.grace_days }) }}
           </div>
         </div>
         <div class="flex items-center gap-2">
           <span
-class="text-xs px-2 py-0.5 rounded-full"
+            class="text-xs px-2 py-0.5 rounded-full"
             :class="lib.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]'">
-            {{ lib.enabled ? 'Active' : 'Inactive' }}
+            {{ lib.enabled ? t('settings.libraries.active') : t('settings.libraries.inactive') }}
           </span>
           <button
-:title="lib._scanning ? 'Scan en cours…' : 'Lancer un scan'"
+            :title="lib._scanning ? t('settings.libraries.scanRunning') : t('settings.libraries.scanTrigger')"
             class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
             @click="triggerScan(lib)">
             <i :class="['fas', lib._scanning ? 'fa-spinner fa-spin' : 'fa-play', 'text-xs']" />
           </button>
           <button
-title="Modifier" class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-[var(--bg3)] transition-colors"
+            :title="t('common.edit')"
+            class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-[var(--bg3)] transition-colors"
             @click="openEdit(lib)">
             <i class="fas fa-pencil text-xs" />
           </button>
           <button
-title="Supprimer" class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            :title="t('common.delete')"
+            class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
             @click="askDelete(lib)">
             <i class="fas fa-trash text-xs" />
           </button>
@@ -52,73 +54,73 @@ title="Supprimer" class="w-7 h-7 rounded flex items-center justify-center text-[
       </div>
       <div class="px-5 py-2 text-xs text-[var(--muted)] flex flex-wrap gap-3">
         <span v-if="lib.conditions?.length">
-          <i class="fas fa-filter opacity-60 mr-1" />{{ lib.conditions.length }} condition(s)
+          <i class="fas fa-filter opacity-60 mr-1" />{{ lib.conditions.length }} {{ t('settings.libraries.conditions') }}
         </span>
         <span v-if="lib.seerr_conditions?.length">
-          <i class="fas fa-user-tag opacity-60 mr-1" />{{ lib.seerr_conditions.length }} règle(s) Seerr
+          <i class="fas fa-user-tag opacity-60 mr-1" />{{ lib.seerr_conditions.length }} {{ t('settings.libraries.seerrRules') }}
         </span>
-        <span v-else-if="!lib.conditions?.length" class="italic">Aucune condition — tous les médias seront traités</span>
+        <span v-else-if="!lib.conditions?.length" class="italic">{{ t('settings.libraries.noConditions') }}</span>
       </div>
     </div>
 
     <!-- Create / Edit modal -->
     <Teleport to="body">
       <div
-v-if="modal.open"
+        v-if="modal.open"
         class="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-16 overflow-y-auto"
         @mousedown.self="modal.open = false">
         <div class="bg-[var(--bg1)] border border-[var(--border)] rounded-2xl w-full max-w-md shadow-2xl">
           <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
-            <h3 class="font-semibold">{{ modal.id ? 'Modifier la bibliothèque' : 'Nouvelle bibliothèque' }}</h3>
+            <h3 class="font-semibold">{{ modal.id ? t('settings.libraries.modalEdit') : t('settings.libraries.modalCreate') }}</h3>
             <button class="text-[var(--muted)] hover:text-white" @click="modal.open = false">
               <i class="fas fa-times" />
             </button>
           </div>
           <div class="p-6 space-y-4">
             <div>
-              <label class="block text-xs text-[var(--muted)] mb-1">Serveur</label>
+              <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.libraries.fieldServer') }}</label>
               <select v-model="modal.server_id" class="field" @change="loadEmbyLibraries">
                 <option v-for="s in allServers" :key="s.id" :value="String(s.id)">
-                  {{ s.name || 'Serveur ' + s.id }} ({{ s.type || '?' }})
+                  {{ s.name || t('settings.libraries.fieldServer') + ' ' + s.id }} ({{ s.type || '?' }})
                 </option>
               </select>
             </div>
             <div>
-              <label class="block text-xs text-[var(--muted)] mb-1">Bibliothèque Emby/Jellyfin/Plex</label>
+              <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.libraries.fieldLibrary') }}</label>
               <select v-if="embyLibs.length" v-model="modal.emby_library_id" class="field">
-                <option value="">— Choisir —</option>
+                <option value="">{{ t('settings.libraries.choose') }}</option>
                 <option v-for="el in embyLibs" :key="el.id" :value="el.id">{{ el.name }} ({{ el.id }})</option>
               </select>
               <input
-v-else v-model="modal.emby_library_id" type="text"
-                placeholder="ID de la bibliothèque (ex: 3e2c4a)"
+                v-else v-model="modal.emby_library_id" type="text"
+                :placeholder="t('settings.libraries.libIdPlaceholder')"
                 class="field font-mono" />
               <div v-if="embyLibError" class="text-xs text-red-400 mt-1">
                 <i class="fas fa-exclamation-triangle mr-1" />{{ embyLibError }}
               </div>
             </div>
             <div>
-              <label class="block text-xs text-[var(--muted)] mb-1">Nom affiché</label>
-              <input v-model="modal.name" type="text" placeholder="Films, Séries…" class="field" />
+              <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.libraries.fieldName') }}</label>
+              <input v-model="modal.name" type="text" :placeholder="t('settings.libraries.namePlaceholder')" class="field" />
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-[var(--muted)] mb-1">Délai de grâce (jours)</label>
+                <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.libraries.fieldGraceDays') }}</label>
                 <input v-model.number="modal.grace_days" type="number" min="0" max="3650" class="field" />
               </div>
               <div>
-                <label class="block text-xs text-[var(--muted)] mb-1">Unité de suppression</label>
+                <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.libraries.fieldDeletionUnit') }}</label>
                 <select v-model="modal.deletion_unit" class="field">
-                  <option value="episode">Épisode</option>
-                  <option value="season">Saison</option>
-                  <option value="series">Série</option>
+                  <option value="episode">{{ t('settings.libraries.unitEpisode') }}</option>
+                  <option value="season">{{ t('settings.libraries.unitSeason') }}</option>
+                  <option value="series">{{ t('settings.libraries.unitSeries') }}</option>
                 </select>
               </div>
             </div>
             <div class="flex items-center justify-between">
-              <div class="text-sm">Bibliothèque active</div>
+              <div class="text-sm">{{ t('settings.libraries.fieldEnabled') }}</div>
               <button
-type="button" :class="['w-9 h-5 rounded-full flex items-center transition-colors duration-200', modal.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]']"
+                type="button" :class="['w-9 h-5 rounded-full flex items-center transition-colors duration-200', modal.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--border)]']"
                 @click="modal.enabled = !modal.enabled">
                 <span :class="['w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 mx-0.5', modal.enabled ? 'translate-x-4' : 'translate-x-0']" />
               </button>
@@ -129,12 +131,12 @@ type="button" :class="['w-9 h-5 rounded-full flex items-center transition-colors
           </div>
           <div class="flex justify-end gap-3 px-6 pb-6">
             <button class="px-4 py-2 text-sm text-[var(--muted)] hover:text-white transition-colors" @click="modal.open = false">
-              Annuler
+              {{ t('common.cancel') }}
             </button>
             <button
-:disabled="modal.saving" class="px-4 py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white text-sm rounded-lg transition-opacity"
+              :disabled="modal.saving" class="px-4 py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white text-sm rounded-lg transition-opacity"
               @click="save">
-              {{ modal.saving ? 'Enregistrement…' : (modal.id ? 'Modifier' : 'Créer') }}
+              {{ modal.saving ? t('settings.libraries.saving') : (modal.id ? t('common.edit') : t('settings.libraries.modalCreate')) }}
             </button>
           </div>
         </div>
@@ -144,8 +146,8 @@ type="button" :class="['w-9 h-5 rounded-full flex items-center transition-colors
     <!-- Delete confirm -->
     <ConfirmModal
       :show="!!deleteTarget"
-      :message="deleteTarget ? `Supprimer la bibliothèque « ${deleteTarget.name} » ? Les médias en file d\\'attente liés à cette bibliothèque ne seront pas supprimés.` : ''"
-      confirm-label="Supprimer"
+      :message="deleteTarget ? t('settings.libraries.deleteConfirm', { name: deleteTarget.name }) : ''"
+      :confirm-label="t('common.delete')"
       @confirm="doDelete"
       @cancel="deleteTarget = null"
     />
@@ -158,10 +160,12 @@ type="button" :class="['w-9 h-5 rounded-full flex items-center transition-colors
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useServersStore } from '@/stores/servers'
 import ConfirmModal from '@/components/ui/ConfirmModal.vue'
 import api from '@/api/client'
 
+const { t } = useI18n()
 const servers = useServersStore()
 
 const libraries    = ref([])
@@ -190,18 +194,18 @@ async function loadEmbyLibraries() {
   try {
     const { data } = await api.get('/libraries/emby', { params: { server_id: modal.server_id } })
     embyLibs.value = data || []
-  } catch (e) {
-    embyLibError.value = 'Impossible de charger les bibliothèques depuis le serveur média.'
+  } catch {
+    embyLibError.value = t('settings.libraries.loadError')
   }
 }
 
 function serverName(serverId) {
   const s = allServers.value.find(s => String(s.id) === String(serverId))
-  return s ? (s.name || `Serveur ${s.id}`) : `Serveur ${serverId || '0'}`
+  return s ? (s.name || `${t('settings.libraries.fieldServer')} ${s.id}`) : `${t('settings.libraries.fieldServer')} ${serverId || '0'}`
 }
 
 function openCreate() {
-  Object.assign(modal, { open: true, id: null, name: '', server_id: allServers.value[0]?.id ?? '0',
+  Object.assign(modal, { open: true, id: null, name: '', server_id: String(allServers.value[0]?.id ?? '0'),
     emby_library_id: '', grace_days: 7, deletion_unit: 'episode', enabled: true, saving: false, error: '' })
   loadEmbyLibraries()
 }
@@ -214,8 +218,8 @@ function openEdit(lib) {
 }
 
 async function save() {
-  if (!modal.name.trim()) { modal.error = 'Le nom est requis.'; return }
-  if (!modal.emby_library_id.trim()) { modal.error = "L'ID de bibliothèque est requis."; return }
+  if (!modal.name.trim()) { modal.error = t('settings.libraries.nameRequired'); return }
+  if (!modal.emby_library_id.trim()) { modal.error = t('settings.libraries.idRequired'); return }
   modal.saving = true; modal.error = ''
   try {
     const payload = {
@@ -235,7 +239,7 @@ async function save() {
     await loadLibraries()
     await servers.fetch()
   } catch (e) {
-    modal.error = e?.response?.data?.detail || 'Erreur lors de la sauvegarde.'
+    modal.error = e?.response?.data?.detail || t('settings.libraries.saveError')
   } finally { modal.saving = false }
 }
 
@@ -255,7 +259,7 @@ async function triggerScan(lib) {
   lib._scanning = true
   try {
     await api.post(`/libraries/${lib.id}/scan`)
-    scanMsg.value = `Scan de « ${lib.name} » lancé.`
+    scanMsg.value = t('settings.libraries.scanLaunched', { name: lib.name })
     setTimeout(() => { scanMsg.value = '' }, 4000)
   } catch { /* silent */ }
   finally { lib._scanning = false }

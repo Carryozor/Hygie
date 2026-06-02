@@ -59,3 +59,21 @@ async def save_media_servers(servers: list) -> None:
     # Invalidate both caches immediately so next reads reflect the new state
     _ms_cache, _ms_cache_ts = servers, time.monotonic()
     _invalidate_settings_cache()
+
+
+# ─── Server type helpers ──────────────────────────────────────────────────────
+
+def server_type(server: dict) -> str:
+    """Return normalized server type: 'plex', 'emby', 'jellyfin', or ''."""
+    return (server.get("type") or "").lower()
+
+
+def is_plex(server: dict) -> bool:
+    """True if this server is a Plex instance."""
+    return server_type(server) == "plex"
+
+
+def is_emby_compatible(server: dict) -> bool:
+    """True for Emby, Jellyfin, and unknown (legacy) servers — they share the same API."""
+    return server_type(server) in ("emby", "jellyfin", "")
+

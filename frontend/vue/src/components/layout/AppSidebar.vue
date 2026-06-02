@@ -54,7 +54,7 @@
           @click="triggerScan"
         >
           <div class="flex items-center gap-1.5">
-            <i :class="['fas', (triggering === 'scan' || scanRunning) ? 'fa-magnifying-glass' : 'fa-magnifying-glass', 'w-4 text-center opacity-70']" />
+            <i :class="['fas', (triggering === 'scan' || scanRunning) ? 'fa-spinner fa-spin' : 'fa-magnifying-glass', 'w-4 text-center opacity-70']" />
             <span v-if="scanRunning || triggering === 'scan'" class="flex items-center gap-0.5">
               {{ triggering === 'scan' ? t('sidebar.launching') : t('sidebar.scanRunning') }}
               <span class="dots-anim"><span>.</span><span>.</span><span>.</span></span>

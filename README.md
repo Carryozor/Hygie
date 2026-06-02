@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="frontend/static/img/favicon-32.png" width="64" alt="Hygie">
+<img src="frontend/static/img/logo.svg" width="96" alt="Hygie">
 
 # Hygie
 

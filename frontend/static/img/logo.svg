@@ -1,0 +1,24 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Triple arc -->
+  <circle cx="64" cy="64" r="60"
+    stroke="#6366f1" stroke-opacity="0.9" stroke-width="3.5" stroke-linecap="round"
+    stroke-dasharray="104.7 282.7"
+    transform="rotate(-80 64 64)" />
+  <circle cx="64" cy="64" r="60"
+    stroke="#6366f1" stroke-opacity="0.9" stroke-width="3.5" stroke-linecap="round"
+    stroke-dasharray="104.7 282.7"
+    transform="rotate(40 64 64)" />
+  <circle cx="64" cy="64" r="60"
+    stroke="#6366f1" stroke-opacity="0.9" stroke-width="3.5" stroke-linecap="round"
+    stroke-dasharray="104.7 282.7"
+    transform="rotate(160 64 64)" />
+  <!-- Inner caduceus symbol -->
+  <svg x="16" y="16" width="96" height="96" viewBox="0 0 40 40" fill="none">
+    <line x1="9"  y1="8"  x2="9"  y2="32" stroke="#6366f1" stroke-width="3"   stroke-linecap="round"/>
+    <line x1="31" y1="8"  x2="31" y2="32" stroke="#6366f1" stroke-width="3"   stroke-linecap="round"/>
+    <path d="M 9 20 C 15 14 25 26 31 20"  stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 9 32 A 14 7 0 0 0 31 32"   stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 12 32 A 10 5 0 0 0 28 32"  stroke="#818cf8" stroke-width="2"   stroke-linecap="round"/>
+    <path d="M 15 32 A 7 3.5 0 0 0 25 32" stroke="#a5b4fc" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
+</svg>

@@ -68,8 +68,17 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
             (plex_server_id,),
         )
         queued_ids   = {r["emby_id"] for r in queued_rows}
-        ignored_rows = await db.fetch_all("SELECT emby_id FROM ignored_media")
+
+        # Filter ignored_media to THIS server only — same integer collision risk as queued_ids.
+        # Items ignored on other servers have different numeric IDs that could collide.
+        ignored_rows = await db.fetch_all(
+            """SELECT DISTINCT im.emby_id FROM ignored_media im
+               JOIN libraries l ON im.library_id = l.id
+               WHERE l.server_id = ?""",
+            (plex_server_id,),
+        )
         ignored_ids  = {r["emby_id"] for r in ignored_rows}
+
         # TMDB cross-reference — keyed as "{type}_{tmdb_id}" to avoid collisions
         # (TMDB uses separate ID spaces for movies and TV shows: movie:1402 ≠ tv:1402)
         tmdb_rows    = await db.fetch_all(
@@ -80,6 +89,16 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
             for r in tmdb_rows if r["tmdb_id"]
         }
 
+        # Cross-server TMDB ignore: if this content is ignored on any server by TMDB ID,
+        # skip it on Plex too (e.g. content ignored via Emby should not reappear via Plex).
+        ign_tmdb_rows = await db.fetch_all(
+            "SELECT tmdb_id, media_type FROM ignored_media WHERE tmdb_id != '' AND tmdb_id IS NOT NULL"
+        )
+        ignored_tmdb  = {
+            _tmdb_key(str(r["tmdb_id"]), str(r["media_type"] or ""))
+            for r in ign_tmdb_rows if r["tmdb_id"]
+        }
+
     for item in items:
         plex_id = item.get("plex_id")
         if not plex_id:
@@ -87,12 +106,17 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
         if plex_id in queued_ids or plex_id in ignored_ids:
             continue
 
-        added_at = parse_iso_dt(item.get("added_at") or "")
-
-        # ── Cross-server TMDB check ────────────────────────────────────────────
         tmdb_id    = str(item.get("tmdb_id") or "")
         media_type = item.get("media_type") or "movie"
         tmdb_key   = _tmdb_key(tmdb_id, media_type) if tmdb_id else ""
+
+        # Cross-server TMDB ignore: content ignored on any server blocks Plex too
+        if tmdb_key and tmdb_key in ignored_tmdb:
+            continue
+
+        added_at = parse_iso_dt(item.get("added_at") or "")
+
+        # ── Cross-server TMDB check ────────────────────────────────────────────
         if tmdb_key and tmdb_key in queued_tmdb:
             # Same content already queued by Emby — mirror to Plex
             effective_grace = grace_days

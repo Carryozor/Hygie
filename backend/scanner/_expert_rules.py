@@ -2,7 +2,7 @@
 """Build item_data dict and evaluate expert rules against it."""
 from typing import Optional
 
-from ..db.utils import now_utc
+from ..db.utils import now_utc, parse_iso_dt
 from ..db.repositories import get_expert_rules as _get_expert_rules
 from ..rules.engine import evaluate_rule as _evaluate_rule
 from ..rules.models import RuleAction as _RuleAction
@@ -14,7 +14,6 @@ def _build_plex_item_data(item: dict) -> dict:
     Maps Plex-specific fields to the same schema as _build_item_data so that
     expert rules work identically across Emby/Jellyfin and Plex libraries.
     """
-    from ..db.utils import parse_iso_dt, now_utc
     now = now_utc()
     added_at       = parse_iso_dt(item.get("added_at") or "")
     last_viewed_at = parse_iso_dt(item.get("last_viewed_at") or "")

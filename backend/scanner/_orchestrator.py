@@ -76,6 +76,85 @@ async def _purge_stale_seerr_items() -> None:
         logger.warning("_purge_stale_seerr_items: %s", e)
 
 
+async def _do_scan_one_library(
+    library_id: str,
+    *,
+    seerr_cache: dict | None = None,
+    radarr_cache: dict | None = None,
+    sonarr_cache: dict | None = None,
+) -> tuple[str, str, int]:
+    """Scan a single library. Returns (status, msg, added_count).
+
+    Optional pre-built caches avoid redundant API calls when scanning multiple
+    libraries in sequence (run_scan_libraries builds them once and passes them in).
+    When None, each cache is built locally inside this function.
+    """
+    async with get_db() as db:
+        lib = await db.fetch_one(
+            "SELECT * FROM libraries WHERE id=? AND enabled=1", (library_id,)
+        )
+
+    if not lib:
+        await add_log("WARN", lm("scan.lib_not_found", id=library_id), "scan")
+        return "warning", "Library not found", 0
+
+    lib_name  = lib.get("name") or library_id
+    server_id = str(lib.get("server_id") or "0")
+
+    _all_servers = await get_media_servers()
+    _srv = next((s for s in _all_servers if str(s.get("id")) == server_id), {})
+    server_name = _srv.get("name") or ""
+    server_type = _srv.get("type", "")
+
+    await add_log("INFO", lm("scan.lib_started", id=lib_name), "job")
+
+    # Build Seerr cache if caller did not provide one
+    if seerr_cache is None:
+        seerr_cache = {}
+        try:
+            seerr_cache = await build_seerr_request_cache()
+        except ArrClientError as _seerr_err:
+            await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
+            if await get_bool_setting("discord_alert_seerr_failure"):
+                _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+                _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
+                await send_alert(
+                    "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                    mention=_mention, custom_msg=_msg,
+                    template_vars={"detail": str(_seerr_err)},
+                )
+
+    # ── Plex path ────────────────────────────────────────────────────────────
+    if server_type == "plex":
+        added = await _scan_plex_library(server=_srv, library=lib, seerr_cache=seerr_cache)
+        await add_log("INFO", lm("scan.done", n=added), "job")
+        return "success", f"{added} queued", added
+
+    # ── Emby / Jellyfin path ─────────────────────────────────────────────────
+    users    = await get_users(server_id=server_id)
+    user_ids = [u["Id"] for u in users] if users else []
+
+    if radarr_cache is None:
+        radarr_cache = await build_radarr_path_cache()
+    if sonarr_cache is None:
+        sonarr_cache = await build_sonarr_path_cache()
+
+    async with get_db() as _db:
+        _qrows      = await _db.fetch_all("SELECT emby_id FROM media_queue")
+        queued_ids  = {r["emby_id"] for r in _qrows}
+        _irows      = await _db.fetch_all("SELECT emby_id FROM ignored_media")
+        ignored_ids = {r["emby_id"] for r in _irows}
+
+    added = await _scan_library(
+        lib, user_ids, server_id=server_id, server_name=server_name,
+        radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+        seerr_cache=seerr_cache,
+        queued_ids=queued_ids, ignored_ids=ignored_ids,
+    )
+    await add_log("INFO", lm("scan.done", n=added), "job")
+    return "success", f"{added} queued", added
+
+
 async def run_scan() -> None:
     """Full scan of all enabled libraries across all enabled servers."""
     if _scan_lock.locked():
@@ -197,90 +276,17 @@ async def run_scan_library(library_id: str) -> None:
 
     async with _scan_lock:
         run_id = await add_job_run("scan_library")
-        _sl_status, _sl_msg = "error", ""
+        status, msg = "error", ""
         try:
-            async with get_db() as db:
-                lib = await db.fetch_one(
-                    "SELECT * FROM libraries WHERE id=? AND enabled=1",
-                    (library_id,),
-                )
-
-            if not lib:
-                await add_log("WARN", lm("scan.lib_not_found", id=library_id), "scan")
-                _sl_status, _sl_msg = "warning", "Library not found"
-                return
-
-            lib_name  = lib.get("name") or library_id
-            server_id = str(lib.get("server_id") or "0")
-
-            # Fetch server info — determines scan path (Plex vs Emby/Jellyfin)
-            _all_servers = await get_media_servers()
-            _srv = next((s for s in _all_servers if str(s.get("id")) == server_id), {})
-            server_name = _srv.get("name") or ""
-            server_type = _srv.get("type", "")
-
-            await add_log("INFO", lm("scan.lib_started", id=lib_name), "job")
-
-            # Build Seerr cache upfront — needed by both Plex and Emby paths
-            seerr_cache: dict = {}
-            try:
-                seerr_cache = await build_seerr_request_cache()
-            except ArrClientError as _seerr_err:
-                await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
-
-            # ── Plex path ────────────────────────────────────────────────────
-            if server_type == "plex":
-                added = await _scan_plex_library(server=_srv, library=lib, seerr_cache=seerr_cache)
-                await add_log("INFO", lm("scan.done", n=added), "job")
-                _sl_status, _sl_msg = "success", f"{added} queued"
-                await sync_emby_collection()
-                await _send_pending_notifications()
-                return
-
-            # ── Emby / Jellyfin path ─────────────────────────────────────────
-            users     = await get_users(server_id=server_id)
-            user_ids  = [u["Id"] for u in users] if users else []
-
-            radarr_cache = await build_radarr_path_cache()
-            sonarr_cache = await build_sonarr_path_cache()
-            # seerr_cache already built above — re-try in case Emby path needs fresh data
-            if not seerr_cache:
-                try:
-                    seerr_cache = await build_seerr_request_cache()
-                except ArrClientError as _seerr_err:
-                    await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
-                    if await get_bool_setting("discord_alert_seerr_failure"):
-                        _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
-                        _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
-                        await send_alert(
-                            "🔌 Seerr inaccessible", str(_seerr_err), "warning",
-                            mention=_mention, custom_msg=_msg,
-                            template_vars={"detail": str(_seerr_err)},
-                        )
-
-            async with get_db() as _db:
-                _qrows     = await _db.fetch_all("SELECT emby_id FROM media_queue")
-                queued_ids = {r["emby_id"] for r in _qrows}
-                _irows     = await _db.fetch_all("SELECT emby_id FROM ignored_media")
-                ignored_ids = {r["emby_id"] for r in _irows}
-
-            added = await _scan_library(
-                lib, user_ids, server_id=server_id, server_name=server_name,
-                radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
-                seerr_cache=seerr_cache,
-                queued_ids=queued_ids, ignored_ids=ignored_ids,
-            )
-
-            await add_log("INFO", lm("scan.done", n=added), "job")
-            _sl_status, _sl_msg = "success", f"{added} queued"
-            await sync_emby_collection()
-            await _send_pending_notifications()
+            status, msg, _ = await _do_scan_one_library(library_id)
         except Exception as e:
             logger.exception("Scan library error")
             await add_log("ERROR", lm("scan.error", detail=e), "job")
-            _sl_msg = str(e)
+            msg = str(e)
         finally:
-            await finish_job_run(run_id, _sl_status, _sl_msg)
+            await finish_job_run(run_id, status, msg)
+        await sync_emby_collection()
+        await _send_pending_notifications()
 
 
 async def run_scan_libraries(library_ids: list[str]) -> None:
@@ -289,77 +295,43 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
     Unlike calling run_scan_library() N times (which releases and re-acquires
     the lock between each library), this holds the lock for the entire duration
     so the scheduled full scan cannot interrupt between library scans.
+
+    Seerr/Radarr/Sonarr caches are built once and shared across all libraries,
+    avoiding redundant external API calls for each library in the sequence.
     """
     if _scan_lock.locked():
         await add_log("WARN", lm("scan.already_running"), "job")
         return
 
     async with _scan_lock:
-        for library_id in library_ids:
-            run_id = await add_job_run("scan_library")
-            _sl_status, _sl_msg = "error", ""
-            try:
-                async with get_db() as db:
-                    lib = await db.fetch_one(
-                        "SELECT * FROM libraries WHERE id=? AND enabled=1",
-                        (library_id,),
-                    )
+        # Build shared caches once — valid for the entire multi-library scan
+        seerr_cache: dict = {}
+        try:
+            seerr_cache = await build_seerr_request_cache()
+        except ArrClientError as _seerr_err:
+            await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
 
-                if not lib:
-                    await add_log("WARN", lm("scan.lib_not_found", id=library_id), "scan")
-                    _sl_status, _sl_msg = "warning", "Library not found"
-                    continue
+        radarr_cache = await build_radarr_path_cache()
+        sonarr_cache = await build_sonarr_path_cache()
 
-                lib_name  = lib.get("name") or library_id
-                server_id = str(lib.get("server_id") or "0")
-
-                _all_servers = await get_media_servers()
-                _srv = next((s for s in _all_servers if str(s.get("id")) == server_id), {})
-                server_name = _srv.get("name") or ""
-                server_type = _srv.get("type", "")
-
-                await add_log("INFO", lm("scan.lib_started", id=lib_name), "job")
-
-                seerr_cache: dict = {}
+        try:
+            for library_id in library_ids:
+                run_id = await add_job_run("scan_library")
+                status, msg = "error", ""
                 try:
-                    seerr_cache = await build_seerr_request_cache()
-                except ArrClientError as _seerr_err:
-                    await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
-
-                if server_type == "plex":
-                    added = await _scan_plex_library(server=_srv, library=lib, seerr_cache=seerr_cache)
-                    await add_log("INFO", lm("scan.done", n=added), "job")
-                    _sl_status, _sl_msg = "success", f"{added} queued"
-                else:
-                    users    = await get_users(server_id=server_id)
-                    user_ids = [u["Id"] for u in users] if users else []
-                    radarr_cache = await build_radarr_path_cache()
-                    sonarr_cache = await build_sonarr_path_cache()
-                    if not seerr_cache:
-                        try:
-                            seerr_cache = await build_seerr_request_cache()
-                        except ArrClientError:
-                            pass
-                    async with get_db() as _db:
-                        _qrows     = await _db.fetch_all("SELECT emby_id FROM media_queue")
-                        queued_ids = {r["emby_id"] for r in _qrows}
-                        _irows     = await _db.fetch_all("SELECT emby_id FROM ignored_media")
-                        ignored_ids = {r["emby_id"] for r in _irows}
-                    added = await _scan_library(
-                        lib, user_ids, server_id=server_id, server_name=server_name,
-                        radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+                    status, msg, _ = await _do_scan_one_library(
+                        library_id,
                         seerr_cache=seerr_cache,
-                        queued_ids=queued_ids, ignored_ids=ignored_ids,
+                        radarr_cache=radarr_cache,
+                        sonarr_cache=sonarr_cache,
                     )
-                    await add_log("INFO", lm("scan.done", n=added), "job")
-                    _sl_status, _sl_msg = "success", f"{added} queued"
-            except Exception as e:
-                logger.exception(f"Scan library error ({library_id})")
-                await add_log("ERROR", lm("scan.error", detail=e), "job")
-                _sl_msg = str(e)
-            finally:
-                await finish_job_run(run_id, _sl_status, _sl_msg)
-
-        # Run post-scan operations once after all libraries
-        await sync_emby_collection()
-        await _send_pending_notifications()
+                except Exception as e:
+                    logger.exception("Scan library error (%s)", library_id)
+                    await add_log("ERROR", lm("scan.error", detail=e), "job")
+                    msg = str(e)
+                finally:
+                    await finish_job_run(run_id, status, msg)
+        finally:
+            # Always run post-scan operations, even if the loop fails mid-way
+            await sync_emby_collection()
+            await _send_pending_notifications()

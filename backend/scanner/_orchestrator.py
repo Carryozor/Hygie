@@ -197,7 +197,6 @@ async def run_scan_library(library_id: str) -> None:
 
     async with _scan_lock:
         run_id = await add_job_run("scan_library")
-        await add_log("INFO", lm("scan.lib_started", id=library_id), "job")
         _sl_status, _sl_msg = "error", ""
         try:
             async with get_db() as db:
@@ -211,12 +210,27 @@ async def run_scan_library(library_id: str) -> None:
                 _sl_status, _sl_msg = "warning", "Library not found"
                 return
 
+            lib_name  = lib.get("name") or library_id
             server_id = str(lib.get("server_id") or "0")
-            # Fetch server name for log messages
+
+            # Fetch server info — determines scan path (Plex vs Emby/Jellyfin)
             _all_servers = await get_media_servers()
             _srv = next((s for s in _all_servers if str(s.get("id")) == server_id), {})
             server_name = _srv.get("name") or ""
+            server_type = _srv.get("type", "")
 
+            await add_log("INFO", lm("scan.lib_started", id=lib_name), "job")
+
+            # ── Plex path ────────────────────────────────────────────────────
+            if server_type == "plex":
+                added = await _scan_plex_library(server=_srv, library=lib)
+                await add_log("INFO", lm("scan.done", n=added), "job")
+                _sl_status, _sl_msg = "success", f"{added} queued"
+                await sync_emby_collection()
+                await _send_pending_notifications()
+                return
+
+            # ── Emby / Jellyfin path ─────────────────────────────────────────
             users     = await get_users(server_id=server_id)
             user_ids  = [u["Id"] for u in users] if users else []
 

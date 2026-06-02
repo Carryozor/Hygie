@@ -72,11 +72,12 @@ export const useRulesStore = defineStore('rules', () => {
   }
 
   async function runScan(libraryId, libraryIds = null) {
-    if (libraryIds?.length) {
-      // Multi-library expert rule — scan each targeted library
-      for (const libId of libraryIds) {
-        await api.post(`/libraries/${libId}/scan`)
-      }
+    if (libraryIds?.length > 1) {
+      // Multi-library rule (e.g. Emby + Plex) — single atomic request to avoid
+      // the race condition where two sequential POSTs fight for _scan_lock.
+      await api.post('/libraries/scan-multi', { library_ids: libraryIds })
+    } else if (libraryIds?.length === 1) {
+      await api.post(`/libraries/${libraryIds[0]}/scan`)
     } else if (libraryId) {
       await api.post(`/libraries/${libraryId}/scan`)
     } else {

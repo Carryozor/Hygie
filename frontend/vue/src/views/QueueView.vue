@@ -59,6 +59,9 @@
                 <SortHeader :label="t('queue.columns.title')" field="title" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden md:table-cell">
+                <SortHeader :label="t('queue.columns.server')" field="library_id" :sort="sort" :dir="dir" @sort="setSort" />
+              </th>
+              <th class="text-left px-4 py-2 hidden md:table-cell">
                 <SortHeader :label="t('queue.columns.library')" field="library_name" :sort="sort" :dir="dir" @sort="setSort" />
               </th>
               <th class="text-left px-4 py-2 hidden lg:table-cell">
@@ -111,8 +114,22 @@
                 >{{ item.title }}</a>
                 <span v-else class="font-medium truncate block" :title="item.title">{{ item.title }}</span>
               </td>
+              <!-- Server -->
+              <td class="px-4 py-2 hidden md:table-cell">
+                <span v-if="serverForItem(item)" class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    :class="{
+                      'bg-orange-400': serverForItem(item)?.type === 'plex',
+                      'bg-green-500':  serverForItem(item)?.type === 'emby',
+                      'bg-violet-500': serverForItem(item)?.type === 'jellyfin',
+                      'bg-[var(--muted)]': !serverForItem(item)?.type,
+                    }" />
+                  <span class="text-xs text-[var(--muted)] truncate max-w-[80px]">{{ serverForItem(item)?.name }}</span>
+                </span>
+                <span v-else class="text-xs text-[var(--muted)]">—</span>
+              </td>
               <!-- Library -->
-              <td class="px-4 py-2 text-[var(--muted)] hidden md:table-cell truncate max-w-[120px]">{{ item.library_name || '—' }}</td>
+              <td class="px-4 py-2 text-[var(--muted)] hidden md:table-cell truncate max-w-[120px] text-xs">{{ item.library_name || '—' }}</td>
               <!-- Requester (clickable → Seerr profile) -->
               <td class="px-4 py-2 hidden lg:table-cell">
                 <a
@@ -274,11 +291,19 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
+import { useServersStore } from '@/stores/servers'
 import SortHeader   from '@/components/ui/SortHeader.vue'
 import ConfirmModal from '@/components/ui/ConfirmModal.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const serversStore = useServersStore()
+
+function serverForItem(item) {
+  const lib = serversStore.libraries.find(l => l.id === item.library_id)
+  if (!lib) return null
+  return serversStore.servers.find(s => String(s.id) === String(lib.server_id))
+}
 
 const statusFilters = computed(() => [
   { value: '',        label: t('queue.filters.all') },

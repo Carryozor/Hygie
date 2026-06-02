@@ -19,6 +19,8 @@ def _build_plex_item_data(item: dict) -> dict:
     added_at       = parse_iso_dt(item.get("added_at") or "")
     last_viewed_at = parse_iso_dt(item.get("last_viewed_at") or "")
 
+    view_count = int(item.get("view_count") or 0)
+
     if last_viewed_at:
         days_not_watched = (now - last_viewed_at).days
     elif added_at:
@@ -28,7 +30,7 @@ def _build_plex_item_data(item: dict) -> dict:
 
     return {
         "days_not_watched": days_not_watched,
-        "play_count":       int(item.get("view_count") or 0),
+        "play_count":       view_count,
         "rating":           float(item.get("rating") or 0.0),
         "file_size_gb":     0.0,  # not available from Plex scan API
         "added_days_ago":   (now - added_at).days if added_at else 0,

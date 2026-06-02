@@ -32,10 +32,14 @@ _overlay_applied: dict[str, set] = {}  # server_id → {rating_key, …}
 
 
 async def sync_plex_overlays() -> None:
-    """Apply/restore poster overlays for all enabled Plex servers."""
+    """Apply/restore poster overlays for all enabled Plex servers.
+
+    Requires Plex Pass (upload poster API) and plex_overlay_enabled=true.
+    Disabled by default — enable in Settings → Serveurs → section Plex.
+    """
     overlay_enabled = await get_bool_setting("plex_overlay_enabled")
     if not overlay_enabled:
-        return
+        return  # Off by default — requires Plex Pass to work correctly
 
     servers = await get_media_servers()
     plex_servers = [

@@ -1,8 +1,6 @@
 """Tests for v2.4.0 fixes — rate limiter, http_retry, sanitize_url, DB indexes."""
-import asyncio
 import time
 import pytest
-import pytest_asyncio
 
 
 # ─── sanitize_url ─────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import pytest
 from backend.rules.models import (
-    Condition, ConditionGroup, ExpertRule, RuleAction, RuleOperator,
+    Condition, ConditionGroup, ExpertRule, RuleOperator,
     ConditionField, ConditionOp,
 )
 from backend.rules.engine import evaluate_condition, evaluate_rule

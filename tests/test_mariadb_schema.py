@@ -1,5 +1,4 @@
 """Verify that MariaDB DDL is valid SQL (parse-only, no live MariaDB needed)."""
-import pytest
 from backend.db.schema_mariadb import MARIADB_TABLES, MARIADB_INDEXES
 
 

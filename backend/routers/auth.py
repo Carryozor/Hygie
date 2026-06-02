@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from ..auth import (
     create_access_token,
     create_refresh_token,
-    create_token,
     create_user,
     get_client_ip,
     get_user,

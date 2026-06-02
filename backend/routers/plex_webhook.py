@@ -8,7 +8,6 @@ from fastapi import APIRouter, Form, HTTPException, Query, Response
 
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
-from ..db.utils import DB_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plex", tags=["plex"])

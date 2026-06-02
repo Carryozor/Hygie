@@ -86,8 +86,29 @@ class PlexClient:
         }
 
     async def scan_library(self, section_id: str) -> list[dict]:
-        data = await self._get(f"/library/sections/{section_id}/all")
-        metadata = data.get("MediaContainer", {}).get("Metadata") or []
+        """Fetch all items in a library section.
+
+        Includes ?includeGuids=1 so Plex returns TMDB/IMDB cross-references
+        (needed for cross-server TMDB matching with Emby/Jellyfin).
+        For movie sections, adds ?type=1 to exclude trailers/extras/clips.
+        """
+        # First call — detect section type via viewGroup
+        data = await self._get(
+            f"/library/sections/{section_id}/all",
+            params={"includeGuids": "1"},
+        )
+        container = data.get("MediaContainer", {})
+        view_group = container.get("viewGroup", "")
+
+        # Re-fetch with explicit type filter for movie sections
+        if view_group == "movie":
+            data = await self._get(
+                f"/library/sections/{section_id}/all",
+                params={"type": "1", "includeGuids": "1"},
+            )
+            container = data.get("MediaContainer", {})
+
+        metadata = container.get("Metadata") or []
         if isinstance(metadata, dict):
             metadata = [metadata]
         return [self._normalize_item(m) for m in metadata]

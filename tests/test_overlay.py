@@ -1,6 +1,5 @@
 """Unit tests for poster overlay rendering."""
 import io
-import pytest
 from PIL import Image
 
 
@@ -67,7 +66,6 @@ def test_overlay_poster_empty_bytes_returns_none():
 
 async def test_overlay_poster_async_wrapper_non_blocking():
     """The async wrapper must complete without blocking the event loop."""
-    import asyncio
     from backend.overlay import _overlay_poster
 
     result = await _overlay_poster(_make_test_image(), 7, "fr")

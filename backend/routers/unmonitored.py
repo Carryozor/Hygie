@@ -12,7 +12,6 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log

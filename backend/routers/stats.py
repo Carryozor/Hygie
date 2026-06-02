@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])

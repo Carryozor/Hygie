@@ -9,7 +9,7 @@ os.environ.pop("DATABASE_URL", None)  # force SQLite mode
 @pytest_asyncio.fixture
 async def db(tmp_path):
     import aiosqlite
-    from backend.db.engine import get_db, DIALECT
+    from backend.db.engine import DIALECT
     assert DIALECT == "sqlite"
     conn = await aiosqlite.connect(str(tmp_path / "test.db"))
     await conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT)")

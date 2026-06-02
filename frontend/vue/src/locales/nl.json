@@ -437,7 +437,8 @@
       "lastPlayed": "Laatst afgespeeld",
       "addedAt": "Toegevoegd op",
       "status": "Status",
-      "deletion": "Verwijdering"
+      "deletion": "Verwijdering",
+      "server": "Server"
     }
   },
   "ignored": {

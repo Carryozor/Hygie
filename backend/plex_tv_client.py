@@ -1,7 +1,6 @@
 # backend/plex_tv_client.py
 """Plex.tv cloud API client — shared users, server discovery, account info."""
 import logging
-from typing import Optional
 
 import httpx
 

@@ -5,7 +5,7 @@ from backend.db.repositories import (
     save_expert_rule, get_expert_rules, delete_expert_rule, get_expert_rule_by_id,
 )
 from backend.rules.models import (
-    ExpertRule, Condition, ConditionField, ConditionGroup, ConditionOp, RuleOperator, RuleAction,
+    ExpertRule, Condition, ConditionField, ConditionGroup, ConditionOp, RuleOperator,
 )
 
 _RULE = ExpertRule(

@@ -437,7 +437,8 @@
       "lastPlayed": "Last played",
       "addedAt": "Added on",
       "status": "Status",
-      "deletion": "Deletion"
+      "deletion": "Deletion",
+      "server": "Server"
     }
   },
   "ignored": {

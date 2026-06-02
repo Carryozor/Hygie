@@ -12,7 +12,7 @@ from typing import Optional
 
 import httpx
 
-from .db.utils import DB_PATH, now_utc, parse_iso_dt
+from .db.utils import now_utc, parse_iso_dt
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
@@ -235,10 +235,16 @@ async def sync_emby_collection():
     cutoff = now_utc() + timedelta(days=days)
 
     async with get_db() as db:
+        # CRITICAL: only fetch items from the Emby/Jellyfin server being synced.
+        # Plex items store Plex rating keys as emby_id; if included, overlay would
+        # corrupt Emby items whose numeric IDs happen to match those rating keys.
         wanted = await db.fetch_all(
-            "SELECT emby_id, title, delete_at, poster_url FROM media_queue "
-            "WHERE status='pending' AND delete_at <= ?",
-            (cutoff.isoformat(),),
+            """SELECT mq.emby_id, mq.title, mq.delete_at, mq.poster_url
+               FROM media_queue mq
+               JOIN libraries l ON mq.library_id = l.id
+               WHERE mq.status='pending' AND mq.delete_at <= ?
+               AND l.server_id = ?""",
+            (cutoff.isoformat(), sync_server_id),
         )
 
     wanted_ids = {w["emby_id"] for w in wanted}

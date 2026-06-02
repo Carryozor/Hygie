@@ -5,7 +5,6 @@ from httpx import AsyncClient, ASGITransport
 
 import backend.db.utils as _db_utils
 import backend.db.schema as _db_schema
-import backend.routers.expert_rules as _er_router
 from backend.main import app
 from backend.db.schema import init_db
 from backend.auth import require_auth

@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 from ..arr_clients import seerr_get_users
 

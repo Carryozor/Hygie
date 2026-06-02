@@ -34,3 +34,9 @@ body {
   animation: heartbeat 1.4s ease-in-out infinite;
   display: inline-block;
 }
+
+/* Global dot-bounce for RulesView and other consumers */
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0);    opacity: 0.35; }
+  30%            { transform: translateY(-4px); opacity: 1;    }
+}

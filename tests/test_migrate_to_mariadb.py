@@ -1,6 +1,5 @@
 """Tests for the SQLite→MariaDB migration script (dry-run mode only — no live MariaDB)."""
 import asyncio
-import os
 import pytest
 import aiosqlite
 from backend.tools.migrate_to_mariadb import read_sqlite_table, validate_sqlite_db

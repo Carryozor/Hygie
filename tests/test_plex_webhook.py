@@ -2,7 +2,6 @@
 """Integration tests for the Plex webhook endpoint."""
 import os
 import json
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 

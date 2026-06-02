@@ -1,7 +1,6 @@
 """Tests for conditions.py — _evaluate_conditions and _seerr_filter_passes."""
 from datetime import datetime, timezone, timedelta
 
-import pytest
 from backend.conditions import _evaluate_conditions, _seerr_filter_passes
 
 

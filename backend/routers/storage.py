@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH, STATUS_PENDING, TIMEOUT_MEDIUM
+from ..db.utils import TIMEOUT_MEDIUM
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 

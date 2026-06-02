@@ -437,7 +437,8 @@
       "lastPlayed": "Última reproducción",
       "addedAt": "Añadido el",
       "status": "Estado",
-      "deletion": "Eliminación"
+      "deletion": "Eliminación",
+      "server": "Servidor"
     }
   },
   "ignored": {

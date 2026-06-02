@@ -16,9 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-from ..db.utils import DB_PATH, now_utc, parse_iso_dt
+from ..db.utils import now_utc, parse_iso_dt
 from ..db.engine import get_db
-from ..db.settings_store import get_bool_setting
 from ..db.logs import add_log
 from ..arr_clients import (
     radarr_find_by_path,
@@ -26,12 +25,10 @@ from ..arr_clients import (
     radarr_get_poster_url,
     seerr_find_request_by_tmdb,
     sonarr_find_by_path,
-    sonarr_find_by_path_cached,
     sonarr_get_cache_entry,
     sonarr_get_poster_url,
 )
-from ..emby_client import get_client, get_client_ext_url, get_user_data
-from ..discord_client import send_notification
+from ..emby_client import get_client, get_user_data
 
 logger = logging.getLogger(__name__)
 

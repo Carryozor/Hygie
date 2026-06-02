@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..db.repositories import insert_queue_entry, mark_notified_detected
-from ..notifications import _send_pending_notifications
 from ..discord_client import send_notification
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ Extracted from routers/settings.py to separate HTTP concerns from domain logic.
 """
 import json
 import logging
-from typing import Optional
 
 import httpx
 

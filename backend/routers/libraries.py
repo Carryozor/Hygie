@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 from ..db.logs import add_log
 from ..logmsg import lm
 
 from ..emby_client import get_libraries as emby_get_libraries
 from ..db.media_servers import is_plex as _is_plex
+from ..scanner._orchestrator import run_scan_libraries
 from ..scheduler import (
     is_scan_running,
     reevaluate_library_queue,
@@ -234,6 +234,33 @@ async def scan_library_endpoint(
         raise HTTPException(409, "Un scan est déjà en cours")
     background_tasks.add_task(run_scan_library, library_id)
     return {"status": "started"}
+
+
+class ScanMultiBody(BaseModel):
+    library_ids: list
+
+
+@router.post("/scan-multi")
+async def scan_multi_endpoint(
+    body: ScanMultiBody,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(require_auth),
+):
+    """Scan multiple libraries sequentially in a single background task.
+
+    Used by expert rules that target libraries on multiple servers (e.g. Emby + Plex).
+    Avoids the race condition that occurs when making two separate /scan calls.
+    """
+    if is_scan_running():
+        raise HTTPException(409, "Un scan est déjà en cours")
+    ids = [str(lid) for lid in body.library_ids if lid]
+    if not ids:
+        return {"status": "nothing_to_scan"}
+
+    # Use run_scan_libraries which holds a single lock for all libraries,
+    # preventing the scheduled full scan from interrupting between scans.
+    background_tasks.add_task(run_scan_libraries, ids)
+    return {"status": "started", "library_ids": ids}
 
 
 @router.post("/{library_id}/reevaluate")

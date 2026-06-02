@@ -6,7 +6,6 @@ import backend.db.settings_store as _db_ss
 import backend.db.media_servers as _db_ms
 import backend.db.schema as _db_schema
 import backend.db.logs as _db_logs
-import backend.db.encryption as _db_enc
 from backend.db.utils import parse_iso_dt
 from backend.db.encryption import SENSITIVE_KEYS
 from backend.db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting

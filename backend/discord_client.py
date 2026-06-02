@@ -16,7 +16,7 @@ from typing import List, Optional
 
 import httpx
 
-from .db.utils import DB_PATH, parse_iso_dt, http_retry
+from .db.utils import parse_iso_dt, http_retry
 from .db.engine import get_db
 from .db.settings_store import get_setting
 
@@ -94,7 +94,7 @@ async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
     return ""
 
 
-async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single: bool) -> dict:
+async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single: bool, server_name: str = "") -> dict:
     title = m.get("title") or "?"
     media_type = m.get("media_type") or "Movie"
     icon = "🎬" if media_type == "Movie" else "📺"
@@ -103,7 +103,10 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
     seerr_username = m.get("seerr_username") or ""
     poster = m.get("poster_url") or ""
 
-    fields = [{"name": "📚 Bibliothèque", "value": lib_name, "inline": True}]
+    fields = []
+    if server_name:
+        fields.append({"name": "🖥️ Serveur", "value": server_name, "inline": True})
+    fields.append({"name": "📚 Bibliothèque", "value": lib_name, "inline": True})
 
     if seerr_username:
         discord_id = await _resolve_discord_id(seerr_user_id)
@@ -145,6 +148,23 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
     return embed
 
 
+async def _build_server_name_cache() -> dict:
+    """Return a dict mapping library_id → server_name. Best-effort, never raises."""
+    try:
+        from .db.engine import get_db
+        from .db.media_servers import get_media_servers
+        async with get_db() as db:
+            libs = await db.fetch_all("SELECT id, server_id FROM libraries")
+        servers = await get_media_servers()
+        srv_map = {str(s.get("id", "")): (s.get("name") or "") for s in servers}
+        return {
+            lib["id"]: srv_map.get(str(lib.get("server_id") or "0"), "")
+            for lib in libs
+        }
+    except Exception:
+        return {}
+
+
 async def send_notification(media_list: List[dict], kind: str, dry_run: bool = False) -> bool:
     if dry_run:
         logger.info(f"[DRY RUN] Discord '{kind}' bloquée ({len(media_list)} médias)")
@@ -160,12 +180,16 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
     footer_label, color = _get_kind_meta(kind)
     single = len(media_list) == 1
 
+    # Build library → server name lookup (single DB round-trip)
+    server_cache = await _build_server_name_cache()
+
     # Discord limits embeds to 10 per message — reserve last slot for overflow summary
     MAX_EMBEDS = 9 if len(media_list) > 9 else 10
     embeds: list = []
     for m in media_list[:MAX_EMBEDS]:
         try:
-            embed = await _build_embed(m, color, footer_label, kind, single)
+            server_name = server_cache.get(m.get("library_id") or "", "")
+            embed = await _build_embed(m, color, footer_label, kind, single, server_name=server_name)
             embeds.append(embed)
         except Exception as e:
             logger.error(f"Embed error for '{m.get('title', '?')}': {e}")

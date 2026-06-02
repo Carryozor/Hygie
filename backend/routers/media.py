@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH, STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
+from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log

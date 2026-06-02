@@ -49,8 +49,7 @@
             </button>
             <!-- Run -->
             <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="scanActive" @click="runRule(r.id, r.library_id, null)">
-              <span v-if="runningId === `simple-${r.id}` || (scanActive && runningId === `simple-${r.id}`)" class="dots-anim text-green-400 text-sm"><span>•</span><span>•</span><span>•</span></span>
-              <i v-else :class="['fas', scanActive ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+              <i :class="['fas', (runningId === `simple-${r.id}` || scanActive) ? 'fa-circle-notch fa-spin text-green-400' : 'fa-play', 'text-sm']" />
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editSimple(r)">
@@ -114,8 +113,7 @@
             </button>
             <!-- Run -->
             <button class="text-[var(--muted)] hover:text-green-400 transition-colors" :title="t('rules.runScan')" :disabled="scanActive" @click="runRule(r.id, r.library_id, r.library_ids)">
-              <span v-if="runningId === `expert-${r.id}`" class="dots-anim text-green-400 text-sm"><span>•</span><span>•</span><span>•</span></span>
-              <i v-else :class="['fas', scanActive ? 'fa-spinner fa-spin' : 'fa-play', 'text-sm']" />
+              <i :class="['fas', (runningId === `expert-${r.id}` || scanActive) ? 'fa-circle-notch fa-spin text-green-400' : 'fa-play', 'text-sm']" />
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editExpert(r)">

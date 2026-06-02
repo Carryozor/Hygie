@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .db.utils import DB_PATH
 from .db.engine import DIALECT, SQLITE_PATH
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log

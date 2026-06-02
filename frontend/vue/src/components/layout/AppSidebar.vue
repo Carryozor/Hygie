@@ -57,7 +57,6 @@
             <i :class="['fas', (triggering === 'scan' || scanRunning) ? 'fa-spinner fa-spin' : 'fa-magnifying-glass', 'w-4 text-center opacity-70']" />
             <span v-if="scanRunning || triggering === 'scan'" class="flex items-center gap-0.5">
               {{ triggering === 'scan' ? t('sidebar.launching') : t('sidebar.scanRunning') }}
-              <span class="dots-anim"><span>.</span><span>.</span><span>.</span></span>
             </span>
             <span v-else>{{ t('sidebar.nextScan') }}</span>
           </div>
@@ -88,7 +87,6 @@
             <i class="fas fa-trash-can w-4 text-center opacity-70" />
             <span v-if="deletionRunning || triggering === 'deletion'" class="flex items-center gap-0.5">
               {{ triggering === 'deletion' ? t('sidebar.launching') : t('sidebar.deletionRunning') }}
-              <span class="dots-anim"><span>.</span><span>.</span><span>.</span></span>
             </span>
             <span v-else>{{ t('sidebar.nextDeletion') }}</span>
           </div>
@@ -233,13 +231,17 @@ onUnmounted(() => {
 .animate-scan-running     { animation: scan-pulse     1.6s ease-in-out infinite; }
 .animate-deletion-running { animation: deletion-pulse 1.6s ease-in-out infinite; }
 
-/* Rotating dots: each dot fades in/out with offset */
-@keyframes dot-blink {
-  0%, 80%, 100% { opacity: 0; }
-  40%            { opacity: 1; }
+/* Bouncing dots — more visible than opacity-only blink */
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0);    opacity: 0.35; }
+  30%            { transform: translateY(-4px); opacity: 1;    }
 }
-.dots-anim span { animation: dot-blink 1.4s ease-in-out infinite; }
+.dots-anim span {
+  display: inline-block;
+  font-size: 0.55em;
+  animation: dot-bounce 1.1s ease-in-out infinite;
+}
 .dots-anim span:nth-child(1) { animation-delay: 0s;    }
-.dots-anim span:nth-child(2) { animation-delay: 0.2s;  }
-.dots-anim span:nth-child(3) { animation-delay: 0.4s;  }
+.dots-anim span:nth-child(2) { animation-delay: 0.18s; }
+.dots-anim span:nth-child(3) { animation-delay: 0.36s; }
 </style>

@@ -15,3 +15,6 @@ from .rules.legacy_conditions import (  # noqa: F401 (explicit for IDE support)
     _get_poster_url,
     _evaluate_item,
 )
+
+from .db.utils import DB_PATH  # noqa: F401 — test monkeypatching target
+from .emby_client import get_client_ext_url  # noqa: F401 — test monkeypatching target

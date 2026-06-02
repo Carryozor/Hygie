@@ -401,7 +401,7 @@ async def test_proxy_rejects_oversized_image(registered_client, monkeypatch):
 
     monkeypatch.setattr(proxy_mod, "_get_proxy_whitelist", _fake_get_proxy_whitelist)
 
-    original_AsyncClient = httpx.AsyncClient
+    _ = httpx.AsyncClient  # preserved for monkeypatching context
 
     class FakeStream:
         def __init__(self):

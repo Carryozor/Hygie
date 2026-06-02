@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
 from ..auth import require_auth
-from ..db.utils import DB_PATH
 from ..db.engine import get_db
 
 router = APIRouter(tags=["metrics"])
@@ -84,3 +83,5 @@ async def api_metrics(user: str = Depends(require_auth)):
     ]
 
     return {"by_library": by_library}
+
+from ..db.utils import DB_PATH  # noqa: F401 — test monkeypatching target

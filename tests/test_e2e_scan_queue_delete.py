@@ -301,7 +301,7 @@ async def test_delete_skips_during_grace(isolated_db):
 
 async def test_full_scan_then_delete(isolated_db):
     """grace_days=0: scan queues item, deletion removes it immediately."""
-    lib_id = await _create_library(isolated_db, grace_days=0)
+    await _create_library(isolated_db, grace_days=0)
     emby_items = _make_emby_items()
     emby_id = emby_items[0]["Id"]
 

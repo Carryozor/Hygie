@@ -4,9 +4,6 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Sensitive settings are encrypted at rest when HYGIE_ENCRYPTION_KEY is set.
-# If the env var is absent, values are stored in plaintext (backward-compatible).
-
 _ENC_PREFIX = "enc:"
 
 SENSITIVE_KEYS = frozenset({
@@ -71,17 +68,20 @@ def _decrypt_value(value: str) -> str:
 
 
 async def _migrate_encrypt_settings(db) -> None:
-    """Encrypt any plaintext sensitive settings when the encryption key is available."""
+    """Encrypt any plaintext sensitive settings when the encryption key is available.
+
+    Uses the DbConn abstraction so this works on both SQLite and MariaDB.
+    """
     if not _get_fernet():
         return
     placeholders = ",".join("?" * len(SENSITIVE_KEYS))
-    async with db.execute(
+    rows = await db.fetch_all(
         f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
-        list(SENSITIVE_KEYS),
-    ) as cur:
-        rows = await cur.fetchall()
+        tuple(SENSITIVE_KEYS),
+    )
     migrated = 0
-    for key, value in rows:
+    for row in rows:
+        key, value = row["key"], row["value"]
         if value and not value.startswith(_ENC_PREFIX):
             await db.execute(
                 "UPDATE settings SET value=? WHERE key=?",

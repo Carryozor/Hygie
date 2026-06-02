@@ -5,7 +5,6 @@ Public API:
   sync_emby_collection  — sync collection membership + apply poster overlays
 """
 import asyncio
-import base64
 import logging
 from datetime import timedelta
 from typing import Optional
@@ -23,6 +22,15 @@ from .emby_client import get_client
 from .overlay import _overlay_poster
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache: emby_id -> days_left when overlay was last applied.
+# Prevents re-uploading the same poster on every sync cycle when the day count
+# hasn't changed. Ephemeral — reset on restart, which is acceptable.
+_overlay_cache: dict[str, int] = {}
+
+
+def _invalidate_overlay_cache(emby_id: str) -> None:
+    _overlay_cache.pop(emby_id, None)
 
 
 async def _get_or_create_collection(
@@ -125,13 +133,13 @@ async def _restore_posters_for_removed(
                 pr = await client.get(poster_url, follow_redirects=True)
                 if pr.status_code != 200 or not pr.headers.get("content-type", "").startswith("image"):
                     continue
-                b64 = base64.b64encode(pr.content).decode("ascii")
                 resp = await client.post(
                     f"{emby_url}/Items/{emby_id}/Images/Primary",
                     headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                    content=b64,
+                    content=pr.content,
                 )
                 if resp.status_code in (200, 204):
+                    _invalidate_overlay_cache(emby_id)
                     await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
                 else:
                     logger.warning(f"Restore poster HTTP {resp.status_code} for {emby_id}")
@@ -156,6 +164,11 @@ async def _apply_overlays(
                 if not dt:
                     return
                 days_left = max(0, (dt.date() - now_utc().date()).days)
+                emby_id = w["emby_id"]
+
+                # Skip if the overlay for this day count was already applied this session
+                if _overlay_cache.get(emby_id) == days_left:
+                    return
 
                 original_bytes: Optional[bytes] = None
                 poster_url = w.get("poster_url", "")
@@ -169,7 +182,7 @@ async def _apply_overlays(
 
                 if not original_bytes:
                     pr = await client.get(
-                        f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
+                        f"{emby_url}/Items/{emby_id}/Images/Primary",
                         headers={"X-Emby-Token": emby_key},
                         params={"maxHeight": 600},
                     )
@@ -183,13 +196,13 @@ async def _apply_overlays(
                 if not modified:
                     return
 
-                b64 = base64.b64encode(modified).decode("ascii")
                 resp = await client.post(
-                    f"{emby_url}/Items/{w['emby_id']}/Images/Primary",
+                    f"{emby_url}/Items/{emby_id}/Images/Primary",
                     headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                    content=b64,
+                    content=modified,
                 )
                 if resp.status_code in (200, 204):
+                    _overlay_cache[emby_id] = days_left
                     await add_log("INFO", lm("collection.overlay_applied", title=w.get('title')), "system")
                 else:
                     logger.warning(

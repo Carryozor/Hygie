@@ -465,7 +465,10 @@ async def _init_db_sqlite():
         await db.commit()
 
         # 6. Encrypt any plaintext sensitive settings (no-op if key not configured)
-        await _migrate_encrypt_settings(db)
+        from .engine import DbConn as _DbConn
+        await _migrate_encrypt_settings(_DbConn(db, "sqlite"))
+        db.row_factory = None  # DbConn.fetch_all() sets row_factory on the raw connection; reset it
+        # so subsequent raw aiosqlite queries in this function get tuples as expected.
 
         # 7. Migrate legacy emby_url/key to media_servers[0] (idempotent)
         async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:

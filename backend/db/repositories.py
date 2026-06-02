@@ -29,11 +29,14 @@ async def get_queued_and_ignored_ids() -> tuple[set, set]:
 
 
 async def get_enabled_libraries(server_id: str) -> list[dict]:
-    """Return enabled library rows for the given server_id."""
+    """Return enabled library rows for the given server_id.
+
+    m005 migration ensures all libraries have an explicit server_id ('0' for legacy),
+    so we can match exactly without the IS NULL / = '' fallback.
+    """
     async with get_db() as db:
         return await db.fetch_all(
-            "SELECT * FROM libraries"
-            " WHERE enabled=1 AND (server_id=? OR server_id IS NULL OR server_id='')",
+            "SELECT * FROM libraries WHERE enabled=1 AND server_id=?",
             (server_id,),
         )
 

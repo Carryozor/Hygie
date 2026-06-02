@@ -2,12 +2,13 @@
 Authentication — JWT + Argon2id password hashing.
 
 Public API:
-  create_token(username) -> str
+  create_access_token(username) -> str
   verify_token(token) -> Optional[username]
   hash_password(pwd) -> str
   verify_password(pwd, hash) -> bool
   require_auth — FastAPI dependency
   rate_limit(key) -> bool   — True if rate limited
+  get_client_ip(request) -> str
 """
 import hashlib
 import os
@@ -63,9 +64,13 @@ def _load_or_create_secret() -> str:
 
 SECRET_KEY = _load_or_create_secret()
 ALGORITHM = "HS256"
-TOKEN_EXPIRE_DAYS = 7
-ACCESS_TOKEN_EXPIRE_MINUTES = 60        # 1 heure
-REFRESH_TOKEN_EXPIRE_DAYS   = 30        # 30 jours
+ACCESS_TOKEN_EXPIRE_MINUTES = 60   # 1 hour
+REFRESH_TOKEN_EXPIRE_DAYS   = 30   # 30 days
+
+# Whether to trust the X-Forwarded-For header for rate limiting.
+# Only enable when a trusted reverse proxy is guaranteed to be in front.
+# Set HYGIE_TRUST_PROXY=1 in that case; default is off (use direct client IP).
+_TRUST_PROXY = os.environ.get("HYGIE_TRUST_PROXY", "0").strip() in ("1", "true", "yes")
 
 _ph = PasswordHasher()
 _bearer = HTTPBearer(auto_error=False)
@@ -98,16 +103,10 @@ def create_access_token(username: str) -> str:
     return _pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_token(username: str) -> str:
-    """Backward-compat alias for create_access_token."""
-    return create_access_token(username)
-
-
 def verify_token(token: str) -> Optional[str]:
     """Verify an access token. Returns username or None."""
     try:
         payload = _pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        # Accept tokens with type="access" or no type (backward compat)
         token_type = payload.get("type")
         if token_type and token_type != "access":
             return None
@@ -289,7 +288,13 @@ def rate_limit(key: str) -> bool:
 
 
 def get_client_ip(request: Request) -> str:
-    fwd = request.headers.get("X-Forwarded-For")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Return the client IP for rate limiting.
+
+    Only trusts X-Forwarded-For when HYGIE_TRUST_PROXY=1 is set, preventing
+    spoofing attacks on deployments without a reverse proxy.
+    """
+    if _TRUST_PROXY:
+        fwd = request.headers.get("X-Forwarded-For")
+        if fwd:
+            return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"

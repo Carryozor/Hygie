@@ -17,7 +17,7 @@ from ..arr_clients import (
 )
 from ..exceptions import ArrClientError
 from ..discord_client import send_alert
-from ..notifications import _ensure_notif_columns, _send_pending_notifications
+from ..notifications import _send_pending_notifications
 from ..collection import sync_emby_collection
 from ..logmsg import lm
 from ._emby_scanner import _scan_library
@@ -166,14 +166,14 @@ async def run_scan() -> None:
         await add_log("INFO", lm("scan.started"), "job")
         added = 0
         _scan_status, _scan_msg = "error", ""
-        await _ensure_notif_columns()
         try:
             servers = await get_media_servers()
             enabled_servers = [s for s in servers if s.get("enabled", True)]
             if not enabled_servers:
                 enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
 
-            # Build Seerr cache once — Seerr is global, not per-server
+            # Build global caches once — these are not per-server:
+            # Seerr, Radarr, and Sonarr are configured globally, not per media server.
             seerr_cache: dict = {}
             try:
                 seerr_cache = await build_seerr_request_cache()
@@ -187,6 +187,9 @@ async def run_scan() -> None:
                         mention=_mention, custom_msg=_msg,
                         template_vars={"detail": str(_seerr_err)},
                     )
+
+            radarr_cache = await build_radarr_path_cache()
+            sonarr_cache = await build_sonarr_path_cache()
 
             for server in enabled_servers:
                 server_id   = str(server.get("id", "0"))
@@ -216,9 +219,6 @@ async def run_scan() -> None:
 
                 users    = await get_users(server_id=server_id)
                 user_ids = [u["Id"] for u in users] if users else []
-
-                radarr_cache = await build_radarr_path_cache()
-                sonarr_cache = await build_sonarr_path_cache()
 
                 queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 

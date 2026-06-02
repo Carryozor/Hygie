@@ -50,5 +50,15 @@
   "cleanup.ignored_expired": "Itens ignorados expirados: {n} item(ns) de volta em circulação",
   "cleanup.retention": "Retenção: {n} entrada(s) excluída(s) do histórico (>{days}d)",
   "cleanup.logs": "Purga de logs: {n} entrada(s) com mais de {days}d excluída(s)",
-  "cleanup.vacuum": "VACUUM executado — {n} entradas removidas, espaço em disco liberado"
+  "cleanup.vacuum": "VACUUM executado — {n} entradas removidas, espaço em disco liberado",
+  "discord.notif.detected": "🔍 Novo média detectado",
+  "discord.notif.1d": "⚠️ Eliminação em 24h",
+  "discord.notif.now": "🗑️ Média eliminado",
+  "discord.notif.days_one": "📅 Eliminação em 24 horas",
+  "discord.notif.days_many": "📅 Eliminação em {n} dias",
+  "discord.embed.library": "📚 Biblioteca",
+  "discord.embed.server": "🖥️ Servidor",
+  "discord.embed.requester": "👤 Solicitado por",
+  "discord.embed.scheduled": "📅 Eliminação programada",
+  "discord.embed.date_label": "{date} (em {days} dia{s})"
 }

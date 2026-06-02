@@ -50,5 +50,15 @@
   "cleanup.ignored_expired": "Genegeerde items verlopen: {n} media-item(s) terug in omloop",
   "cleanup.retention": "Bewaarbeleid: {n} vermelding(en) verwijderd uit geschiedenis (>{days}d)",
   "cleanup.logs": "Logboek opschonen: {n} vermelding(en) ouder dan {days}d verwijderd",
-  "cleanup.vacuum": "VACUUM uitgevoerd — {n} vermeldingen verwijderd, schijfruimte vrijgegeven"
+  "cleanup.vacuum": "VACUUM uitgevoerd — {n} vermeldingen verwijderd, schijfruimte vrijgegeven",
+  "discord.notif.detected": "🔍 Nieuwe media gedetecteerd",
+  "discord.notif.1d": "⚠️ Verwijdering in 24u",
+  "discord.notif.now": "🗑️ Media verwijderd",
+  "discord.notif.days_one": "📅 Verwijdering over 24 uur",
+  "discord.notif.days_many": "📅 Verwijdering over {n} dagen",
+  "discord.embed.library": "📚 Bibliotheek",
+  "discord.embed.server": "🖥️ Server",
+  "discord.embed.requester": "👤 Aangevraagd door",
+  "discord.embed.scheduled": "📅 Geplande verwijdering",
+  "discord.embed.date_label": "{date} (over {days} dag{s})"
 }

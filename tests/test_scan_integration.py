@@ -42,9 +42,7 @@ async def isolated_db(tmp_path, monkeypatch):
     await init_db()
 
     import backend.conditions as cond_mod
-    import backend.notifications as notif_mod
     monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(notif_mod, "DB_PATH", db_path)
 
     settings = {
         "dry_run": "false",

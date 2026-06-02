@@ -19,25 +19,27 @@ import httpx
 from .db.utils import parse_iso_dt, http_retry
 from .db.engine import get_db
 from .db.settings_store import get_setting
+from .logmsg import lm
 
 logger = logging.getLogger(__name__)
 
-_TITLES = {
-    "detected": ("🔍 Nouveau média détecté",  0x57F287),
-    "1d":       ("⚠️ Suppression dans 24h",   0xFF4500),
-    "now":      ("🗑️ Médias supprimés",        0xFF0000),
+_KIND_COLORS = {
+    "detected": 0x57F287,
+    "1d":       0xFF4500,
+    "now":      0xFF0000,
 }
 
 
 def _get_kind_meta(kind: str) -> tuple:
-    if kind in _TITLES:
-        return _TITLES[kind]
+    """Return (title, color) for a notification kind, using translated strings."""
+    if kind in _KIND_COLORS:
+        return (lm(f"discord.notif.{kind}"), _KIND_COLORS[kind])
     m = re.match(r'^(\d+)d$', kind)
     if m:
         days = int(m.group(1))
-        label = "24 heures" if days == 1 else f"{days} jours"
         color = 0xFF4500 if days <= 2 else 0xF0A500 if days <= 7 else 0x6366F1
-        return (f"📅 Suppression dans {label}", color)
+        key = "discord.notif.days_one" if days == 1 else "discord.notif.days_many"
+        return (lm(key, n=days), color)
     return ("ℹ️ Hygie", 0x6366F1)
 
 
@@ -105,13 +107,13 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
 
     fields = []
     if server_name:
-        fields.append({"name": "🖥️ Serveur", "value": server_name, "inline": True})
-    fields.append({"name": "📚 Bibliothèque", "value": lib_name, "inline": True})
+        fields.append({"name": lm("discord.embed.server"), "value": server_name, "inline": True})
+    fields.append({"name": lm("discord.embed.library"), "value": lib_name, "inline": True})
 
     if seerr_username:
         discord_id = await _resolve_discord_id(seerr_user_id)
         value = f"<@{discord_id}>" if discord_id else seerr_username
-        fields.append({"name": "👤 Demandé par", "value": value, "inline": True})
+        fields.append({"name": lm("discord.embed.requester"), "value": value, "inline": True})
 
     if kind != "now":
         delete_at = m.get("delete_at") or ""
@@ -120,8 +122,9 @@ async def _build_embed(m: dict, color: int, footer_label: str, kind: str, single
             if dt:
                 days = max(0, (dt - datetime.now(timezone.utc)).days)
                 date_str = dt.strftime("%d/%m/%Y")
-                label = f"{date_str} (dans {days} jour{'s' if days > 1 else ''})"
-                fields.append({"name": "📅 Suppression prévue", "value": label, "inline": True})
+                s = "s" if days > 1 else ""
+                label = lm("discord.embed.date_label", date=date_str, days=days, s=s)
+                fields.append({"name": lm("discord.embed.scheduled"), "value": label, "inline": True})
 
     embed: dict = {
         "title": f"{icon} {title}",

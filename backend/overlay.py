@@ -36,11 +36,17 @@ def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr"
         else:
             label = f"Supprimé dans {days_left}j" if days_left > 0 else "Suppression aujourd'hui"
 
-        font_paths = (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        # Font search order: env override, Debian/Ubuntu paths, Alpine Linux path,
+        # then Liberation as fallback. Install ttf-dejavu in Dockerfile if missing.
+        import os as _os
+        _env_font = _os.environ.get("HYGIE_FONT_PATH", "")
+        font_paths = tuple(filter(None, [
+            _env_font,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",   # Debian/Ubuntu
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",            # some Debian variants
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",               # Alpine (apk add ttf-dejavu)
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        )
+        ]))
         font = None
         max_font = banner_h - 10
         for size in range(max_font, 8, -1):

@@ -7,9 +7,11 @@ export const useRulesStore = defineStore('rules', () => {
   const simpleRules  = ref([])
   const expertRules  = ref([])
   const loading      = ref(false)
+  const error        = ref(null)
 
   async function fetchAll() {
     loading.value = true
+    error.value = null
     try {
       const [sRes, eRes] = await Promise.all([
         api.get('/seerr-rules').catch(() => ({ data: [] })),
@@ -17,6 +19,8 @@ export const useRulesStore = defineStore('rules', () => {
       ])
       simpleRules.value = sRes.data || []
       expertRules.value = eRes.data || []
+    } catch (e) {
+      error.value = e?.message || 'fetch error'
     } finally {
       loading.value = false
     }
@@ -86,7 +90,7 @@ export const useRulesStore = defineStore('rules', () => {
   }
 
   return {
-    simpleRules, expertRules, loading,
+    simpleRules, expertRules, loading, error,
     fetchAll,
     createSimpleRule, updateSimpleRule, deleteSimpleRule,
     createExpertRule, updateExpertRule, deleteExpertRule, toggleExpertRule,

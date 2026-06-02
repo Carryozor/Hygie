@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import time
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Request
@@ -80,13 +80,7 @@ async def proxy_image(request: Request):
     SSRF protection: only hosts matching configured services or known image CDNs.
     No auth requirement — img src can't send Bearer tokens.
     """
-    # Extract `url` param manually from raw query string to handle nested & properly
-    raw = request.url.query
-    if not raw.startswith("url="):
-        return Response(status_code=400)
-
-    encoded = raw[4:]
-    target_url = unquote(encoded)
+    target_url = request.query_params.get("url", "")
     if not target_url:
         return Response(status_code=400)
 

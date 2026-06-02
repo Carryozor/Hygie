@@ -50,5 +50,15 @@
   "cleanup.ignored_expired": "Ignorierte Elemente abgelaufen: {n} Medienelement(e) wieder verfügbar",
   "cleanup.retention": "Aufbewahrung: {n} Eintrag/Einträge aus Verlauf gelöscht (>{days}T)",
   "cleanup.logs": "Log-Bereinigung: {n} Eintrag/Einträge älter als {days}T gelöscht",
-  "cleanup.vacuum": "VACUUM ausgeführt — {n} Einträge bereinigt, Speicherplatz freigegeben"
+  "cleanup.vacuum": "VACUUM ausgeführt — {n} Einträge bereinigt, Speicherplatz freigegeben",
+  "discord.notif.detected": "🔍 Neues Medium erkannt",
+  "discord.notif.1d": "⚠️ Löschung in 24h",
+  "discord.notif.now": "🗑️ Medien gelöscht",
+  "discord.notif.days_one": "📅 Löschung in 24 Stunden",
+  "discord.notif.days_many": "📅 Löschung in {n} Tagen",
+  "discord.embed.library": "📚 Bibliothek",
+  "discord.embed.server": "🖥️ Server",
+  "discord.embed.requester": "👤 Angefordert von",
+  "discord.embed.scheduled": "📅 Geplante Löschung",
+  "discord.embed.date_label": "{date} (in {days} Tag{s})"
 }

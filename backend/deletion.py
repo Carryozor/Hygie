@@ -20,7 +20,7 @@ from .arr_clients import (
 )
 from .qbit_client import qbit_add_tag, qbit_delete_torrent, qbit_find_by_path
 from .discord_client import send_alert, send_notification
-from .notifications import _ensure_notif_columns, _send_pending_notifications
+from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock
 from .logmsg import lm
@@ -41,8 +41,6 @@ async def run_deletion():
         await add_log("INFO", lm("deletion.started"), "job")
         dry_run = await get_bool_setting("dry_run")
         deleted_count = 0
-        await _ensure_notif_columns()
-
         try:
             # Send threshold notifications (configurable, independent per threshold)
             await _send_pending_notifications()
@@ -271,6 +269,7 @@ async def _delete_media(
             await add_log("WARN", lm("deletion.discord_warn", prefix=job_tag, detail=e), "deletion")
 
         # Resolve server type to route Plex vs Emby/Jellyfin deletion
+        _srv = None
         _server_type = ""
         try:
             from .db.media_servers import get_media_servers as _gms

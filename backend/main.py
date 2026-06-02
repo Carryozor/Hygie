@@ -157,12 +157,13 @@ async def lifespan(app: FastAPI):
                       next_run_time=scan_next, replace_existing=True)
     scheduler.add_job(run_deletion, "interval", minutes=del_min, id="deletion_job",
                       next_run_time=del_next, replace_existing=True)
-    # ignored_cleanup and overlay_daily are internal — they run silently without job_history entries
+    # internal_cleanup runs silently (no job_history entries) on two schedules:
+    # every 12h for regular cleanup, and daily at 3am for overlay refresh.
     scheduler.add_job(
-        _internal_cleanup, "interval", hours=12, id="ignored_cleanup", replace_existing=True
+        _internal_cleanup, "interval", hours=12, id="internal_cleanup_12h", replace_existing=True
     )
     scheduler.add_job(
-        _internal_cleanup, "cron", hour=3, minute=0, id="overlay_daily", replace_existing=True
+        _internal_cleanup, "cron", hour=3, minute=0, id="internal_cleanup_3am", replace_existing=True
     )
 
     # Backup job — interval from settings, default 24h. 0 or backup_enabled=false = disabled.
@@ -239,6 +240,20 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # CSP: disallow inline scripts (reduce XSS surface). The Vue SPA uses
+    # compiled JS assets — no inline scripts needed. Adjust script-src if
+    # third-party CDN scripts are added in the future.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' wss: ws:; "
+        "font-src 'self'; "
+        "frame-ancestors 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'"
+    )
     return response
 
 
@@ -318,6 +333,10 @@ if os.path.isdir(os.path.join(_DIST, "assets")):
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(full_path: str):
     from fastapi.responses import Response
+    # Return 404 for unmatched /api/ routes instead of silently serving index.html,
+    # which would make missing or mistyped API paths very hard to debug.
+    if full_path.startswith("api/"):
+        return Response(status_code=404, content=f"API route not found: /{full_path}")
     index = os.path.join(_DIST, "index.html")
     if os.path.isfile(index):
         return FileResponse(index, headers={"Cache-Control": "no-store"})

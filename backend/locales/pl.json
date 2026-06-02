@@ -50,5 +50,15 @@
   "cleanup.ignored_expired": "Wygasłe ignorowane elementy: {n} plik(ów) z powrotem w obiegu",
   "cleanup.retention": "Retencja: {n} wpis(ów) usuniętych z historii (>{days}d)",
   "cleanup.logs": "Czyszczenie logów: {n} wpis(ów) starszych niż {days}d usuniętych",
-  "cleanup.vacuum": "VACUUM wykonany — {n} wpisów wyczyszczonych, zwolniono miejsce na dysku"
+  "cleanup.vacuum": "VACUUM wykonany — {n} wpisów wyczyszczonych, zwolniono miejsce na dysku",
+  "discord.notif.detected": "🔍 Wykryto nowe media",
+  "discord.notif.1d": "⚠️ Usunięcie za 24h",
+  "discord.notif.now": "🗑️ Media usunięte",
+  "discord.notif.days_one": "📅 Usunięcie za 24 godziny",
+  "discord.notif.days_many": "📅 Usunięcie za {n} dni",
+  "discord.embed.library": "📚 Biblioteka",
+  "discord.embed.server": "🖥️ Serwer",
+  "discord.embed.requester": "👤 Żądane przez",
+  "discord.embed.scheduled": "📅 Zaplanowane usunięcie",
+  "discord.embed.date_label": "{date} (za {days} dzień{s})"
 }

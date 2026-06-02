@@ -50,5 +50,15 @@
   "cleanup.ignored_expired": "Ignored items expired: {n} media item(s) back in circulation",
   "cleanup.retention": "Retention: {n} entry/entries deleted from history (>{days}d)",
   "cleanup.logs": "Log purge: {n} entry/entries older than {days}d deleted",
-  "cleanup.vacuum": "VACUUM executed — {n} entries purged, disk space freed"
+  "cleanup.vacuum": "VACUUM executed — {n} entries purged, disk space freed",
+  "discord.notif.detected": "🔍 New media detected",
+  "discord.notif.1d": "⚠️ Deletion in 24h",
+  "discord.notif.now": "🗑️ Media deleted",
+  "discord.notif.days_one": "📅 Deletion in 24 hours",
+  "discord.notif.days_many": "📅 Deletion in {n} days",
+  "discord.embed.library": "📚 Library",
+  "discord.embed.server": "🖥️ Server",
+  "discord.embed.requester": "👤 Requested by",
+  "discord.embed.scheduled": "📅 Scheduled deletion",
+  "discord.embed.date_label": "{date} (in {days} day{s})"
 }

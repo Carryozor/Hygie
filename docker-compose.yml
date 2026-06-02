@@ -1,6 +1,6 @@
 services:
   hygie:
-    image: ghcr.io/carryozor/hygie:3.0.0
+    image: ghcr.io/carryozor/hygie:latest
     container_name: hygie
     restart: unless-stopped
     ports:

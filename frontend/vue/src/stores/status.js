@@ -21,9 +21,8 @@ export const useStatusStore = defineStore('status', () => {
   // ── Computed logo status ─────────────────────────────────────────────────
   const logoStatus = computed(() => {
     if (hasUnseenErrors.value) return 'error'
-    // Au moins un serveur fonctionne → logo vert (fonctionnel)
-    if (serverStatus.value === 'ok' || serverStatus.value === 'unknown') return 'ok'
-    // Tous les serveurs KO → violet (non connecté)
+    if (serverStatus.value === 'ok') return 'ok'
+    if (serverStatus.value === 'unknown' || serverStatus.value === 'error') return 'unknown'
     return 'none'
   })
 

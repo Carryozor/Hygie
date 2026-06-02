@@ -7,41 +7,21 @@
     xmlns="http://www.w3.org/2000/svg"
     class="flex-shrink-0"
   >
-    <!-- ── Arc 1 — top ─────────────────────────────────────────────────────── -->
+    <!-- Dynamic arcs: 1 server = full circle, 2 = halves, 3 = thirds -->
     <circle
+      v-for="(arc, i) in arcs"
+      :key="i"
       :cx="C" :cy="C" :r="R"
-      :stroke="arc1.color"
-      :stroke-opacity="arc1.opacity"
+      :stroke="arc.color"
+      :stroke-opacity="arc.opacity"
       :stroke-width="arcW"
       stroke-linecap="round"
-      :stroke-dasharray="`${arcLen} ${gapLen}`"
-      :transform="`rotate(${arc1Start} ${C} ${C})`"
-      :class="arc1.cls"
-    />
-    <!-- ── Arc 2 — bottom-right ──────────────────────────────────────────── -->
-    <circle
-      :cx="C" :cy="C" :r="R"
-      :stroke="arc2.color"
-      :stroke-opacity="arc2.opacity"
-      :stroke-width="arcW"
-      stroke-linecap="round"
-      :stroke-dasharray="`${arcLen} ${gapLen}`"
-      :transform="`rotate(${arc1Start + 120} ${C} ${C})`"
-      :class="arc2.cls"
-    />
-    <!-- ── Arc 3 — bottom-left ───────────────────────────────────────────── -->
-    <circle
-      :cx="C" :cy="C" :r="R"
-      :stroke="arc3.color"
-      :stroke-opacity="arc3.opacity"
-      :stroke-width="arcW"
-      stroke-linecap="round"
-      :stroke-dasharray="`${arcLen} ${gapLen}`"
-      :transform="`rotate(${arc1Start + 240} ${C} ${C})`"
-      :class="arc3.cls"
+      :stroke-dasharray="`${arc.len} ${circ - arc.len}`"
+      :transform="`rotate(${arc.startAngle} ${C} ${C})`"
+      :class="arc.cls"
     />
 
-    <!-- ── Hygie logo (centered via nested SVG) ───────────────────────────── -->
+    <!-- Hygie logo (centered) -->
     <svg
       :x="C - size / 2"
       :y="C - size / 2"
@@ -68,90 +48,78 @@ const props = defineProps({
   statusDot:     { type: String,  default: 'none' },
   hasError:      { type: Boolean, default: false },
   serverResults: { type: Array,   default: () => [] },
-  // serverResults = [{ok: bool}, ...] — one entry per enabled server (max 3)
+  // serverResults = [{ok: bool, type: string}, ...] — one entry per configured server (max 3)
 })
 
-const status = computed(() => props.hasError ? 'error' : props.statusDot)
-
 // ── Geometry ──────────────────────────────────────────────────────────────────
-const arcW      = 3
-const pad       = 9
-const total     = computed(() => props.size + pad * 2)
-const C         = computed(() => total.value / 2)
-const R         = computed(() => C.value - arcW / 2 - 1)
-const circ      = computed(() => 2 * Math.PI * R.value)
-const arcLen    = computed(() => (100 / 360) * circ.value)
-const gapLen    = computed(() => circ.value - arcLen.value)
-const arc1Start = -90 + 10
+const arcW   = 3
+const pad    = 9
+const total  = computed(() => props.size + pad * 2)
+const C      = computed(() => total.value / 2)
+const R      = computed(() => C.value - arcW / 2 - 1)
+const circ   = computed(() => 2 * Math.PI * R.value)
 
-// ── Per-arc state ──────────────────────────────────────────────────────────────
-// Each arc independently reflects its server's status.
-// Vivid colors   : indigo #6366f1 (arc1), green #22c55e (arc2), sky #38bdf8 (arc3)
-// Dim (offline)  : violet #7c3aed at 35% opacity
-// Error          : red #ef4444 + blink
-
-// Brand colors per server type
+// ── Colors ────────────────────────────────────────────────────────────────────
 const TYPE_COLOR = {
   plex:     '#E5A00D',   // Plex orange
   emby:     '#52B54B',   // Emby green
   jellyfin: '#AA5CC3',   // Jellyfin purple
 }
-const DIM_C = '#7c3aed'  // violet pâle (non connecté)
-const RED   = '#ef4444'  // rouge erreur
+const DIM   = '#7c3aed'
+const RED   = '#ef4444'
 
 function typeColor(type) {
-  return TYPE_COLOR[type] || '#6366f1'
+  return TYPE_COLOR[(type || '').toLowerCase()] || '#6366f1'
 }
 
-function arcState(idx) {
-  if (status.value === 'error') {
-    return { color: RED, opacity: 1, cls: 'arc-error' }
-  }
+// ── Arc computation ───────────────────────────────────────────────────────────
+// Each configured server gets an equal slice of the circle.
+// 1 server  → 1 arc of ~360° (full circle, tiny gap for round-cap)
+// 2 servers → 2 arcs of ~180° each
+// 3 servers → 3 arcs of ~120° each
+// Gap between arcs: 6° when multiple servers, near-zero for a single server.
 
+const arcs = computed(() => {
   const results = props.serverResults
+  const isError = props.hasError
+
+  // No servers configured → single dim arc
   if (!results.length) {
-    return { color: DIM_C, opacity: 0.35, cls: '' }
+    const len = circ.value * 0.92  // slight gap for aesthetic
+    return [{
+      len,
+      startAngle: -90,
+      color: DIM,
+      opacity: 0.3,
+      cls: '',
+    }]
   }
 
-  const srv = results[idx]
-  if (!srv) {
-    // Slot vide — très pâle
-    return { color: DIM_C, opacity: 0.15, cls: '' }
-  }
+  const N        = results.length
+  const GAP_DEG  = N === 1 ? 0 : 6                    // no gap for a single server
+  const sliceDeg = 360 / N - GAP_DEG
+  const sliceLen = (sliceDeg / 360) * circ.value       // plain value, we're inside computed()
 
-  if (srv.ok) {
-    // Serveur OK — couleur vive du type (Plex = orange, Emby = vert, Jellyfin = violet)
-    return { color: typeColor(srv.type), opacity: 1, cls: '' }
-  } else {
-    // Serveur KO — violet pâle
-    return { color: DIM_C, opacity: 0.35, cls: '' }
-  }
-}
+  return results.map((srv, i) => {
+    const startAngle = -90 + i * (360 / N)
 
-const arc1 = computed(() => arcState(0))
-const arc2 = computed(() => arcState(1))
-const arc3 = computed(() => arcState(2))
+    if (isError) {
+      return { len: sliceLen, startAngle, color: RED, opacity: 1, cls: 'arc-error' }
+    }
+    if (srv.ok) {
+      return { len: sliceLen, startAngle, color: typeColor(srv.type), opacity: 1, cls: '' }
+    }
+    return { len: sliceLen, startAngle, color: DIM, opacity: 0.35, cls: '' }
+  })
+})
 </script>
 
 <style scoped>
-/*
- * OK : respiration douce — opacity only, no filter (filter creates rectangular glow on SVG)
- * The glow is achieved by the opacity pulse against the dark background
- */
-@keyframes arc-breathe {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.45; }
-}
-.arc-ok {
-  animation: arc-breathe 2.8s ease-in-out infinite;
-}
-
-/* Error : clignotement rouge */
-@keyframes arc-blink {
+@keyframes arc-error {
   0%, 49%   { opacity: 1; }
   50%, 100% { opacity: 0; }
 }
 .arc-error {
-  animation: arc-blink 0.75s step-end infinite;
+  animation: arc-error 0.75s step-end infinite;
 }
 </style>

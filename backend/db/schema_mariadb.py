@@ -146,6 +146,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             level   VARCHAR(10) NOT NULL,
             source  VARCHAR(64) NOT NULL,
             message LONGTEXT    NOT NULL,
+            job_id  INT         DEFAULT NULL,
             PRIMARY KEY (id)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
     ),

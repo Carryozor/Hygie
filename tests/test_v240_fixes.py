@@ -181,7 +181,6 @@ async def fresh_db(monkeypatch, tmp_path):
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0

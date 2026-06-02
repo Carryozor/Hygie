@@ -247,12 +247,32 @@ async def _m007_migrate_notification_columns():
         await db.commit()
 
 
+async def _m008_add_job_id_to_logs():
+    """Add job_id column to logs table for correlating log entries with job runs.
+
+    Once set, add_log() automatically picks up the current job_id from the
+    async context variable set at the start of each scan/deletion job.
+    This allows filtering all logs for a specific job run without scanning
+    the full log table by timestamp.
+    """
+    async with get_db() as db:
+        cols = await db.table_columns("logs")
+        if "job_id" not in cols:
+            await db.execute(
+                "ALTER TABLE logs ADD COLUMN job_id INT DEFAULT NULL"
+                if DIALECT == "mariadb" else
+                "ALTER TABLE logs ADD COLUMN job_id INTEGER DEFAULT NULL"
+            )
+            await db.commit()
+
+
 _MIGRATIONS = [
-    ("m001", "Establish migration tracking baseline",              _m001_no_op),
-    ("m002", "Ensure logs.seen_status column",                     _m002_ensure_seen_status_on_logs),
-    ("m003", "Ensure expert_rules.grace_days column",              _m003_ensure_grace_days_on_expert_rules),
-    ("m004", "Ensure refresh_tokens table",                        _m004_ensure_refresh_tokens_table),
-    ("m005", "Normalize library server_id: NULL/empty → '0'",      _m005_normalize_library_server_id),
-    ("m006", "Fix MariaDB expert_rules: add library_ids, grace_days", _m006_fix_mariadb_expert_rules_schema),
+    ("m001", "Establish migration tracking baseline",                    _m001_no_op),
+    ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
+    ("m003", "Ensure expert_rules.grace_days column",                    _m003_ensure_grace_days_on_expert_rules),
+    ("m004", "Ensure refresh_tokens table",                              _m004_ensure_refresh_tokens_table),
+    ("m005", "Normalize library server_id: NULL/empty → '0'",            _m005_normalize_library_server_id),
+    ("m006", "Fix MariaDB expert_rules: add library_ids, grace_days",    _m006_fix_mariadb_expert_rules_schema),
     ("m007", "Migrate legacy notified_* columns to notifications table", _m007_migrate_notification_columns),
+    ("m008", "Add job_id column to logs for job-run correlation",        _m008_add_job_id_to_logs),
 ]

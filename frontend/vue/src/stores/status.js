@@ -91,6 +91,26 @@ export const useStatusStore = defineStore('status', () => {
     } catch { /* silent */ }
   }
 
+  // ── Page Visibility API — suspend polling when the tab is hidden ─────────
+  function _onVisibilityChange() {
+    if (document.hidden) {
+      clearInterval(_schedulerInterval)
+      clearInterval(_healthInterval)
+      clearInterval(_logsInterval)
+      _schedulerInterval = null
+      _healthInterval    = null
+      _logsInterval      = null
+    } else {
+      // Tab became visible again — immediate refresh + resume intervals
+      fetchScheduler()
+      checkServerHealth()
+      checkUnseenErrors()
+      _schedulerInterval = setInterval(fetchScheduler,    30000)
+      _healthInterval    = setInterval(checkServerHealth, 120000)
+      _logsInterval      = setInterval(checkUnseenErrors, 20000)
+    }
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   async function start() {
     if (!localStorage.getItem('hygie_token')) return
@@ -100,9 +120,11 @@ export const useStatusStore = defineStore('status', () => {
     checkServerHealth()
     checkUnseenErrors()
 
-    _schedulerInterval = setInterval(fetchScheduler, 30000)
+    _schedulerInterval = setInterval(fetchScheduler,    30000)
     _healthInterval    = setInterval(checkServerHealth, 120000)
     _logsInterval      = setInterval(checkUnseenErrors, 20000)
+
+    document.addEventListener('visibilitychange', _onVisibilityChange)
   }
 
   function stop() {
@@ -112,6 +134,7 @@ export const useStatusStore = defineStore('status', () => {
     _schedulerInterval = null
     _healthInterval    = null
     _logsInterval      = null
+    document.removeEventListener('visibilitychange', _onVisibilityChange)
   }
 
   return {

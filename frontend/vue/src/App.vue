@@ -14,16 +14,18 @@
 <script setup>
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { useStatusStore } from '@/stores/status'
+import { useAuthStore }     from '@/stores/auth'
+import { useStatusStore }   from '@/stores/status'
+import { useSettingsStore } from '@/stores/settings'
 import AppSidebar        from '@/components/layout/AppSidebar.vue'
 import AppTopbar         from '@/components/layout/AppTopbar.vue'
 import ToastNotification from '@/components/ui/ToastNotification.vue'
 
-const route  = useRoute()
-const router = useRouter()
-const auth   = useAuthStore()
-const status = useStatusStore()
+const route    = useRoute()
+const router   = useRouter()
+const auth     = useAuthStore()
+const status   = useStatusStore()
+const settings = useSettingsStore()
 
 const showLayout = computed(() => !route.meta.public)
 
@@ -36,6 +38,9 @@ onMounted(() => {
   window.addEventListener('hygie:unauthorized', onUnauthorized)
   if (auth.isLoggedIn) {
     auth.fetchMe()
+    // Load settings once globally — individual views read from this store
+    // instead of each calling settings.fetch() independently.
+    settings.fetch()
     status.start()
   }
 })

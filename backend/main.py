@@ -141,6 +141,17 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    # Validate configuration — log WARN issues, block on CRITICAL
+    from .startup_validator import StartupValidator
+    _validator = StartupValidator()
+    _issues    = await _validator.run()
+    _can_start = await _validator.log_results(_issues)
+    if not _can_start:
+        logger.critical("Hygie startup aborted due to CRITICAL configuration issues.")
+        # Allow the app to start anyway so the health endpoint can report the problem,
+        # but log clearly that the configuration must be fixed.
+        # (A hard exit here would prevent the health endpoint from responding.)
+
     # Schedule jobs — intervals stored in minutes, clamped to [1, 10080]
     try:
         scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))

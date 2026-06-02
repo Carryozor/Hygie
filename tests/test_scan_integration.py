@@ -15,7 +15,6 @@ import backend.db.utils as _db_utils
 import backend.db.settings_store as _db_ss
 import backend.db.media_servers as _db_ms
 import backend.db.schema as _db_schema
-import backend.db.logs as _db_logs
 from backend.db.schema import init_db
 from backend.db.repositories import save_expert_rule
 from backend.rules.models import (
@@ -33,16 +32,12 @@ async def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ss._settings_cache.clear()
     _db_ss._settings_cache_ts = 0.0
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
     await init_db()
-
-    import backend.conditions as cond_mod
-    monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
 
     settings = {
         "dry_run": "false",
@@ -140,12 +135,12 @@ def _expert_scan_patches(emby_items: list):
     stack.enter_context(patch("backend.scanner._queue_entry.send_notification", new_callable=AsyncMock))
     stack.enter_context(patch("backend.scanner._orchestrator._send_pending_notifications", new_callable=AsyncMock))
     stack.enter_context(patch(
-        "backend.conditions.get_client",
+        "backend.emby_client.get_client",
         new_callable=AsyncMock,
         return_value=("http://emby:8096", "apikey"),
     ))
     stack.enter_context(patch(
-        "backend.conditions.get_client_ext_url",
+        "backend.emby_client.get_client_ext_url",
         new_callable=AsyncMock,
         return_value="",
     ))

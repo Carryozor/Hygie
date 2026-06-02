@@ -2,7 +2,7 @@
 from datetime import datetime, timezone, timedelta
 import pytest
 
-from backend.conditions import (
+from backend.rules.legacy_conditions import (
     _eval_op,
     _evaluate_conditions,
     _seerr_filter_passes,

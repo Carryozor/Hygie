@@ -205,11 +205,13 @@ _TABLES = [
             source TEXT NOT NULL,
             message TEXT NOT NULL,
             category TEXT DEFAULT '',
-            seen_status TEXT
+            seen_status TEXT,
+            job_id INTEGER DEFAULT NULL
         )""",
         [
-            ("category", "TEXT DEFAULT ''"),
+            ("category",    "TEXT DEFAULT ''"),
             ("seen_status", "TEXT"),
+            ("job_id",      "INTEGER DEFAULT NULL"),
         ],
     ),
     (

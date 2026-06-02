@@ -7,7 +7,7 @@ from .._job_state import _scan_lock
 from ..db.engine import get_db
 from ..db.settings_store import get_setting, get_bool_setting
 from ..db.media_servers import get_media_servers
-from ..db.logs import add_job_run, add_log, finish_job_run
+from ..db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
 from ..db.repositories import get_enabled_libraries, get_queued_and_ignored_ids
 from ..emby_client import get_users, ensure_server_uid
 from ..arr_clients import (
@@ -155,117 +155,131 @@ async def _do_scan_one_library(
     return "success", f"{added} queued", added
 
 
+async def _run_scan_body(run_id: int) -> tuple[str, str]:
+    """Inner scan logic — separated so run_scan() can wrap it with a timeout."""
+    await add_log("INFO", lm("scan.started"), "job")
+    added = 0
+    try:
+        servers = await get_media_servers()
+        enabled_servers = [s for s in servers if s.get("enabled", True)]
+        if not enabled_servers:
+            enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
+
+        # Build global caches once — Seerr, Radarr, Sonarr are not per-server
+        seerr_cache: dict = {}
+        try:
+            seerr_cache = await build_seerr_request_cache()
+        except ArrClientError as _seerr_err:
+            await add_log("WARN", lm("scan.seerr_unreachable", detail=_seerr_err), "scan")
+            if await get_bool_setting("discord_alert_seerr_failure"):
+                _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+                _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
+                await send_alert(
+                    "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                    mention=_mention, custom_msg=_msg,
+                    template_vars={"detail": str(_seerr_err)},
+                )
+
+        radarr_cache = await build_radarr_path_cache()
+        sonarr_cache = await build_sonarr_path_cache()
+
+        for server in enabled_servers:
+            server_id   = str(server.get("id", "0"))
+            server_type = server.get("type", "")
+            server_name = server.get("name") or ""
+
+            if server_type == "plex":
+                plex_libraries = await get_enabled_libraries(server_id)
+                for lib in plex_libraries:
+                    try:
+                        n = await _scan_plex_library(server=server, library=lib, seerr_cache=seerr_cache)
+                        added += n
+                    except Exception as _pe:
+                        await add_log("ERROR", f"Scan Plex {lib['name']}: {_pe}", "scan")
+                continue
+
+            if server_type not in ("emby", "jellyfin", ""):
+                await add_log("INFO", lm("scan.lib_ignored_type", server_id=server_id, type=server_type), "scan")
+                continue
+
+            await ensure_server_uid(server_id)
+            libraries = await get_enabled_libraries(server_id)
+            if not libraries:
+                continue
+
+            users    = await get_users(server_id=server_id)
+            user_ids = [u["Id"] for u in users] if users else []
+            queued_ids, ignored_ids = await get_queued_and_ignored_ids()
+
+            try:
+                max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
+            except (ValueError, TypeError):
+                max_parallel = 3
+            _lib_sem = asyncio.Semaphore(max(1, max_parallel))
+
+            async def _scan_lib_with_sem(lib):
+                async with _lib_sem:
+                    return await _scan_library(
+                        lib, user_ids, server_id=server_id, server_name=server_name,
+                        radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+                        seerr_cache=seerr_cache,
+                        queued_ids=queued_ids, ignored_ids=ignored_ids,
+                    )
+
+            results = await asyncio.gather(
+                *[_scan_lib_with_sem(lib) for lib in libraries],
+                return_exceptions=True,
+            )
+            for r in results:
+                if isinstance(r, int):
+                    added += r
+                elif isinstance(r, Exception):
+                    await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
+
+        await add_log("INFO", lm("scan.done", n=added), "job")
+        await _purge_stale_seerr_items()
+        await sync_emby_collection()
+        await _send_pending_notifications()
+        return "success", f"{added} queued"
+
+    except Exception as e:
+        logger.exception("Scan error")
+        await add_log("ERROR", lm("scan.error", detail=e), "job")
+        if await get_bool_setting("discord_alert_scan_failure"):
+            _mention = await get_setting("discord_alert_scan_failure_mention") or ""
+            _msg     = await get_setting("discord_alert_scan_failure_msg") or ""
+            await send_alert(
+                "🔴 Échec du scan", f"Le scan global a échoué : {e}", "error",
+                mention=_mention, custom_msg=_msg,
+                template_vars={"detail": str(e)},
+            )
+        return "error", str(e)
+
+
 async def run_scan() -> None:
-    """Full scan of all enabled libraries across all enabled servers."""
+    """Full scan of all enabled libraries across all enabled servers.
+
+    Hard timeout: 2 hours. If the scan exceeds this it is likely stuck on an
+    unresponsive external service — the timeout forces a clean exit so the next
+    scheduled run can start fresh.
+    """
     if _scan_lock.locked():
         await add_log("WARN", lm("scan.already_running"), "job")
         return
 
     async with _scan_lock:
-        run_id = await add_job_run("scan")
-        await add_log("INFO", lm("scan.started"), "job")
-        added = 0
-        _scan_status, _scan_msg = "error", ""
+        run_id    = await add_job_run("scan")
+        ctx_token = set_job_context(run_id)
+        status, msg = "error", ""
         try:
-            servers = await get_media_servers()
-            enabled_servers = [s for s in servers if s.get("enabled", True)]
-            if not enabled_servers:
-                enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
-
-            # Build global caches once — these are not per-server:
-            # Seerr, Radarr, and Sonarr are configured globally, not per media server.
-            seerr_cache: dict = {}
-            try:
-                seerr_cache = await build_seerr_request_cache()
-            except ArrClientError as _seerr_err:
-                await add_log("WARN", lm("scan.seerr_unreachable", detail=_seerr_err), "scan")
-                if await get_bool_setting("discord_alert_seerr_failure"):
-                    _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
-                    _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
-                    await send_alert(
-                        "🔌 Seerr inaccessible", str(_seerr_err), "warning",
-                        mention=_mention, custom_msg=_msg,
-                        template_vars={"detail": str(_seerr_err)},
-                    )
-
-            radarr_cache = await build_radarr_path_cache()
-            sonarr_cache = await build_sonarr_path_cache()
-
-            for server in enabled_servers:
-                server_id   = str(server.get("id", "0"))
-                server_type = server.get("type", "")
-                server_name = server.get("name") or ""
-
-                if server_type == "plex":
-                    plex_libraries = await get_enabled_libraries(server_id)
-                    for lib in plex_libraries:
-                        try:
-                            n = await _scan_plex_library(server=server, library=lib, seerr_cache=seerr_cache)
-                            added += n
-                        except Exception as _pe:
-                            await add_log("ERROR", f"Scan Plex {lib['name']}: {_pe}", "scan")
-                    continue
-
-                if server_type not in ("emby", "jellyfin", ""):
-                    await add_log("INFO", lm("scan.lib_ignored_type", server_id=server_id, type=server_type), "scan")
-                    continue
-
-                # Auto-populate server_uid (needed for public calendar links)
-                await ensure_server_uid(server_id)
-
-                libraries = await get_enabled_libraries(server_id)
-                if not libraries:
-                    continue
-
-                users    = await get_users(server_id=server_id)
-                user_ids = [u["Id"] for u in users] if users else []
-
-                queued_ids, ignored_ids = await get_queued_and_ignored_ids()
-
-                try:
-                    max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
-                except (ValueError, TypeError):
-                    max_parallel = 3
-                _lib_sem = asyncio.Semaphore(max(1, max_parallel))
-
-                async def _scan_lib_with_sem(lib):
-                    async with _lib_sem:
-                        return await _scan_library(
-                            lib, user_ids, server_id=server_id, server_name=server_name,
-                            radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
-                            seerr_cache=seerr_cache,
-                            queued_ids=queued_ids, ignored_ids=ignored_ids,
-                        )
-
-                results = await asyncio.gather(
-                    *[_scan_lib_with_sem(lib) for lib in libraries],
-                    return_exceptions=True,
-                )
-                for r in results:
-                    if isinstance(r, int):
-                        added += r
-                    elif isinstance(r, Exception):
-                        await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
-
-            await add_log("INFO", lm("scan.done", n=added), "job")
-            _scan_status, _scan_msg = "success", f"{added} queued"
-            await _purge_stale_seerr_items()
-            await sync_emby_collection()
-            await _send_pending_notifications()
-        except Exception as e:
-            logger.exception("Scan error")
-            await add_log("ERROR", lm("scan.error", detail=e), "job")
-            _scan_msg = str(e)
-            if await get_bool_setting("discord_alert_scan_failure"):
-                _mention = await get_setting("discord_alert_scan_failure_mention") or ""
-                _msg     = await get_setting("discord_alert_scan_failure_msg") or ""
-                await send_alert(
-                    "🔴 Échec du scan", f"Le scan global a échoué : {e}", "error",
-                    mention=_mention, custom_msg=_msg,
-                    template_vars={"detail": str(e)},
-                )
+            status, msg = await asyncio.wait_for(_run_scan_body(run_id), timeout=7200)
+        except asyncio.TimeoutError:
+            logger.error("run_scan exceeded 2-hour timeout — forcing exit")
+            await add_log("ERROR", "Scan timeout (2h) — forcibly terminated", "job")
+            msg = "timeout"
         finally:
-            await finish_job_run(run_id, _scan_status, _scan_msg)
+            _current_job_id.reset(ctx_token)
+            await finish_job_run(run_id, status, msg)
 
 
 async def run_scan_library(library_id: str) -> None:

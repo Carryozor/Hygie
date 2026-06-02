@@ -19,13 +19,12 @@ async def client_with_data(monkeypatch, tmp_path):
     import backend.db.settings_store as _db_ss
     import backend.db.media_servers as _db_ms
     import backend.db.schema as _db_schema
-    import backend.db.logs as _db_logs
     import backend.deletion as _deletion
     import backend.routers.metrics as _metrics_router
 
     import backend.db.engine as _db_engine
 
-    for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _db_logs, _deletion, _metrics_router):
+    for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _deletion, _metrics_router):
         monkeypatch.setattr(mod, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 
@@ -36,7 +35,7 @@ async def client_with_data(monkeypatch, tmp_path):
     auth_mod._ph = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 
     # Re-patch after reload
-    for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _db_logs, _deletion, _metrics_router):
+    for mod in (_db_utils, _db_ss, _db_ms, _db_schema, _deletion, _metrics_router):
         monkeypatch.setattr(mod, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 

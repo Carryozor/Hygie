@@ -5,7 +5,6 @@ import backend.db.utils as _db_utils
 import backend.db.settings_store as _db_ss
 import backend.db.media_servers as _db_ms
 import backend.db.schema as _db_schema
-import backend.db.logs as _db_logs
 
 FAKE_URL = "http://emby.test:8096"
 FAKE_KEY  = "test-api-key-12345"
@@ -21,7 +20,6 @@ async def mock_server_config(monkeypatch, tmp_path):
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
@@ -152,7 +150,6 @@ async def test_get_users_no_url_returns_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     _db_ms._ms_cache = None
     _db_ms._ms_cache_ts = 0.0
     _db_ss._settings_cache.clear()

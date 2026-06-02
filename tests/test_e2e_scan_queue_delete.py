@@ -18,7 +18,6 @@ import backend.db.utils as _db_utils
 import backend.db.settings_store as _db_ss
 import backend.db.media_servers as _db_ms
 import backend.db.schema as _db_schema
-import backend.db.logs as _db_logs
 from backend.db.schema import init_db
 
 
@@ -32,7 +31,6 @@ async def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ms, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
     _db_ss._settings_cache.clear()
     _db_ss._settings_cache_ts = 0.0
@@ -42,9 +40,8 @@ async def isolated_db(tmp_path, monkeypatch):
 
     # scheduler/deletion/conditions import DB_PATH at module level — patch their local copies too
     import backend.deletion as deletion_mod
-    import backend.conditions as cond_mod
+    import backend.rules.legacy_conditions as cond_mod
     monkeypatch.setattr(deletion_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(cond_mod, "DB_PATH", db_path)
 
     # Seed required settings
     settings = {
@@ -152,12 +149,12 @@ def _scan_patches(emby_items: list):
     stack.enter_context(patch("backend.scanner._orchestrator._send_pending_notifications", new_callable=AsyncMock))
     # get_client needed by conditions._evaluate_item → get_client_ext_url
     stack.enter_context(patch(
-        "backend.conditions.get_client",
+        "backend.emby_client.get_client",
         new_callable=AsyncMock,
         return_value=("http://emby:8096", "apikey"),
     ))
     stack.enter_context(patch(
-        "backend.conditions.get_client_ext_url",
+        "backend.emby_client.get_client_ext_url",
         new_callable=AsyncMock,
         return_value="",
     ))
@@ -237,7 +234,7 @@ async def test_delete_fires_after_grace(isolated_db):
         emby_deleted.append(emby_id_)
 
     with (
-        patch("backend.deletion.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
         patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
         patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
         patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
@@ -280,7 +277,7 @@ async def test_delete_skips_during_grace(isolated_db):
     emby_deleted = []
 
     with (
-        patch("backend.deletion.delete_item", new_callable=AsyncMock,
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock,
               side_effect=lambda eid, **kw: emby_deleted.append(eid)),
         patch("backend.deletion.send_notification", new_callable=AsyncMock),
         patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
@@ -329,7 +326,7 @@ async def test_full_scan_then_delete(isolated_db):
         emby_deleted.append(eid)
 
     with (
-        patch("backend.deletion.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
         patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
         patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
         patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
@@ -374,7 +371,7 @@ async def test_dry_run_prevents_deletion(isolated_db):
     emby_deleted = []
 
     with (
-        patch("backend.deletion.delete_item", new_callable=AsyncMock,
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock,
               side_effect=lambda eid, **kw: emby_deleted.append(eid)),
         patch("backend.deletion.send_notification", new_callable=AsyncMock),
         patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),

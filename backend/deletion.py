@@ -8,7 +8,7 @@ from typing import Optional
 from .db.utils import DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
-from .db.logs import add_job_run, add_log, finish_job_run
+from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
 from .db.repositories import get_pending_queue, update_queue_status
 from .emby_client import delete_item, get_client
 from .arr_clients import (
@@ -30,95 +30,112 @@ logger = logging.getLogger(__name__)
 
 
 # ═══ Deletion ════════════════════════════════════════════════════════════════
-async def run_deletion():
-    """Process queue: send 30d/7d/1d notifications, delete items past their delete_at."""
+
+async def run_deletion() -> None:
+    """Process queue: send threshold notifications, delete items past their delete_at.
+
+    Hard timeout: 1 hour. If the job exceeds this limit it is likely stuck waiting
+    on an unresponsive external service — the timeout forces a clean exit so the
+    next scheduled run can start fresh.
+    """
     if _deletion_lock.locked():
         await add_log("WARN", lm("deletion.already_running"), "job")
         return
 
     async with _deletion_lock:
-        run_id = await add_job_run("deletion_check")
-        await add_log("INFO", lm("deletion.started"), "job")
-        dry_run = await get_bool_setting("dry_run")
+        run_id      = await add_job_run("deletion_check")
+        ctx_token   = set_job_context(run_id)   # propagate job_id to all add_log() calls
+        _dl_status  = "error"
+        _dl_msg     = ""
         deleted_count = 0
+        dry_run     = await get_bool_setting("dry_run")
+
         try:
-            # Send threshold notifications (configurable, independent per threshold)
-            await _send_pending_notifications()
+            async with asyncio.timeout(3600):   # 1-hour hard cap
+                await add_log("INFO", lm("deletion.started"), "job")
 
-            # ── Deletions ────────────────────────────────────────────────────
-            to_delete = await get_pending_queue()
+                # Send threshold notifications (independent per threshold value)
+                await _send_pending_notifications()
 
-            # Pre-load library → server_id map to avoid per-item DB queries in _delete_media
-            async with get_db() as _lib_db:
-                _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
-            _lib_server_map = {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
-            to_delete = [
-                {**dict(r), "_server_id": _lib_server_map.get(r.get("library_id"), "0")}
-                for r in to_delete
-            ]
+                # Pre-load library→server_id map (avoids per-item DB queries)
+                async with get_db() as _lib_db:
+                    _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
+                _lib_server_map = {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
 
-            # Read qbit settings once for the whole batch
-            _qbit_action = await get_setting("qbit_action") or "tag_only"
-            _qbit_tag = await get_setting("qbit_tag") or "Supprimé-Hygie"
+                to_delete = [
+                    {**dict(r), "_server_id": _lib_server_map.get(r.get("library_id"), "0")}
+                    for r in await get_pending_queue()
+                ]
 
-            # Semaphore limits concurrent deletions to avoid overwhelming external services
-            _del_sem = asyncio.Semaphore(3)
-            _alert_del_error = await get_bool_setting("discord_alert_deletion_error")
-            _del_mention = await get_setting("discord_alert_deletion_error_mention") or ""
-            _del_msg = await get_setting("discord_alert_deletion_error_msg") or ""
-            try:
-                _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
-            except (ValueError, TypeError):
-                _alert_threshold = 3
-            _error_count = 0
+                # Read qbit settings once for the whole batch
+                _qbit_action = await get_setting("qbit_action") or "tag_only"
+                _qbit_tag    = await get_setting("qbit_tag")    or "Supprimé-Hygie"
 
-            async def _delete_one(row: dict) -> bool:
-                nonlocal _error_count
-                async with _del_sem:
-                    ok = await _delete_media(row, dry_run, qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id)
-                    status_val = STATUS_DELETED if ok else STATUS_ERROR
-                    await update_queue_status(row["id"], status_val)
-                    if not ok:
-                        _error_count += 1
-                        if _alert_del_error:
-                            _title_val = row.get("title", "?")
-                            await send_alert(
-                                f"❌ Échec suppression : {_title_val}",
-                                f"La suppression de **{_title_val}** a échoué.",
-                                "error",
-                                mention=_del_mention,
-                                custom_msg=_del_msg,
-                                template_vars={"title": _title_val, "detail": f"Échec suppression de {_title_val}"},
-                            )
-                    return ok
+                _del_sem         = asyncio.Semaphore(3)
+                _alert_del_error = await get_bool_setting("discord_alert_deletion_error")
+                _del_mention     = await get_setting("discord_alert_deletion_error_mention") or ""
+                _del_msg_tpl     = await get_setting("discord_alert_deletion_error_msg")    or ""
+                try:
+                    _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
+                except (ValueError, TypeError):
+                    _alert_threshold = 3
+                _error_count = 0
 
-            results = await asyncio.gather(*[_delete_one(r) for r in to_delete], return_exceptions=True)
-            deleted_count = sum(1 for r in results if r is True)
+                async def _delete_one(row: dict) -> bool:
+                    nonlocal _error_count
+                    async with _del_sem:
+                        ok = await _delete_media(
+                            row, dry_run,
+                            qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id,
+                        )
+                        await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
+                        if not ok:
+                            _error_count += 1
+                            if _alert_del_error:
+                                _t = row.get("title", "?")
+                                await send_alert(
+                                    f"❌ Échec suppression : {_t}",
+                                    f"La suppression de **{_t}** a échoué.",
+                                    "error",
+                                    mention=_del_mention, custom_msg=_del_msg_tpl,
+                                    template_vars={"title": _t, "detail": f"Échec suppression de {_t}"},
+                                )
+                        return ok
 
-            if _error_count >= _alert_threshold and _error_count > 0:
-                await send_alert(
-                    f"🚨 {_error_count} suppressions en échec",
-                    f"{_error_count} suppressions ont échoué sur {len(to_delete)} tentatives dans ce cycle.",
-                    "error",
-                    mention=_del_mention,
-                    custom_msg=_del_msg,
-                    template_vars={"count": _error_count, "detail": f"{_error_count} suppressions en échec"},
+                results = await asyncio.gather(
+                    *[_delete_one(r) for r in to_delete], return_exceptions=True
                 )
+                deleted_count = sum(1 for r in results if r is True)
 
-            prefix = "[DRY RUN] " if dry_run else ""
-            await add_log("INFO", lm("deletion.done", prefix=prefix, n=deleted_count), "job")
-            await finish_job_run(
-                run_id,
-                "success",
-                f"{'[DRY RUN] ' if dry_run else ''}{deleted_count} deleted",
-            )
+                if _error_count >= _alert_threshold > 0:
+                    await send_alert(
+                        f"🚨 {_error_count} suppressions en échec",
+                        f"{_error_count} suppressions ont échoué sur {len(to_delete)} tentatives.",
+                        "error",
+                        mention=_del_mention, custom_msg=_del_msg_tpl,
+                        template_vars={"count": _error_count, "detail": f"{_error_count} suppressions en échec"},
+                    )
 
-            if not dry_run and deleted_count > 0:
-                await sync_emby_collection()
+                prefix   = "[DRY RUN] " if dry_run else ""
+                _dl_status = "success"
+                _dl_msg    = f"{prefix}{deleted_count} deleted"
+                await add_log("INFO", lm("deletion.done", prefix=prefix, n=deleted_count), "job")
+
+                if not dry_run and deleted_count > 0:
+                    await sync_emby_collection()
+
+        except asyncio.TimeoutError:
+            logger.error("run_deletion exceeded 1-hour timeout — forcing exit")
+            await add_log("ERROR", "Deletion job timeout (1h) — forcibly terminated", "job")
+            _dl_status = "error"
+            _dl_msg    = "timeout"
         except Exception as e:
             logger.exception("Deletion error")
             await add_log("ERROR", lm("deletion.error", detail=e), "job")
-            await finish_job_run(run_id, "error", str(e))
+            _dl_msg = str(e)
+        finally:
+            _current_job_id.reset(ctx_token)
+            await finish_job_run(run_id, _dl_status, _dl_msg)
 
 
 async def _find_torrent_hash(row: dict) -> Optional[str]:
@@ -203,124 +220,47 @@ async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag
         await add_log("WARN", lm("qbit.error", title=title, detail=e), "deletion")
 
 
-async def _get_size_bytes(row: dict) -> int:
-    """Best-effort file size lookup from Radarr/Sonarr before deletion."""
-    try:
-        media_type = row.get("media_type", "")
-        if media_type == "Movie":
-            rid = row.get("radarr_id")
-            if rid:
-                movie = await radarr_get(int(rid))
-                if movie:
-                    return int((movie.get("movieFile") or {}).get("size") or 0)
-        else:
-            sonarr_series_id = row.get("sonarr_series_id")
-            if sonarr_series_id:
-                series = await sonarr_get_series_by_id(int(sonarr_series_id))
-                if series:
-                    return int((series.get("statistics") or {}).get("sizeOnDisk") or 0)
-    except Exception as e:
-        logger.debug(f"_get_size_bytes: {e}")
-    return 0
-
-
 async def _delete_media(
     row: dict,
     dry_run: bool,
-    qbit_action: str = "",
-    qbit_tag_val: str = "",
+    qbit_action: str = "tag_only",
+    qbit_tag_val: str = "Supprimé-Hygie",
     run_id: int = 0,
 ) -> bool:
-    """
-    Delete a media item across all services.
+    """Delete a media item across all services using the DeletionPipeline.
 
-    Order:
-      1. Find torrent hash (before removing from arr — history disappears after)
-      2. Discord notification (before Emby — image still accessible)
-      3. Emby — remove hardlink
-      4. Radarr/Sonarr — remove item (keep files)
-      5. Seerr — delete request
-      6. qBittorrent — tag or delete torrent
+    The pipeline handles: size lookup, torrent hash, Discord notification,
+    Emby/Plex deletion, Radarr/Sonarr removal, Seerr cleanup, qBit tagging,
+    and stats recording — in the correct order.
     """
-    title = row.get("title", "?")
-    emby_id = row.get("emby_id")
+    from .deletion_pipeline import DeletionContext, build_default_pipeline
+
+    title      = row.get("title", "?")
+    job_tag    = f"[job:{run_id}] " if run_id else ""
     dry_prefix = "[DRY RUN] " if dry_run else ""
-    job_tag = f"[job:{run_id}] " if run_id else ""
-    await add_log("INFO", lm("deletion.item_start", prefix=job_tag+dry_prefix, title=title), "deletion")
+    log_prefix = job_tag + dry_prefix
+
+    await add_log("INFO", lm("deletion.item_start", prefix=log_prefix, title=title), "deletion")
 
     if dry_run:
         return True
 
-    try:
-        qbit_action = qbit_action or "tag_only"
-        qbit_tag = qbit_tag_val or "Supprimé-Hygie"
+    ctx = DeletionContext(
+        item=dict(row),
+        dry_run=False,
+        run_id=run_id,
+        qbit_action=qbit_action or "tag_only",
+        qbit_tag=qbit_tag_val or "Supprimé-Hygie",
+    )
 
-        # server_id pre-resolved by run_deletion via _lib_server_map
-        library_server_id = str(row.get("_server_id") or "0")
+    ok = await build_default_pipeline().execute(ctx)
 
-        size_bytes, torrent_hash = await asyncio.gather(
-            _get_size_bytes(row),
-            _find_torrent_hash(row),
-        )
+    if ok:
+        await add_log("INFO", lm("deletion.item_done", prefix=log_prefix, title=title), "deletion")
+    else:
+        await add_log("ERROR", lm("deletion.item_error", prefix=log_prefix, title=title, detail="pipeline step failed"), "deletion")
 
-        try:
-            await send_notification([row], "now", dry_run=False)
-        except Exception as e:
-            await add_log("WARN", lm("deletion.discord_warn", prefix=job_tag, detail=e), "deletion")
-
-        # Resolve server type to route Plex vs Emby/Jellyfin deletion
-        _srv = None
-        _server_type = ""
-        try:
-            from .db.media_servers import get_media_servers as _gms
-            _all_servers = await _gms()
-            _srv = next((s for s in _all_servers if str(s.get("id")) == library_server_id), None)
-            _server_type = (_srv or {}).get("type", "")
-        except Exception:
-            pass
-
-        # Skip deletion for consolidated season/series entries (synthetic IDs)
-        if emby_id and not str(emby_id).startswith("sonarr-"):
-            if is_plex(_srv or {}):
-                from .plex_client import build_plex_client as _bpc
-                _plex_client = _bpc(_srv or {})
-                if _plex_client:
-                    rating_key = row.get("plex_rating_key") or emby_id
-                    await _plex_client.delete_item(rating_key)
-                    await add_log("DEBUG", lm("plex.deleted", key=rating_key), "deletion")
-            else:
-                await delete_item(emby_id, server_id=library_server_id)
-                await add_log("DEBUG", lm("emby.hardlink", title=title), "deletion")
-
-        await _delete_from_arr(row)
-        await _delete_from_seerr(row)
-
-        if torrent_hash:
-            await _handle_qbit(torrent_hash, title, qbit_action, qbit_tag)
-        else:
-            await add_log("INFO", lm("deletion.qbit_not_found", prefix=job_tag, title=title), "deletion")
-
-        await add_log("INFO", lm("deletion.item_done", prefix=job_tag, title=title), "deletion")
-
-        try:
-            month = now_utc().strftime("%Y-%m")
-            lib_id = row.get("library_id") or None
-            async with get_db() as _db:
-                await _db.execute(
-                    "INSERT INTO stats_history "
-                    "(ts, total_deleted, total_scanned, space_freed_bytes, month, library_id) "
-                    "VALUES (?, 1, 0, ?, ?, ?)",
-                    (now_utc().isoformat(), size_bytes, month, lib_id),
-                )
-                await _db.commit()
-        except Exception as e:
-            logger.debug(f"_delete_media: stats_history insert: {e}")
-
-        return True
-    except Exception as e:
-        logger.exception(f"_delete_media {title}")
-        await add_log("ERROR", lm("deletion.item_error", prefix=job_tag, title=title, detail=e), "deletion")
-        return False
+    return ok
 
 
 # ═══ Ignored cleanup ══════════════════════════════════════════════════════════

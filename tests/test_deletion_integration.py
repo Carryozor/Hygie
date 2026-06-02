@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, patch
 import backend.db.utils as _db_utils
 import backend.db.settings_store as _db_ss
 import backend.db.schema as _db_schema
-import backend.db.logs as _db_logs
 import backend.deletion as _deletion_mod
 
 from backend.db.schema import init_db
@@ -26,7 +25,6 @@ async def deletion_db(tmp_path, monkeypatch):
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
     monkeypatch.setattr(_db_ss, "DB_PATH", db_path)
     monkeypatch.setattr(_db_schema, "DB_PATH", db_path)
-    monkeypatch.setattr(_db_logs, "DB_PATH", db_path)
     monkeypatch.setattr(_deletion_mod, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 

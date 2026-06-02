@@ -1,7 +1,7 @@
 """Tests for conditions.py — _evaluate_conditions and _seerr_filter_passes."""
 from datetime import datetime, timezone, timedelta
 
-from backend.conditions import _evaluate_conditions, _seerr_filter_passes
+from backend.rules.legacy_conditions import _evaluate_conditions, _seerr_filter_passes
 
 
 def utc_days_ago(n: int) -> datetime:

@@ -148,4 +148,12 @@ EOF
 fi
 
 #── Démarrage de Hygie ─────────────────────────────────────────────────────────
-exec uvicorn backend.main:app --host 0.0.0.0 --port 8000
+# IMPORTANT: --workers 1 is mandatory.
+# Hygie uses asyncio.Lock() objects for scan/deletion job exclusivity.
+# These locks exist only within a single Python process. Running multiple workers
+# WILL cause concurrent scans, duplicate queue entries, and data corruption.
+# See ARCHITECTURE.md for the full explanation.
+exec uvicorn backend.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 1

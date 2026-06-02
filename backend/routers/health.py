@@ -91,5 +91,17 @@ async def health():
         if status_info["status"] == "healthy":
             status_info["status"] = "degraded"
 
+    # Circuit breakers — expose state of all registered breakers
+    try:
+        from ..arr_clients.circuit_breaker import all_breaker_states
+        breakers = all_breaker_states()
+        if breakers:
+            open_breakers = [n for n, s in breakers.items() if s["state"] == "open"]
+            status_info["circuit_breakers"] = breakers
+            if open_breakers:
+                status_info["status"] = "degraded"
+    except Exception:
+        pass
+
     code = 200 if status_info["status"] == "healthy" else 503
     return JSONResponse(status_info, status_code=code)

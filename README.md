@@ -4,17 +4,17 @@
 
 # Hygie
 
-**Smart media library manager for Emby, Jellyfin & Plex**
+**Smart media library manager for Emby, Jellyfin & Plex**  
 **Gestionnaire intelligent de bibliothèque média pour Emby, Jellyfin & Plex**
 
 *Open-source alternative to Maintainerr*
 
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fcarryozor%2Fhygie-blue?logo=docker&logoColor=white)](https://github.com/carryozor/hygie/pkgs/container/hygie)
-[![Version](https://img.shields.io/badge/version-3.0.1-brightgreen)](https://github.com/carryozor/hygie/releases)
+[![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/carryozor/hygie/releases)
 [![CI](https://github.com/carryozor/hygie/actions/workflows/ci.yml/badge.svg)](https://github.com/carryozor/hygie/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-297%20passed-brightgreen)](https://github.com/carryozor/hygie/tree/main/tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://www.python.org/)
+[![Vue](https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vue.js)](https://vuejs.org/)
 
 ---
 
@@ -28,76 +28,89 @@
 
 ### What is Hygie?
 
-Hygie automatically scans your **Emby, Jellyfin or Plex** media libraries, identifies unused media based on configurable rules, and orchestrates their deletion across your entire *arr stack — Emby/Jellyfin/Plex, Radarr, Sonarr, Seerr, and qBittorrent — while keeping your users informed via Discord.
+Hygie automatically scans your **Emby, Jellyfin or Plex** media libraries, identifies unused media based on configurable rules, and orchestrates their deletion across your entire *arr stack — Radarr, Sonarr, Overseerr/Jellyseerr, and qBittorrent — while keeping your users informed via Discord.
 
 ### ✨ Features
 
-#### 🖥️ Multi-Server Support (Emby, Jellyfin & Plex)
-- **Automatic detection** of Emby and Jellyfin via API (`ProductName` + version heuristics)
-- **Plex support** — scan libraries, detect unwatched media, delete via Plex local API
-- **Plex.tv integration** — discover your servers and friends via `plex_tv_token`
-- **Plex webhooks** — receive play/scrobble events at `/api/plex/webhook` (optional secret)
-- **Multiple servers** — configure and activate several Emby/Jellyfin/Plex servers simultaneously
-- Per-server enable/disable toggle with real-time type detection
-- All operations (scan, delete, collection sync, overlay) routed to the correct server
+#### 🖥️ Interface — Vue 3
+- Modern **Vue 3 + Vite** single-page application
+- **8 languages**: French, English, German, Spanish, Italian, Portuguese, Dutch, Polish
+- Real-time log stream via WebSocket
+- Collapsible server/library tree in sidebar
 
-#### 🎯 Deletion Rules
-- **Per-library conditions** with AND/OR logic:
-  - Added since X days
-  - Not watched since X days
-  - Never watched / play count
-- **Configurable grace period** (minutes — set in Settings)
-- **Simple rules** — per-user Seerr grace period overrides with optional Discord ID mapping
-- **Expert rules** — visual condition builder with advanced fields (days not watched, rating, file size, media type, Seerr user…), AND/OR operators, queue or notify-only action
-- **Seerr filters** — include or exclude specific users per library
+#### 🎬 Multi-Server (Emby, Jellyfin & Plex)
+- **Automatic type detection** via `/System/Info` (`ProductName` + version heuristics)
+- **Plex support** — scan libraries, detect unwatched, delete via local API
+- **Multiple servers** — configure several Emby/Jellyfin/Plex simultaneously
+- Per-server color coding: Emby (green), Jellyfin (purple), Plex (orange)
+- Auto-populated `serverId` for direct media links in the public calendar
+
+#### 🎯 Expert Rules Engine
+- **Visual condition builder** with AND/OR operators between condition groups
+- Fields: days not watched, play count, community rating, file size (GB), added days ago, media type, Seerr user
+- **Multi-library targeting** — one rule can cover libraries from multiple servers
+- **Actions**: queue for deletion or notify-only
+- Per-rule grace period override
+- Simple Seerr rules: per-user grace periods with optional Discord ID mapping
+- One-click scan trigger per rule, filtered to the rule's libraries only
 
 #### 🔔 Discord Notifications
-- Alerts at **30 days**, **7 days**, **24 hours** before deletion, and at deletion
-- Automatic **@mention** of the requester (via Seerr mapping or manual Discord ID)
-- Public TMDB poster — available even after media server deletion
-- Notification sent **before** deletion so the image is still accessible
+- Configurable threshold alerts (e.g., 7d, 1d before deletion) + at-deletion
+- Automatic **@mention** of the requester (via Seerr mapping or Discord ID)
+- Dual webhook support: main (deletions) + alerts (errors, failures)
+- Separate alerts for: deletion failures, scan failures, Seerr unreachable
+- Error threshold: batch alert when N consecutive failures occur
 
 #### 🗑️ Orchestrated Deletion
-Complete workflow in a single operation:
-1. 📣 Discord notification (image still available)
-2. 🗑️ Remove from **Emby / Jellyfin / Plex**
-3. 🗑️ Remove item from **Radarr / Sonarr** (files preserved)
-4. 🗑️ Delete request from **Seerr / Overseerr / Jellyseerr**
-5. 🏷️ **qBittorrent** — add tag or delete torrent+files
+Full deletion pipeline in sequence:
+1. Discord notification (while media is still accessible for poster)
+2. Emby / Jellyfin / Plex — remove item
+3. Radarr / Sonarr — remove from library (files kept)
+4. Overseerr / Jellyseerr — delete request
+5. qBittorrent — tag or delete torrent (configurable)
 
-#### 📺 "Leaving Soon" Collection
-- Automatic sync of a collection with pending media
-- **Poster overlay** showing "Deleted in Xd" countdown, refreshed on each sync
-- Compatible with Emby and Jellyfin (Plex does not expose a collection write API)
-- Overlay automatically removed if media is rescued from the queue
+#### 📅 Public Calendar
+- Share upcoming deletions without requiring login
+- Optional **password protection** and custom **URL slug** (`/myslug`)
+- **Language selector** (8 languages, persists in localStorage)
+- Filter by server, grouped by server → library
+- **"View on Server"** link per media (Emby/Jellyfin with correct `serverId`)
+- Hygie's configured language used as default
 
-#### 🖥️ Web Interface (Vue 3 SPA)
+#### 🗄️ Database
+- **SQLite** by default — zero configuration
+- **MariaDB external** — set `DATABASE_URL` env var
+- **MariaDB embedded** — single-container mode (`EMBEDDED_MARIADB=true`)
+- Bidirectional migration UI: SQLite ↔ MariaDB
+- Dialect-aware health check, rate limiting, backup, and VACUUM
 
-| Page | Description |
-|------|-------------|
-| **Dashboard** | Global stats, lifetime deletions chart, upcoming deletions |
-| **Calendar** | Deletions organized by date |
-| **Queue** | Tabs: All / Pending / Deleted / Errors — persistent sort, bulk actions |
-| **Libraries** | CRUD rules, clone, per-library scan |
-| **Rules** | Visual builder — simple Seerr rules and expert condition rules |
-| **Settings** | General (dry run, backup), Intervals, Plex token & webhook |
-| **Ignored** | Excluded media with expiry, one-click restore to queue |
-| **Storage** | Disk metrics from Radarr/Sonarr, reclaimable space |
-| **Job History** | Scan and deletion checks with countdown to next run |
-| **Logs** | Real-time stream via WebSocket, level/source filters |
+#### 🛡️ Security
+- Argon2id password hashing
+- JWT HS256 with refresh tokens (auto-rotation)
+- Rate limiting (SQLite-backed with in-memory fallback for MariaDB)
+- SSRF-protected image proxy with domain whitelist
+- Optional **Fernet encryption at rest** for sensitive settings (API keys, webhooks)
+- Strict HTTP headers
 
-#### 🎛️ Sidebar Controls
-- **Dry Run toggle** — activate/deactivate simulation mode directly from the sidebar
-- **Scan & deletion progress bars** — real-time countdown to next scheduled run with pulse animation when running
+#### 🔧 Operations
+- APScheduler with countdown preservation across restarts
+- Dry-run mode (global toggle from sidebar)
+- **SQLite backup** with configurable interval and retention (SQLite only)
+- Automatic VACUUM + WAL checkpoint after large purges (SQLite only)
+- Structured logging with configurable level, WebSocket broadcast, retention
+- Dedicated `/health` endpoint (dialect-aware) for Uptime Kuma / Docker HEALTHCHECK
+
+---
 
 ### 🚀 Quick Start
 
-#### Docker Compose
+#### Option 1 — SQLite (default, zero config)
 
 ```yaml
+# docker-compose.yml
 services:
   hygie:
-    image: ghcr.io/carryozor/hygie:latest
+    image: ghcr.io/carryozor/hygie:3.0.0
     container_name: hygie
     restart: unless-stopped
     ports:
@@ -106,241 +119,131 @@ services:
       - ./data:/app/data
     environment:
       - TZ=Europe/Paris
-      # Optional: encrypt API keys at rest.
-      # Generate key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-      # - HYGIE_ENCRYPTION_KEY=your-generated-key-here
-    healthcheck:
-      test: ["CMD", "python3", "/app/backend/healthcheck.py"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
 ```
 
 ```bash
 docker compose up -d
+# Open http://localhost:8000 → Setup wizard
 ```
 
-Open `http://localhost:8000`, create your admin account, then configure your services under **Settings**.
+#### Option 2 — External MariaDB
 
-#### Prerequisites
-- Docker & Docker Compose
-- **Emby**, **Jellyfin**, or **Plex** media server
-- Radarr and/or Sonarr
-- Seerr / Overseerr / Jellyseerr *(optional but recommended)*
-- qBittorrent *(optional)*
-- Discord webhook *(optional)*
+```yaml
+environment:
+  - DATABASE_URL=mysql+aiomysql://user:pass@host:3306/hygie
+```
+
+#### Option 3 — Embedded MariaDB (all-in-one)
+
+```bash
+# Build with MariaDB support (~350 MB larger)
+docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml build
+
+# Start (runs as root to manage mysqld)
+docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml up -d
+```
+
+#### Option 4 — Separate MariaDB container
+
+```bash
+docker compose --profile mariadb up -d
+# Set DATABASE_URL=mysql+aiomysql://hygie:${DB_MARIADB_PASSWORD}@mariadb:3306/hygie
+```
+
+---
 
 ### ⚙️ Configuration
 
-All configuration is done through the web interface.
-
-| Service | Required fields |
-|---------|----------------|
-| **Media Server** | Internal URL, API key, External URL *(optional)* |
-| **Radarr** | URL, API key |
-| **Sonarr** | URL, API key |
-| **Seerr** | URL, API key, External URL *(for clickable links)* |
-| **qBittorrent** | URL *(Gluetun compatible)*, username, password |
-| **Discord** | Webhook URL |
-| **Plex** | `plex_tv_token` (Plex.tv token), webhook secret *(optional)* |
-
-| Environment variable | Default | Description |
-|---------------------|---------|-------------|
-| `DB_PATH` | `/app/data/hygie.db` | SQLite database path |
-| `DATABASE_URL` | *(unset)* | Set to `mysql+aiomysql://user:pass@host:3306/db` to use MariaDB instead of SQLite |
-| `HYGIE_VERSION` | `dev` | Displayed version (injected via `--build-arg`) |
-| `TZ` | UTC | Timezone |
-| `HYGIE_ENCRYPTION_KEY` | *(unset)* | Fernet key for encrypting API keys at rest *(optional)* |
-
-### 🔐 Encrypting API Keys at Rest
-
-By default, service credentials are stored in plaintext in the SQLite database. You can enable **transparent at-rest encryption** by setting `HYGIE_ENCRYPTION_KEY`.
-
-**1. Generate a key** (do this once, store it safely):
+Copy `.env.example` to `.env`:
 
 ```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# → qqUH3Oa9xK2mP8...  (copy this value)
+# Encryption key (recommended for production)
+HYGIE_ENCRYPTION_KEY=<generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+
+# Database (leave empty for SQLite)
+DATABASE_URL=
+
+# MariaDB separate container
+DB_MARIADB_PASSWORD=change_me
+DB_MARIADB_ROOT_PASSWORD=change_me_root
 ```
 
-**2. Store it in a `.env` file** (never commit this file):
+All other settings are configurable from the **Settings** page in the UI.
+
+---
+
+### 📦 Stack Requirements
+
+| Service | Required | Notes |
+|---------|----------|-------|
+| Emby / Jellyfin / Plex | ✅ | At least one media server |
+| Radarr | Optional | Movie library management |
+| Sonarr | Optional | TV library management |
+| Overseerr / Jellyseerr | Optional | Request tracking, per-user rules |
+| qBittorrent | Optional | Torrent tag or delete |
+| Discord | Optional | Notifications |
+
+---
+
+### 🔄 Upgrading from v2.x
+
+1. Back up `./data/hygie.db`
+2. Update the image tag to `3.0.0`
+3. The schema migration runs automatically at startup
+
+**What changed since v2.8:**
+- Frontend: complete Vue 3 rewrite (old vanilla JS removed)
+- Database: SQLite/MariaDB abstraction, migration UI
+- Rules: expert rules with multi-library support, Plex scanner integration
+- Logs: translated in 8 languages
+- Public calendar: language selector, server/library grouping, "View on Server" links
+- Architecture: scheduler router, database router, media server type helpers
+
+---
+
+### 🛠️ Development
 
 ```bash
-# .env
-HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
+# Backend hot-reload + Vite dev server
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Frontend Vite dev server (separate terminal)
+cd frontend/vue && npm run dev
+# UI at http://localhost:5173 (proxied to :8000)
 ```
-
-Reference it in `docker-compose.yml`:
-
-```yaml
-    environment:
-      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
-```
-
-**3. Restart Hygie.** Existing credentials are automatically encrypted on first startup. No manual migration needed.
-
-> **Important:** Back up your key. If lost, stored API keys cannot be decrypted and must be re-entered.
-
-**Behavior without the key:** Hygie runs normally with plaintext storage — fully backward-compatible.
-
-### 🔄 Deletion Workflow
-
-```
-Media Server Scan (Emby / Jellyfin / Plex)
-    │
-    ▼
-Item matches conditions?
-    │ Yes
-    ▼
-Added to queue (delete_at = now + grace_period)
-    │
-    ├──▶ Discord notification D-30
-    ├──▶ Discord notification D-7
-    ├──▶ Discord notification D-1
-    │
-    ▼  (delete_at reached)
-1. 📣 Discord "Deleted"  ← image still on media server
-2. 🗑️ Delete from Emby / Jellyfin / Plex
-3. 🗑️ Delete from Radarr/Sonarr
-4. 🗑️ Delete from Seerr
-5. 🏷️ qBittorrent (tag or delete)
-```
-
-### 🛡️ Security
-
-| Feature | Implementation |
-|---------|---------------|
-| Password hashing | **Argon2id** |
-| Session tokens | **JWT HS256** with auto-generated 48-byte secret |
-| Secret storage | `data/.secret` with `0600` permissions |
-| Brute force protection | Rate limiting: 5 attempts / IP / 5 minutes (login & setup), persistent via SQLite |
-| Image proxy | **SSRF protection** via host whitelist with asyncio.Lock |
-| Dynamic SQL | **Safe column mapping** on all ORDER BY clauses |
-| Input validation | **Pydantic** with min/max constraints |
-| HTTP headers | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` |
-| Container | **Non-root** user (UID 1000), **tini** as PID 1 |
-| Database | **WAL mode**, integrity check in healthcheck |
-| API keys at rest | Optional **Fernet AES-128** encryption via `HYGIE_ENCRYPTION_KEY` |
-| Emby/Jellyfin auth | `X-Emby-Token` **header** — API key never in URL query string |
-| Plex auth | `X-Plex-Token` **header** — token never in URL query string |
-| WebSocket | Auth token required on first message (8KB size limit) |
-
-> ⚠️ HTTPS strongly recommended via reverse proxy (Caddy, Traefik, Nginx)
-
-### 🗄️ Database
-
-Hygie supports **SQLite** (default) and **MariaDB**.
-
-| Configuration | Recommended for |
-|---------------|----------------|
-| SQLite (default) | Personal use, < 200 000 media items, zero configuration |
-| MariaDB | > 200 000 items, or existing MySQL/MariaDB server |
-
-#### MariaDB via Docker Compose
 
 ```bash
-DB_MARIADB_PASSWORD=my_password \
-DATABASE_URL=mysql+aiomysql://hygie:my_password@mariadb:3306/hygie \
-docker compose --profile mariadb up -d
+# Run backend tests
+pytest tests/ -q
+
+# Check lm() imports (prevents scan breakage)
+python3 scripts/check_lm_imports.py
+
+# Check i18n key consistency
+python3 scripts/check_i18n.py
 ```
 
-#### SQLite → MariaDB migration
+---
+
+### 📊 Health Check
 
 ```bash
-# Dry-run (no writes):
-docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
-  --sqlite-path /app/data/hygie.db \
-  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie" \
-  --dry-run
-
-# Real migration (stop Hygie first):
-docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
-  --sqlite-path /app/data/hygie.db \
-  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie"
+curl http://localhost:8000/health
 ```
 
-### 🏗️ Build from Source
-
-```bash
-git clone https://github.com/carryozor/hygie.git
-cd hygie
-
-docker buildx build \
-  --build-arg VERSION=3.0.0 \
-  --platform linux/amd64 \
-  -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:3.0.0 \
-  --push .
+```json
+{
+  "status": "healthy",
+  "version": "3.0.0",
+  "dialect": "sqlite",
+  "database": "sqlite / 15 tables",
+  "scheduler": "4 jobs",
+  "disk_free_mb": 45000,
+  "disk": "ok",
+  "encryption": "enabled"
+}
 ```
-
-### 🧱 Architecture
-
-```
-hygie/
-├── backend/
-│   ├── main.py                  # FastAPI app, lifespan, routers
-│   ├── auth.py                  # JWT, Argon2id, SQLite-backed rate limiting
-│   ├── scheduler.py             # APScheduler — main orchestration
-│   ├── scanner.py               # Library scan logic (Emby/Jellyfin/Plex)
-│   ├── deletion.py              # Deletion workflow (Emby/Jellyfin/Plex/arr)
-│   ├── conditions.py            # Per-library condition evaluation
-│   ├── notifications.py         # Discord notifications (configurable thresholds)
-│   ├── overlay.py               # Pillow poster overlay generation
-│   ├── collection.py            # "Leaving Soon" collection sync
-│   ├── emby_client.py           # Emby & Jellyfin API client (multi-server)
-│   ├── plex_client.py           # Plex local API client
-│   ├── plex_tv_client.py        # Plex.tv cloud API client
-│   ├── qbit_client.py           # qBittorrent (Gluetun + QUI proxy compatible)
-│   ├── discord_client.py        # Discord webhooks
-│   ├── healthcheck.py           # Docker healthcheck script
-│   ├── db/
-│   │   ├── engine.py            # DbConn abstraction (SQLite + MariaDB)
-│   │   ├── schema.py            # Schema init, migrations, v2→v3 migration
-│   │   ├── schema_mariadb.py    # MariaDB DDL
-│   │   ├── repositories.py      # Expert rules CRUD
-│   │   ├── settings_store.py    # Settings cache + defaults
-│   │   ├── encryption.py        # Fernet helpers
-│   │   └── utils.py             # Constants, pure helpers
-│   ├── rules/
-│   │   ├── models.py            # Pydantic models (ExpertRule, Condition…)
-│   │   └── engine.py            # Expert rule evaluation engine
-│   ├── arr_clients/             # Radarr, Sonarr, Seerr clients
-│   ├── tools/
-│   │   └── migrate_to_mariadb.py  # SQLite → MariaDB CLI migration
-│   └── routers/                 # FastAPI routers (libraries, rules, plex, stats…)
-└── frontend/
-    └── vue/                     # Vue 3 + Vite 5 + Pinia SPA
-        └── src/
-            ├── views/           # Dashboard, Queue, Rules, Settings, Logs…
-            ├── components/
-            │   ├── rules/       # RuleTypeSelector, SimpleRuleForm, ExpertRuleBuilder…
-            │   ├── media/       # MediaTable, MediaCard
-            │   ├── layout/      # AppShell, Sidebar, TopBar
-            │   └── ui/          # StatCard, ToggleSlider, HygieLogoSvg
-            ├── stores/          # Pinia stores (auth, settings, servers, rules, stats)
-            └── api/             # Axios client
-```
-
-**Stack:** FastAPI · APScheduler · aiosqlite / aiomysql · httpx · Pillow · PyJWT · cryptography · Python 3.12 · Vue 3 · Vite 5 · Pinia · TailwindCSS
-
-### 🧪 Tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -v
-```
-
-297 tests covering: database encryption, settings cache, auth (JWT/Argon2id/rate limiting), condition evaluation, expert rule engine, overlay rendering, Emby/Jellyfin client, Plex client (respx mocks), Plex webhook, scanner (Plex routing), deletion (Plex routing), MariaDB migration CLI, and FastAPI routes.
-
-### 📋 Automatic Migrations
-
-Hygie automatically migrates the database schema on startup. Upgrading from any previous version (including v1.x and v2.x) preserves all your data — encrypted credentials, library rules, queue history — with no manual intervention.
-
-The v2 → v3 migration runs once and handles:
-- Backfilling `server_id` and `deletion_unit` on pre-v3 library rows
-- Converting `emby_url` / `emby_api_key` standalone settings into the `media_servers` JSON structure
-- Migrating interval settings from hours to minutes
 
 ---
 
@@ -348,76 +251,69 @@ The v2 → v3 migration runs once and handles:
 
 ### Qu'est-ce que Hygie ?
 
-Hygie scanne automatiquement vos bibliothèques **Emby, Jellyfin ou Plex**, identifie les médias inutilisés selon des règles configurables, et orchestre leur suppression sur toute votre stack *arr — Emby/Jellyfin/Plex, Radarr, Sonarr, Seerr et qBittorrent — tout en tenant vos utilisateurs informés via Discord.
+Hygie analyse automatiquement vos bibliothèques média **Emby, Jellyfin ou Plex**, identifie les médias inutilisés selon des règles configurables, et orchestre leur suppression sur toute votre stack *arr — Radarr, Sonarr, Overseerr/Jellyseerr, qBittorrent — en informant vos utilisateurs via Discord.
 
 ### ✨ Fonctionnalités
 
-#### 🖥️ Support Multi-Serveurs (Emby, Jellyfin & Plex)
-- **Détection automatique** d'Emby et Jellyfin via l'API (`ProductName` + heuristique de version)
-- **Support Plex** — scan des bibliothèques, détection des médias non-vus, suppression via l'API locale Plex
-- **Intégration Plex.tv** — découverte de vos serveurs et amis via `plex_tv_token`
-- **Webhooks Plex** — réception des événements lecture/scrobble sur `/api/plex/webhook` (secret optionnel)
-- **Plusieurs serveurs** — configurez et activez plusieurs serveurs Emby/Jellyfin/Plex simultanément
-- Toggle activer/désactiver par serveur avec détection de type en temps réel
-- Toutes les opérations (scan, suppression, sync collection, overlay) routées vers le bon serveur
+#### 🖥️ Interface — Vue 3
+- Application Vue 3 + Vite moderne
+- **8 langues** : français, anglais, allemand, espagnol, italien, portugais, néerlandais, polonais
+- Flux de logs en temps réel via WebSocket
+- Arbre serveur/bibliothèque rétractable dans la sidebar
 
-#### 🎯 Règles de suppression
-- **Conditions par bibliothèque** avec logique ET/OU :
-  - Ajouté depuis X jours
-  - Non visionné depuis X jours
-  - Jamais regardé / nombre de lectures
-- **Délai de grâce configurable** (en minutes — réglable dans les Paramètres)
-- **Règles simples** — délai de grâce personnalisé par utilisateur Seerr avec mapping Discord ID optionnel
-- **Règles expertes** — constructeur visuel de conditions avancées (jours non-vu, note, taille, type de média, utilisateur Seerr…), opérateurs ET/OU, action file de suppression ou notification seule
-- **Filtres Seerr** — inclure ou exclure certains utilisateurs par bibliothèque
+#### 🎬 Multi-serveur (Emby, Jellyfin & Plex)
+- **Détection automatique** du type via `/System/Info`
+- **Support Plex** — scan bibliothèques, détection non-regardé, suppression via API locale
+- **Plusieurs serveurs** — Emby/Jellyfin/Plex configurables simultanément
+- Couleurs par type : Emby (vert), Jellyfin (violet), Plex (orange)
+- `serverId` auto-peuplé pour les liens directs dans le calendrier public
+
+#### 🎯 Moteur de règles expertes
+- **Constructeur visuel** avec opérateurs AND/OR entre groupes de conditions
+- Champs : jours sans visionnage, nombre de lectures, note communautaire, taille (Go), jours depuis ajout, type de média, utilisateur Seerr
+- **Ciblage multi-bibliothèques** — une règle peut couvrir des bibliothèques de plusieurs serveurs
+- **Actions** : mettre en file ou notifier seulement
+- Délai de grâce configurable par règle
+- Règles simples Seerr : délais par utilisateur avec Discord ID optionnel
 
 #### 🔔 Notifications Discord
-- Alertes à **30 jours**, **7 jours**, **24 heures** avant suppression, et à la suppression
-- **Mention automatique** du demandeur (via mapping Seerr ou ID Discord manuel)
-- Affiche TMDB publique — disponible même après suppression du serveur média
-- Notification envoyée **avant** la suppression pour que l'image soit accessible
+- Seuils configurables (ex. 7j, 1j avant suppression) + à la suppression
+- **@mention** automatique du demandeur (via mapping Seerr ou Discord ID)
+- Double webhook : principal (suppressions) + alertes (erreurs)
+- Alertes dédiées : échecs suppression, échecs scan, Seerr inaccessible
 
 #### 🗑️ Suppression orchestrée
-Workflow complet en une seule opération :
-1. 📣 Notification Discord (image encore disponible)
-2. 🗑️ Suppression dans **Emby / Jellyfin / Plex**
-3. 🗑️ Suppression dans **Radarr / Sonarr** (fichiers conservés)
-4. 🗑️ Suppression de la requête **Seerr / Overseerr / Jellyseerr**
-5. 🏷️ **qBittorrent** — ajout d'un tag ou suppression torrent+fichier
+Pipeline dans l'ordre :
+1. Notification Discord (affiche encore accessible)
+2. Emby / Jellyfin / Plex — suppression
+3. Radarr / Sonarr — retrait (fichiers conservés)
+4. Overseerr / Jellyseerr — suppression requête
+5. qBittorrent — tag ou suppression torrent
 
-#### 📺 Collection « Bientôt supprimé »
-- Synchronisation automatique d'une collection avec les médias en attente
-- **Overlay sur les affiches** affichant "Supprimé dans Xj", mis à jour à chaque sync
-- Compatible Emby et Jellyfin (Plex n'expose pas d'API d'écriture de collections)
-- Overlay automatiquement retiré si le média est sorti de la file
+#### 📅 Calendrier public
+- Partagez les suppressions à venir sans login
+- **Protection par mot de passe** et **slug URL personnalisé** (`/monslug`)
+- **Sélecteur de langue** (8 langues, mémorisé)
+- Filtre par serveur, groupé serveur → bibliothèque
+- Lien **« Voir sur Serveur »** par média (avec `serverId` correct)
 
-#### 🖥️ Interface web (Vue 3 SPA)
+#### 🗄️ Base de données
+- **SQLite** par défaut — zéro configuration
+- **MariaDB externe** — variable `DATABASE_URL`
+- **MariaDB embarquée** — mode tout-en-un (`EMBEDDED_MARIADB=true`)
+- **Migration bidirectionnelle** SQLite ↔ MariaDB via l'interface
+- Health check, rate limiting, backup et VACUUM dialect-aware
 
-| Page | Description |
-|------|-------------|
-| **Tableau de bord** | Statistiques globales, graphe historique, prochaines suppressions |
-| **Calendrier** | Suppressions organisées par date |
-| **File d'attente** | Onglets Tous / En attente / Supprimés / Erreurs, tri persistant, actions groupées |
-| **Bibliothèques** | CRUD des règles, clonage, scan individuel |
-| **Règles** | Constructeur visuel — règles simples Seerr et règles expertes à conditions |
-| **Paramètres** | Général (dry run, sauvegarde), Intervalles, Token Plex & webhook |
-| **Ignorés** | Exclusions avec expiration, remise en file en un clic |
-| **Stockage** | Métriques disque Radarr/Sonarr, espace récupérable |
-| **Historique jobs** | Scans et vérifications avec décompte avant prochain lancement |
-| **Logs** | Flux temps réel via WebSocket, filtres niveau/source |
-
-#### 🎛️ Contrôles sidebar
-- **Toggle Dry Run** — activer/désactiver le mode simulation directement depuis la barre latérale
-- **Barres de progression** — décompte temps réel avant le prochain scan/vérification, avec animation de pulsation en cours d'exécution
+---
 
 ### 🚀 Démarrage rapide
 
-#### Docker Compose
+#### Option 1 — SQLite (défaut, zéro config)
 
 ```yaml
 services:
   hygie:
-    image: ghcr.io/carryozor/hygie:latest
+    image: ghcr.io/carryozor/hygie:3.0.0
     container_name: hygie
     restart: unless-stopped
     ports:
@@ -426,207 +322,131 @@ services:
       - ./data:/app/data
     environment:
       - TZ=Europe/Paris
-      # Optionnel : chiffrer les clés API au repos.
-      # Générer : python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-      # - HYGIE_ENCRYPTION_KEY=votre-clé-générée-ici
-    healthcheck:
-      test: ["CMD", "python3", "/app/backend/healthcheck.py"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
 ```
 
 ```bash
 docker compose up -d
+# Ouvrir http://localhost:8000 → Assistant de configuration
 ```
 
-Ouvre `http://localhost:8000`, crée ton compte administrateur, puis configure les services dans **Paramètres**.
+#### Option 2 — MariaDB externe
 
-#### Prérequis
-- Docker & Docker Compose
-- **Emby**, **Jellyfin**, ou **Plex** media server
-- Radarr et/ou Sonarr
-- Seerr / Overseerr / Jellyseerr *(optionnel mais recommandé)*
-- qBittorrent *(optionnel)*
-- Webhook Discord *(optionnel)*
+```yaml
+environment:
+  - DATABASE_URL=mysql+aiomysql://user:pass@host:3306/hygie
+```
+
+#### Option 3 — MariaDB embarquée (tout-en-un)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml build
+docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml up -d
+```
+
+#### Option 4 — Conteneur MariaDB séparé
+
+```bash
+docker compose --profile mariadb up -d
+# Définir DATABASE_URL=mysql+aiomysql://hygie:${DB_MARIADB_PASSWORD}@mariadb:3306/hygie
+```
+
+---
 
 ### ⚙️ Configuration
 
-Toute la configuration se fait depuis l'interface web.
-
-| Service | Champs requis |
-|---------|--------------|
-| **Serveur Multimédia** | URL interne, clé API, URL externe *(optionnel)* |
-| **Radarr** | URL, clé API |
-| **Sonarr** | URL, clé API |
-| **Seerr** | URL, clé API, URL externe *(pour les liens cliquables)* |
-| **qBittorrent** | URL *(compatible Gluetun)*, utilisateur, mot de passe |
-| **Discord** | URL du webhook |
-| **Plex** | `plex_tv_token` (token Plex.tv), secret webhook *(optionnel)* |
-
-| Variable d'environnement | Défaut | Description |
-|--------------------------|--------|-------------|
-| `DB_PATH` | `/app/data/hygie.db` | Chemin de la base SQLite |
-| `DATABASE_URL` | *(absent)* | Mettre `mysql+aiomysql://user:pass@host:3306/db` pour utiliser MariaDB |
-| `HYGIE_VERSION` | `dev` | Version affichée (injectée via `--build-arg`) |
-| `TZ` | UTC | Fuseau horaire |
-| `HYGIE_ENCRYPTION_KEY` | *(absent)* | Clé Fernet pour chiffrer les clés API en base *(optionnel)* |
-
-### 🔐 Chiffrement des clés API au repos
-
-Par défaut, les credentials sont stockés en clair dans la base SQLite. Vous pouvez activer un **chiffrement transparent au repos** via `HYGIE_ENCRYPTION_KEY`.
-
-**1. Générer une clé** (une seule fois, à conserver précieusement) :
+Copier `.env.example` en `.env` :
 
 ```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# → qqUH3Oa9xK2mP8...  (copier cette valeur)
+# Clé de chiffrement (recommandée en production)
+HYGIE_ENCRYPTION_KEY=<générer avec: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+
+# Base de données (vide = SQLite)
+DATABASE_URL=
+
+# MariaDB conteneur séparé
+DB_MARIADB_PASSWORD=changer_moi
+DB_MARIADB_ROOT_PASSWORD=changer_moi_root
 ```
 
-**2. La stocker dans un fichier `.env`** (ne jamais committer ce fichier) :
-
-```bash
-# .env
-HYGIE_ENCRYPTION_KEY=qqUH3Oa9xK2mP8...
-```
-
-La référencer dans `docker-compose.yml` :
-
-```yaml
-    environment:
-      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
-```
-
-**3. Redémarrer Hygie.** Les credentials existants sont automatiquement chiffrés au premier démarrage.
-
-> **Important :** Sauvegardez votre clé. En cas de perte, les clés API devront être re-saisies.
-
-**Comportement sans la clé :** Hygie fonctionne normalement avec le stockage en clair.
-
-### 🔄 Workflow de suppression
-
-```
-Scan Emby / Jellyfin / Plex
-    │
-    ▼
-L'item remplit les conditions ?
-    │ Oui
-    ▼
-Ajouté à la file (delete_at = maintenant + délai_de_grâce)
-    │
-    ├──▶ Notification Discord J-30
-    ├──▶ Notification Discord J-7
-    ├──▶ Notification Discord J-1
-    │
-    ▼  (delete_at atteint)
-1. 📣 Discord « Supprimé »  ← image encore sur le serveur
-2. 🗑️ Suppression Emby / Jellyfin / Plex
-3. 🗑️ Suppression Radarr/Sonarr
-4. 🗑️ Suppression Seerr
-5. 🏷️ qBittorrent (tag ou suppression)
-```
-
-### 🛡️ Sécurité
-
-| Fonctionnalité | Implémentation |
-|----------------|---------------|
-| Hashage des mots de passe | **Argon2id** |
-| Tokens de session | **JWT HS256** avec secret auto-généré de 48 octets |
-| Stockage du secret | `data/.secret` avec permissions `0600` |
-| Protection brute force | Rate limiting : 5 tentatives / IP / 5 minutes, persistant via SQLite |
-| Proxy d'images | **Protection SSRF** via whitelist d'hôtes avec asyncio.Lock |
-| SQL dynamique | **Mapping de colonnes** sécurisé sur toutes les clauses ORDER BY |
-| Validation des entrées | **Pydantic** avec contraintes min/max |
-| En-têtes HTTP | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` |
-| Conteneur | Utilisateur **non-root** (UID 1000), **tini** comme PID 1 |
-| Base de données | **Mode WAL**, vérification d'intégrité dans le healthcheck |
-| Clés API au repos | Chiffrement **Fernet AES-128** optionnel via `HYGIE_ENCRYPTION_KEY` |
-| Auth Emby/Jellyfin | Header `X-Emby-Token` — clé API jamais dans l'URL |
-| Auth Plex | Header `X-Plex-Token` — token jamais dans l'URL |
-| WebSocket | Token auth sur le premier message (limite 8 Ko) |
-
-> ⚠️ HTTPS fortement recommandé via reverse proxy (Caddy, Traefik, Nginx)
-
-### 🗄️ Base de données
-
-Hygie supporte **SQLite** (défaut) et **MariaDB**.
-
-| Configuration | Recommandé pour |
-|---------------|----------------|
-| SQLite (défaut) | Usage personnel, < 200 000 médias, zéro configuration |
-| MariaDB | > 200 000 médias, ou serveur MySQL/MariaDB déjà disponible |
-
-#### MariaDB via Docker Compose
-
-```bash
-DB_MARIADB_PASSWORD=mon_mot_de_passe \
-DATABASE_URL=mysql+aiomysql://hygie:mon_mot_de_passe@mariadb:3306/hygie \
-docker compose --profile mariadb up -d
-```
-
-#### Migration SQLite → MariaDB
-
-```bash
-# Vérification sans écriture (dry-run) :
-docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
-  --sqlite-path /app/data/hygie.db \
-  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie" \
-  --dry-run
-
-# Migration réelle (arrêter Hygie avant) :
-docker exec hygie python3 -m backend.tools.migrate_to_mariadb \
-  --sqlite-path /app/data/hygie.db \
-  --database-url "mysql+aiomysql://hygie:pass@mariadb:3306/hygie"
-```
-
-### 🏗️ Build depuis les sources
-
-```bash
-git clone https://github.com/carryozor/hygie.git
-cd hygie
-
-docker buildx build \
-  --build-arg VERSION=3.0.0 \
-  --platform linux/amd64 \
-  -t ghcr.io/carryozor/hygie:latest \
-  -t ghcr.io/carryozor/hygie:3.0.0 \
-  --push .
-```
-
-### 🧪 Tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -v
-```
-
-297 tests couvrant : chiffrement de la base, cache des settings, authentification (JWT/Argon2id/rate limiting), évaluation des conditions, moteur de règles expertes, rendu des overlays, client Emby/Jellyfin, client Plex (mocks respx), webhook Plex, scanner (routage Plex), suppression (routage Plex), migration MariaDB, et routes FastAPI.
-
-### 📋 Migrations automatiques
-
-Hygie applique automatiquement les migrations de schéma au démarrage. La mise à jour depuis n'importe quelle version antérieure (y compris v1.x et v2.x) préserve toutes vos données — credentials chiffrés, règles de bibliothèques, historique — sans intervention manuelle.
-
-La migration v2 → v3 s'exécute une seule fois et gère :
-- Backfill de `server_id` et `deletion_unit` sur les lignes de bibliothèques pré-v3
-- Conversion de `emby_url` / `emby_api_key` en structure `media_servers` JSON
-- Migration des intervalles de heures en minutes
-
-Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
+Tous les autres paramètres sont configurables depuis la page **Paramètres** de l'interface.
 
 ---
 
-<div align="center">
+### 📦 Prérequis stack
 
-### ❤️ Support the project / Soutenir le projet
-
-If Hygie is useful to you, consider supporting its development.
-Si Hygie vous est utile, pensez à soutenir son développement.
-
-[![PayPal](https://img.shields.io/badge/PayPal-Support%20Hygie-00457C?logo=paypal&logoColor=white)](https://paypal.me/AnThaumaturge)
+| Service | Requis | Notes |
+|---------|--------|-------|
+| Emby / Jellyfin / Plex | ✅ | Au moins un serveur média |
+| Radarr | Optionnel | Gestion bibliothèque films |
+| Sonarr | Optionnel | Gestion bibliothèque séries |
+| Overseerr / Jellyseerr | Optionnel | Suivi requêtes, règles par utilisateur |
+| qBittorrent | Optionnel | Tag ou suppression torrent |
+| Discord | Optionnel | Notifications |
 
 ---
 
-[MIT License](LICENSE) © carryozor
+### 🔄 Migration depuis v2.x
 
-</div>
+1. Sauvegarder `./data/hygie.db`
+2. Mettre à jour le tag image vers `3.0.0`
+3. La migration de schéma s'exécute automatiquement au démarrage
+
+**Changements majeurs depuis v2.8 :**
+- Interface : réécriture complète en Vue 3 (ancien JS vanilla supprimé)
+- Base de données : abstraction SQLite/MariaDB, interface de migration
+- Règles : règles expertes avec multi-bibliothèques, intégration scanner Plex
+- Logs : traduits en 8 langues
+- Calendrier public : sélecteur de langue, regroupement serveur/bibliothèque, liens « Voir sur Serveur »
+- Architecture : router scheduler, router database, helpers type serveur
+
+---
+
+### 🛠️ Développement
+
+```bash
+# Backend hot-reload + serveur Vite dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Serveur Vite dev (terminal séparé)
+cd frontend/vue && npm run dev
+# Interface sur http://localhost:5173 (proxy vers :8000)
+```
+
+```bash
+# Tests backend
+pytest tests/ -q
+
+# Vérifier les imports lm() (évite les pannes de scan)
+python3 scripts/check_lm_imports.py
+
+# Vérifier la cohérence i18n
+python3 scripts/check_i18n.py
+```
+
+---
+
+### 📊 Health Check
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{
+  "status": "healthy",
+  "version": "3.0.0",
+  "dialect": "sqlite",
+  "database": "sqlite / 15 tables",
+  "scheduler": "4 jobs",
+  "disk_free_mb": 45000,
+  "disk": "ok",
+  "encryption": "enabled"
+}
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)

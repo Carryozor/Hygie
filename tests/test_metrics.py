@@ -40,6 +40,14 @@ async def client_with_data(monkeypatch, tmp_path):
         monkeypatch.setattr(mod, "DB_PATH", db_path)
     monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
 
+    # Mock the APScheduler to prevent "Event loop is closed" errors in tests.
+    # The scheduler is a module-level singleton from _scheduler_instance; its internal
+    # event loop reference can become stale across test restarts.
+    from unittest.mock import MagicMock
+    mock_sched = MagicMock()
+    mock_sched.get_jobs.return_value = []
+    monkeypatch.setattr(main_mod, "scheduler", mock_sched)
+
     app = main_mod.app
     async with main_mod.lifespan(app):
         # Seed stats_history with known per-library data

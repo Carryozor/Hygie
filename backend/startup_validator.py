@@ -116,13 +116,21 @@ class StartupValidator:
     # ── Reporting ─────────────────────────────────────────────────────────────
 
     async def log_results(self, issues: list[ValidationIssue]) -> bool:
-        """Log all issues. Returns True if startup should proceed (no CRITICAL issues)."""
+        """Log all issues. Returns True if startup should proceed (no CRITICAL issues).
+
+        add_log is wrapped per-issue: if the DB is itself unreachable (a CRITICAL issue
+        the validator just detected), add_log will also fail — we must not let that
+        failure suppress the Python-level warning.
+        """
         from .db.logs import add_log
 
         level_to_log = {"CRITICAL": "ERROR", "WARN": "WARN", "INFO": "INFO"}
         for issue in issues:
             log_level = level_to_log.get(issue.level, "INFO")
-            await add_log(log_level, str(issue), "startup")
+            try:
+                await add_log(log_level, str(issue), "startup")
+            except Exception as _db_err:
+                logger.debug("startup_validator: add_log failed (%s) — DB may be unavailable", _db_err)
             log_fn = (
                 logger.error   if log_level == "ERROR" else
                 logger.warning if log_level == "WARN"  else

@@ -289,7 +289,8 @@ async def run_scan_library(library_id: str) -> None:
         return
 
     async with _scan_lock:
-        run_id = await add_job_run("scan_library")
+        run_id    = await add_job_run("scan_library")
+        ctx_token = set_job_context(run_id)
         status, msg = "error", ""
         try:
             status, msg, _ = await _do_scan_one_library(library_id)
@@ -298,6 +299,7 @@ async def run_scan_library(library_id: str) -> None:
             await add_log("ERROR", lm("scan.error", detail=e), "job")
             msg = str(e)
         finally:
+            _current_job_id.reset(ctx_token)
             await finish_job_run(run_id, status, msg)
         await sync_emby_collection()
         await _send_pending_notifications()
@@ -330,7 +332,8 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
 
         try:
             for library_id in library_ids:
-                run_id = await add_job_run("scan_library")
+                run_id    = await add_job_run("scan_library")
+                ctx_token = set_job_context(run_id)
                 status, msg = "error", ""
                 try:
                     status, msg, _ = await _do_scan_one_library(
@@ -344,6 +347,7 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
                     await add_log("ERROR", lm("scan.error", detail=e), "job")
                     msg = str(e)
                 finally:
+                    _current_job_id.reset(ctx_token)
                     await finish_job_run(run_id, status, msg)
         finally:
             # Always run post-scan operations, even if the loop fails mid-way

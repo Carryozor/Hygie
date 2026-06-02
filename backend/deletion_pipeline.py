@@ -127,9 +127,14 @@ class DiscordNotifyStep(DeletionStep):
             from .discord_client import send_notification
             await send_notification([ctx.item], "now", dry_run=False)
         except Exception as e:
-            from .db.logs import add_log
-            from .logmsg import lm
-            await add_log("WARN", lm("deletion.discord_warn", prefix=ctx.log_prefix, detail=e), "deletion")
+            # Isolated logging — if add_log itself fails (DB issue), we must not
+            # propagate that exception up to the pipeline and abort the deletion.
+            try:
+                from .db.logs import add_log
+                from .logmsg import lm
+                await add_log("WARN", lm("deletion.discord_warn", prefix=ctx.log_prefix, detail=e), "deletion")
+            except Exception:
+                logger.warning("DiscordNotifyStep: both notification and add_log failed for '%s'", ctx.title)
 
 
 class ServerResolveStep(DeletionStep):

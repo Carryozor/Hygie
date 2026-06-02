@@ -67,6 +67,27 @@ async def client(tmp_path_factory):
         mod.DB_PATH = db_path
     _db_engine.SQLITE_PATH = db_path
 
+    # Mock the APScheduler — prevents "Event loop is closed" when lifespan
+    # calls scheduler.start() across test runs using different event loops.
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    def _make_job(job_id):
+        j = MagicMock()
+        j.id = job_id
+        j.next_run_time = datetime.now(timezone.utc)
+        return j
+
+    mock_sched = MagicMock()
+    mock_sched.get_jobs.return_value = [_make_job("scan_job"), _make_job("deletion_job")]
+    _real_sched = main_mod.scheduler
+    main_mod.scheduler = mock_sched
+
+    # Also patch the scheduler router's local reference so /api/scheduler/status works
+    import backend.routers.scheduler as _sched_router
+    _real_sched_router = _sched_router.scheduler
+    _sched_router.scheduler = mock_sched
+
     app = main_mod.app
     async with main_mod.lifespan(app):
         transport = ASGITransport(app=app)

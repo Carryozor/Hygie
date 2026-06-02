@@ -55,7 +55,7 @@ async def test_connection_uses_header(httpx_mock: HTTPXMock):
         json={"Version": "4.8.0.0", "ProductName": "Emby Server"},
     )
     from backend.emby_client import test_connection
-    ok, msg, server_type = await test_connection(server_id="0")
+    ok, msg, server_type, _err = await test_connection(server_id="0")
 
     assert ok is True
     assert server_type == "emby"
@@ -68,7 +68,7 @@ async def test_connection_detects_jellyfin(httpx_mock: HTTPXMock):
         json={"Version": "10.9.0", "ProductName": "Jellyfin Server"},
     )
     from backend.emby_client import test_connection
-    ok, msg, server_type = await test_connection(server_id="0")
+    ok, msg, server_type, _err = await test_connection(server_id="0")
 
     assert ok is True
     assert server_type == "jellyfin"
@@ -78,7 +78,7 @@ async def test_connection_detects_jellyfin(httpx_mock: HTTPXMock):
 async def test_connection_http_error_returns_false(httpx_mock: HTTPXMock):
     httpx_mock.add_response(url=f"{FAKE_URL}/System/Info", status_code=401)
     from backend.emby_client import test_connection
-    ok, msg, _ = await test_connection(server_id="0")
+    ok, msg, _st, _err = await test_connection(server_id="0")
     assert ok is False
 
 

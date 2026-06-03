@@ -6,233 +6,228 @@ All notable changes to Hygie are documented here.
 
 ## [3.4.1] — 2026-06-03
 
-Corrections issues identifiées lors de l'audit Grok (ingénieur senior + architecte senior).
+Fixes for issues identified during the Grok audit (senior engineer + senior architect review).
 
 ### Fixed
 
-- **Init order DB pool** — `init_db_pool()` (MariaDB) crashait avec un traceback brut avant le `StartupValidator` si `DATABASE_URL` était malformé ou le serveur unreachable. Désormais l'erreur est capturée et injectée dans le validator comme `CRITICAL` structuré avec message actionnable
-- **`_parse_mariadb_url` fragile** — le parsing naïf par `split("@")` cassait sur les IPv6, les caractères spéciaux %-encodés dans les mots de passe, et les ports non standard. Remplacé par `urllib.parse.urlparse` + `unquote`
-- **Circuit breakers Emby + Plex non câblés** — `get_users()` et `get_items_in_library()` dans `emby_client.py` n'utilisaient pas le circuit breaker existant. Si Emby était down, chaque item tentait sa connexion jusqu'au timeout de 2h. Désormais un circuit breaker par `server_id` (seuil: 5 échecs, recovery: 120s)
-- **`PlexClient._get()` sans circuit breaker** — toutes les requêtes Plex passent maintenant par `get_breaker(f"plex:{server_id}")`
+- **Init order for DB pool (MariaDB)** — `init_db_pool()` would crash with a raw traceback if `DATABASE_URL` was malformed or the server unreachable, *before* the `StartupValidator` could produce a structured CRITICAL message. Errors are now caught and properly injected into the validator.
+- **Fragile MariaDB URL parsing** — Naive `split("@")` parsing broke on IPv6 addresses, percent-encoded special characters in passwords (e.g. `p%40ss`), and non-standard ports. Replaced with `urllib.parse.urlparse` + `unquote`.
+- **Circuit breakers not wired for Emby + Plex** — The circuit breaker existed in `arr_clients/circuit_breaker.py` and was used for Radarr/Sonarr, but `emby_client.py` and `plex_client.py` did not use it. If Emby/Plex was down, every item would attempt a connection up to the 2h job timeout.
+  - `get_users()` and `get_items_in_library()`: breaker per `server_id` (threshold 5 failures, recovery 120s)
+  - `PlexClient._get()`: all Plex requests now go through the breaker
+- **Pipeline step failure visibility** — `SizeLookupStep` and `TorrentHashStep` logged their failures at `DEBUG` level (invisible in production). Promoted to `INFO` + recorded in `ctx.step_warnings`. The pipeline now logs a consolidated `WARNING` at the end of a deletion run if any soft-failed steps occurred.
 
 ### Changed
 
-- **Visibilité étapes pipeline** — `SizeLookupStep` et `TorrentHashStep` loggaient leurs échecs à `DEBUG` (invisibles en prod). Passés à `INFO` + enregistrés dans `ctx.step_warnings`. Le pipeline log un `WARNING` en fin de suppression si des étapes softes ont échoué
-- **`StartupValidator`** accepte maintenant `db_pool_init_error` en paramètre pour relayer proprement les erreurs d'init du pool MariaDB
+- `StartupValidator` now accepts a `db_pool_init_error` parameter to cleanly relay MariaDB pool initialization errors.
 
 ### Tests
 
-- +4 tests `_parse_mariadb_url` (caractères spéciaux, schemes multiples, port par défaut)
-- +2 tests `StartupValidator` (injection d'erreur pool, check connectivity normal)
-- Total: **352 passed**
+- +4 tests for `_parse_mariadb_url` (special characters, multiple schemes, default port handling)
+- +2 tests for `StartupValidator` (pool error injection, normal connectivity check)
+- Total: **352 passed** (was 346 in v3.4.0)
 
 ---
 
 ## [3.4.0] — 2026-06-03
 
-### Security (CRITIQUE)
-- **SSRF** — `POST /api/settings/sync-arr-from-seerr` validait l'URL (fix SSRF sur test-arr en v3.3.0 mais oubli sur cet endpoint)
-- **Timing attack** — login ne comparait plus le hash si le username était inexistant (réponse 170ms plus rapide → enumération). Le hash dummy est maintenant toujours vérifié
-- **Rate limit bypass** — le rate_limit était appelé APRÈS la vérification du mot de passe; un attaquant pouvant alterner succès/échec bypasse le blocage. Désormais appelé AVANT
-- **Rate limit refresh** — endpoint `/api/auth/refresh` n'avait aucun rate limiting
-- **Comparaison timing-safe** — `password != cfg_pwd` sur le dashboard public remplacé par `hmac.compare_digest`
+Release focused on security and performance audit fixes.
+
+### Security (CRITICAL)
+
+- **SSRF** — `POST /api/settings/sync-arr-from-seerr` was missing URL scheme validation (the `test-arr` SSRF fix from v3.3.0 was not applied to this endpoint).
+- **Timing attack on login** — Non-existent usernames responded ~170ms faster (no dummy hash was being computed/verified). A dummy hash is now always verified.
+- **Rate limit bypass** — `rate_limit` was called *after* password verification, allowing an attacker to alternate success/failure to bypass the block. It is now called *before*.
+- **Missing rate limit on refresh** — The `/api/auth/refresh` endpoint had no rate limiting.
+- **Non timing-safe comparison** — Public dashboard password check used `!=` instead of `hmac.compare_digest`.
 
 ### Security (P0)
-- **WORKERS > 1** — le démarrage avec plusieurs workers ne bloquait pas (WARN loggé mais app démarrait quand même). Désormais `sys.exit(1)` si WORKERS > 1 détecté — les locks asyncio ne traversent pas les barrières OS
-- **Passwords MariaDB par défaut** — `hygie_secret` / `root_secret` supprimés du docker-compose comme valeurs de fallback; `DB_MARIADB_PASSWORD` est maintenant requis avec message d'erreur explicite
+
+- **WORKERS > 1** — Startup with multiple workers was only logging a warning but still started the app. Now calls `sys.exit(1)` if `WORKERS > 1` (asyncio locks do not cross OS process boundaries).
+- **Default MariaDB passwords** — `hygie_secret` / `root_secret` removed from docker-compose fallbacks. `DB_MARIADB_PASSWORD` is now strictly required with a clear error message.
 
 ### Fixed
-- **CORS wildcard** — fallback de `["*"]` changé en `["http://localhost:8000", "http://localhost:5173"]`
-- **Double schedule cleanup** — `_internal_cleanup` était schedulé deux fois (interval 12h + cron 3h). Désormais un seul cron à 3h
-- **Storage task fire-and-forget** — `asyncio.create_task()` sans callback; les exceptions silencieuses maintenant loggées via `add_done_callback`
-- **Sort library_id** — `library_id` absent de `_SORT_MAP` → fallback silencieux sur `delete_at`. Corrigé
+
+- **CORS wildcard** — Fallback `["*"]` changed to explicit `["http://localhost:8000", "http://localhost:5173"]`.
+- **Double-scheduled cleanup** — `_internal_cleanup` was scheduled twice (12h interval + 3am cron). Now only the 3am cron remains.
+- **Fire-and-forget storage task** — `asyncio.create_task()` without error callback; exceptions are now logged via `add_done_callback`.
+- **`library_id` sort** — `library_id` was missing from `_SORT_MAP`, causing silent fallback to `delete_at`. Fixed.
 
 ### Performance
-- **N+1 HTTP dans `reevaluate_library_queue`** — l'appel `get_user_data(uid, emby_id)` par item × par user remplacé par un batch `get_library_user_data` avant la boucle (N×M → N+M)
-- **N+1 DB expert rules** — `get_expert_rules()` appelé par item évalué. Désormais chargé une fois par scan et passé en cache (`rules_cache=`)
-- **Discord rate limiting** — `send_alert` dispose d'un rate limiter à 220ms minimum entre appels pour éviter le blacklisting du webhook lors de suppressions en batch
 
-### CI/CD
-- **Coverage mesuré** — `pytest --cov=backend --cov-fail-under=50` ajouté au CI (actuel: 50%)
-- **Frontend lint strict** — `continue-on-error: true` supprimé du step lint ESLint
-- **`pytest-cov`** ajouté aux requirements-dev.txt
+- **N×M → N+M HTTP calls in `reevaluate_library_queue`** — Per-item `get_user_data(uid, emby_id)` × per-user replaced by a single batch `get_library_user_data` before the loop.
+- **N+1 DB queries for expert rules** — `get_expert_rules()` was called per evaluated item. Now loaded once per scan and passed via cache.
+- **Discord rate limiting** — `send_alert` now has a minimum 220ms spacing between calls to avoid webhook blacklisting during batch deletions.
+
+### CI / Quality
+
+- **Coverage measurement** — `pytest --cov=backend --cov-fail-under=50` added to CI (current: ~50%).
+- **Strict frontend lint** — Removed `continue-on-error: true` from the ESLint step.
+- **pytest-cov** added to `requirements-dev.txt`.
 
 ---
 
 ## [3.3.0] — 2026-06-03
 
 ### Security
-- **SSRF fix** — `POST /api/settings/test-arr` now validates the URL scheme (http/https only) using the same `_validate_server_url` guard as all other server endpoints; `file://`, `ftp://`, and similar schemes are rejected with HTTP 422
+
+- **SSRF fix** — `POST /api/settings/test-arr` now validates the URL scheme (http/https only) using the same guard as all other server URL endpoints. `file://`, `ftp://`, and similar schemes are rejected with HTTP 422.
 
 ### Fixed
-- **Race condition** in manual delete (`POST /media/{id}/delete-now`) — row is re-verified within the same DB context before the final `UPDATE status='deleted'`, preventing double-delete when two requests overlap
-- **Status enum validation** — `GET /api/media` now rejects unknown `status` values with 422 instead of executing an unconstrained SQL query
-- **nonlocal antipattern** in `deletion.py` — replaced `nonlocal _error_count` with an accumulator dict `_counters`; semantics unchanged, no reliance on CPython closure-capture edge cases
+
+- **Race condition in manual delete** — In `POST /media/{id}/delete-now`, the row is now re-verified within the same DB context before the final `UPDATE status='deleted'`, preventing double-deletes on overlapping requests.
+- **Status enum validation** — `GET /api/media` now rejects unknown `status` query values with 422 instead of running an unconstrained SQL query.
+- **`nonlocal` antipattern** in `deletion.py` — Replaced `nonlocal _error_count` with an accumulator dict. Semantics unchanged; cleaner closure behavior.
 
 ### Changed
-- **HTTP semantics** — `POST /api/settings/media-servers` returns `201 Created` instead of 200
-- **Frontend `start()` guard** (`stores/status.js`) — calling `start()` twice no longer stacks duplicate `setInterval` handles; idempotent guard added
-- **Memory leak** in `ServersTab.vue` — `_detectTimers` map is now cleared in `onUnmounted`, preventing timer accumulation across component remounts
-- **`verify_password`** in `auth.py` — broad `except Exception` now logs at DEBUG level instead of silently swallowing errors
-- **SQL placeholder doc** in `db/engine.py` — `_q()` now documents the known limitation with `?` inside string literals
-- **`backend/constants.py`** — new module centralizing server type strings and media type strings
+
+- `POST /api/settings/media-servers` now returns HTTP 201 Created.
+- `stores/status.js start()` is now idempotent (calling it twice no longer stacks duplicate polling intervals).
+- `ServersTab.vue` clears the `_detectTimers` map on `onUnmounted` (fixes memory leak on component remount).
+- `verify_password()` in `auth.py` now logs unexpected errors at DEBUG instead of silently swallowing them.
+- `db/engine.py _q()` now documents the known limitation with `?` inside string literals.
+- New `backend/constants.py` module centralizing server types (`SERVER_EMBY`, `SERVER_JELLYFIN`, `SERVER_PLEX`) and media types.
 
 ### Refactored
-- **`_evaluate_item`** decomposed: extracted `_aggregate_user_data()` and `_resolve_arr_ids()` helpers — function is now ~80 lines shorter
-- **`_run_scan_body`** — server iteration logic extracted into `_scan_single_server()` helper, reducing nesting depth
+
+- `_evaluate_item` in `legacy_conditions.py`: extracted `_aggregate_user_data()` and `_resolve_arr_ids()` helpers. The function is now ~80 lines shorter and individually testable.
+- `_run_scan_body` in `_orchestrator.py`: extracted `_scan_single_server()` helper, reducing nesting depth.
 
 ### Tests
-- +7 tests for `_aggregate_user_data` and `_resolve_arr_ids` in `test_conditions.py`
-- +3 SSRF tests for `test-arr` endpoint in `test_routes.py`
-- Total: **344 passed** (was 334 in v3.2.0)
+
+- +7 tests for the new `_aggregate_user_data` and `_resolve_arr_ids` helpers.
+- +3 SSRF tests for the `test-arr` endpoint.
+- Total: **344 passed** (was 334 in v3.2.0).
+
+---
+
+## [3.2.0] — 2026-06-02
+
+This is the final v3.0.0-series stabilization release. It supersedes all prior v3 alphas and includes the complete frontend rewrite (Vue 3), MariaDB support, expert rules engine, full Plex integration, public calendar, 8-language i18n, and numerous architectural improvements.
+
+(See the detailed "Added / Changed / Fixed" sections in the v3.0.0 entry below for the full scope. v3.2.0 focused on bug fixes, test repair, and polish after the major v3 refactor.)
+
+---
+
+## [3.1.x series] (summarized)
+
+Multiple patch releases (3.1.1 through 3.1.10) addressed:
+
+- last_played / view_count accuracy (Emby activity log retrieval and refresh on scan)
+- UI improvements (sidebar collapse persistence, server status, queue indicators, scan animations, logo color reflecting connected servers)
+- Icon and redirect fixes (Font Awesome 6 renames, public calendar loops)
+- Rule regressions, CI lint, and release process fixes
+- Public calendar admin password bypass and redirect issues
+- Docker compose tag handling for auto-update scenarios
+- Numerous i18n, Discord notification deduplication, and frontend refactors (removal of defineComponent/h() patterns in favor of standard templates)
+
+Full per-version details were previously listed in release bodies and consolidated here.
 
 ---
 
 ## [3.0.0] — 2026-06-02
 
-This is the final v3.0.0 release. It supersedes all v3.0.0-alpha builds and incorporates
-everything developed since v2.8.0, including a complete frontend rewrite, MariaDB support,
-an expert rules multi-library engine, full Plex integration, public calendar, 8-language
-i18n, and many architectural improvements.
+Major release: complete Vue 3 frontend rewrite, MariaDB support, expert rules, Plex integration, public calendar, and 8-language internationalization.
 
-### Added
+### Added (highlights)
 
-#### Frontend — Complete Vue 3 rewrite
-- **Vue 3 + Vite + Pinia + vue-i18n** — replaces the legacy vanilla JS/Jinja2 frontend
-- **8 languages** — French, English, German, Spanish, Italian, Portuguese, Dutch, Polish
-- **Sidebar** — collapsible server/library tree, per-server type colors (Emby=green, Jellyfin=purple, Plex=orange), real-time scan/deletion progress bars with animated dots
-- **Dashboard** — global stats, per-server status arcs on the logo (color = server type)
-- **Queue view** — filterable, sortable, with media type badges and poster images
-- **Calendar view** — upcoming deletions by month with day detail panel
-- **Rules view** — expert rule builder with condition groups (AND/OR), drag handles, logic recap; simple Seerr per-user rules
-- **Settings** — tabbed UI with per-service icons, test buttons, server type auto-detection
-- **Logs view** — real-time WebSocket stream with level filters and log retention controls
-- **Ignored view** — ignored media management with optional expiry
-- **Library view** — per-library queue and stats
-- **Setup & login** — first-run setup wizard, JWT login with refresh token support
-- **Public dashboard** — shareable calendar at `/<slug>` (no `/public/` prefix), optional password protection, language selector (8 languages, stored in localStorage), server/library grouping, "View on Server" link with correct `serverId` for Emby/Jellyfin
+- **Frontend**: Vue 3 + Vite + Pinia + vue-i18n (replacing vanilla JS/Jinja2). 8 languages supported.
+- **Expert Rules**: Full visual builder with AND/OR condition groups, multi-library targeting, per-rule "Run" button.
+- **Database**: Full MariaDB support via `DATABASE_URL`, bidirectional migration tools + UI, `DbConn` abstraction.
+- **Plex**: Complete client, webhook support, expert rules integration, poster overlays.
+- **Public Calendar**: Shareable upcoming deletions view (`/<slug>`), optional password, multi-language, deep links back to the correct media server.
+- **i18n**: Backend log messages via `lm()` + JSON locale files (8 languages); guard scripts for completeness.
+- **Architecture**: Extracted routers for scheduler, public endpoints, database; APScheduler singleton; constants module.
+- Many new tests, CI improvements, and operational features (embedded MariaDB profile, healthcheck parity, etc.).
 
-#### i18n & Log translations
-- **vue-i18n v9** for all UI strings across 8 languages
-- **`backend/locales/*.json`** — backend log messages translated in 8 languages via `lm()` helper
-- **`backend/logmsg.py`** — thin loader reading from JSON locale files (no more hardcoded Python dicts)
-- **Server connection error codes** — `dns_failure`, `connection_refused`, `timeout`, `http_401`, etc. translated via `settings.servers.errors.*` locale keys
-- **`scripts/check_lm_imports.py`** — guard script to catch missing `lm()` imports before CI
+### Changed / Fixed
 
-#### Database
-- **MariaDB support** — `DATABASE_URL` env var switches from SQLite to MariaDB/MySQL
-- **`DbConn` abstraction** (`backend/db/engine.py`) — unified async API for SQLite and MariaDB with dialect-aware queries, connection pool, `table_exists()`, `table_columns()`
-- **Bidirectional migration** — `backend/tools/migrate_to_mariadb.py` (SQLite → MariaDB) and `backend/tools/migrate_to_sqlite.py` (MariaDB → SQLite); both accessible from the Settings → Database UI
-- **Database settings tab** — shows dialect, connection info, per-table row counts; test connection; start migration with progress polling; restart instructions banner
-- **`routers/database.py`** — `GET /api/database/info`, `POST /api/database/test`, `POST /api/database/migrate`, `GET /api/database/migrate/status`
-- **Embedded MariaDB** (`EMBEDDED_MARIADB=true`) — single-container all-in-one mode with `docker/entrypoint.sh` that initializes and starts mysqld before uvicorn; `docker-compose.embedded-mariadb.yml` override
-- **`refresh_tokens` table** added to MariaDB schema (`schema_mariadb.py`) and migration order
-- **`backend/db/settings_store.py`** — `get_language_sync()` public function for cache reads without I/O
-
-#### Scheduler & Architecture
-- **`backend/_scheduler_instance.py`** — APScheduler singleton extracted from `main.py`; breaks the circular import `main → routers/settings → main.reschedule_jobs`
-- **`routers/scheduler.py`** — new router: `/api/version`, `/api/scheduler/status`, `/api/scheduler/run/{job_id}`, `/api/scan/trigger`, `/api/deletion/trigger`, `/api/scan/library/{library_id}`, `/api/emby-collection/sync`, `/api/jobs/history`, `/api/media/job-status`
-- **`routers/public.py`** — public calendar endpoint extracted from `main.py`
-
-#### Multi-server & Media servers
-- **MediaServer type helpers** (`backend/db/media_servers.py`) — `is_plex()`, `is_emby_compatible()`, `server_type()` centralize the `server.get("type") == "plex"` dispatch
-- **`ensure_server_uid()`** — auto-populates `server_uid` (Emby/Jellyfin server UUID) on each scan, enabling correct "View on Server" deep links in the public calendar
-- **Server-aware deletion** — `_delete_media()` pre-loads `library_id → server_id` map before the deletion loop (eliminates per-item DB query)
-- **Seerr cache** built once before the server loop (was rebuilt per-server, N API calls for N servers)
-- **Public calendar** — exposes `ext_url` + `server_uid` per server; "View on Server" links use `!/item?id={emby_id}&serverId={server_uid}` for Emby, `!/details?id={emby_id}&serverId={server_uid}` for Jellyfin
-
-#### Plex
-- **`PlexClient`** — local API client: libraries, scan, metadata, delete, sessions, search
-- **`PlexTVClient`** — cloud API for token validation, friend list, server discovery
-- **`/api/plex/webhook`** — multipart endpoint for play/scrobble events (optional secret)
-- **Plex expert rules integration** — `_plex_scanner.py` now evaluates expert rules (was hardcoded `view_count == 0 + cutoff`); `_build_plex_item_data()` maps Plex fields to condition schema; fallback to simple logic when no rule matches
-- **Plex poster overlays** — "Supprimé dans Xj" banner applied to Plex item posters (`plex_overlay_enabled`)
-- **`plex_tv_token`**, **`plex_webhook_secret`** settings fields
-
-#### Expert Rules
-- **Multi-library targeting** — `library_ids: list[str]` field; one rule covers libraries from multiple servers
-- **Run button per rule** — scans only the rule's targeted libraries (not a full scan)
-- **`_build_plex_item_data()`** — maps Plex scan item to expert rule condition schema
-
-#### Security
-- **JWT refresh tokens** — `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/logout-all`; auto-rotation with `refresh_tokens` table; 401 interceptor with request queue in frontend
-- **`rate_limit()` MariaDB guard** — skips SQLite file I/O on MariaDB deployments (prevents spurious file creation)
-- **CORSMiddleware** added explicitly
-
-#### Operations
-- **Health endpoint** — dialect-aware: uses `get_db()` + `db.table_exists()` instead of raw aiosqlite; returns `"dialect"` field
-- **`healthcheck.py`** — MariaDB-aware: if `DATABASE_URL` is set, skips SQLite file/integrity checks and relies on the HTTP `/health` response
-- **`backup.py`** — `if DIALECT != "sqlite": return None` guard with explicit log message
-- **`deletion.py`** VACUUM — `if DIALECT == "sqlite":` guard around VACUUM/WAL checkpoint
-- **`docker-compose.dev.yml`** — backend hot-reload (`uvicorn --reload`) + Vite dev server proxy
-
-#### Build & CI
-- **Vite `manualChunks`** — `vendor-vue` + `vendor-i18n` split; main bundle reduced from 346 KB → 181 KB (-48%)
-- **`scripts/check_lm_imports.py`** — verifies all Python files with `lm()` calls have the import
-- **`scripts/check_i18n.py`** — validates i18n key consistency across all 8 locale files
-- GitHub Actions CI — test + Docker build/push + GitHub release jobs
-
-### Changed
-
-- **`main.py`** reduced from ~550 to ~250 lines; scheduler, public, and version endpoints extracted to dedicated routers
-- **`backend/locales/*.json`** — log translations moved from Python dicts to JSON files (one file per language, editible without touching Python)
-- **`docker-compose.yml`** — image tag updated to `3.0.0`, MariaDB profile healthcheck uses `${DB_MARIADB_PASSWORD}`; `EMBEDDED_MARIADB` env var documented
-- **`version.py`** — default `3.0.0`
-- **`_orchestrator.py`** — Seerr cache built once before server loop; `ensure_server_uid()` called per Emby/Jellyfin server at scan time
-- **`auth.py` `rate_limit()`** — skips sqlite3 on MariaDB (fallback to in-memory)
-- **`routers/expert_rules.py`** — migrate endpoint uses `_migrate_libraries_to_expert_rules_dbconn()` (dialect-aware) instead of raw aiosqlite
-- **`main.py _job_next_run`** — uses `get_db()` instead of raw `aiosqlite.connect()`
-- **`routers/settings.py`** — uses `is_plex()` helper instead of inline `server.get("type") == "plex"`
-- **`deletion.py`** — uses `is_plex()` helper; `server_id` pre-loaded from library map
-- **`routers/libraries.py`** — `clone_library` copies `server_id`; uses `_is_plex()` helper
-- **`LibrariesTab.vue`** — fully i18n (no hardcoded French strings)
-- **`RulesView.vue`** — API calls moved to `stores/rules.js` (migrate + run scan)
-- **Public calendar URL** — `/public/<slug>` → `/<slug>` (Vue Router catch-all at end)
-
-### Fixed
-
-- **Scan completely broken** — `_orchestrator.py` and `deletion.py` were missing `from .logmsg import lm` after refactoring; `NameError` on every scan/deletion run
-- **`_static_version()`** — removed dead function reading non-existent vanilla `app.js`
-- **`clone_library`** — now copies `server_id` (was always defaulting to `'0'`)
-- **Double Discord notification** — "detected" + threshold firing simultaneously; fixed by pre-marking applicable thresholds in `_pre_mark_applicable_thresholds()`
-- **`added_date` column** — queue view was showing today's date instead of Emby `DateCreated`
-- **Discord tab rendering** — vue-i18n `SyntaxError: 10` caused by `@role` in `mentionPlaceholder` locale strings; fixed with `{'@'}` escape syntax
-- **`AlertRow` inside `<script setup>`** — extracted to separate `.vue` file to avoid defineComponent context conflict
-- **Sidebar collapsible** — `<template v-if>` replaced by `<div v-show>` to fix libraries not displaying
-- **Emby colors** — Emby=green, Jellyfin=violet (was reversed)
-- **`import aiosqlite`** orphan import in `main.py` removed
-- **`rate_limit` on MariaDB** — no longer creates a spurious SQLite file
+(See the raw upstream CHANGELOG for the exhaustive list of refactors, bug fixes for scans, notifications, i18n escaping, double-scheduling, SSRF hardening, etc.)
 
 ---
 
 ## [2.8.0] — 2026-05-29
 
 ### Added
-- Pydantic expert rule models (`ConditionField`, `ConditionOp`, `RuleOperator`, `RuleAction`, `Condition`, `ExpertRule`)
-- Expert rule evaluation engine (`backend/rules/engine.py`)
-- `expert_rules` table + CRUD repositories
-- `/api/expert-rules` CRUD endpoints
-- Expert rules integrated into the Emby/Jellyfin scanner
-- `notifications` table — deduplication for deletion notifications
-- Per-library stats and metrics endpoint
-- Integration tests for deletion flow
+- Pydantic models for expert rules (`ConditionField`, `ConditionOp`, etc.).
+- Rule evaluation engine (`backend/rules/engine.py`).
+- `expert_rules` table + CRUD.
+- Integration of expert rules into the scanner.
+- Notifications deduplication table.
+- Per-library stats.
 
 ---
 
 ## [2.7.0] — 2026-05-28
 
 ### Added
-- Repository pattern (`backend/db/repositories.py`)
-- `_seerr_pages()` async generator for paginated Seerr fetches
-- Custom exception hierarchy (`backend/exceptions.py`)
+- Repository pattern.
+- Async generators for paginated Seerr data.
+- Custom exception hierarchy.
 
 ---
 
 ## [2.6.0] — 2026-05-28
 
 ### Added
-- Rate limiting (SQLite-backed, 10 req/min per IP, 500ms cleanup)
-- Warning banner when HYGIE_ENCRYPTION_KEY is not set
-- API key masking in settings responses
-- Global stats moved to dedicated `routers/stats.py`
-- `scan_interval_minutes` / `deletion_check_interval_minutes` (migration from hours)
+- Rate limiting (SQLite-backed).
+- Warnings when encryption key is missing.
+- API key masking in responses.
+- Global stats router.
+- Migration of interval settings from hours to minutes.
+
+---
+
+## Older Releases (v2.4.0 and prior)
+
+### v2.4.0 — Stability, Security & Performance
+
+**Stability**
+- Parallel deletions using `Semaphore(3)` — faster without overloading external services.
+- HTTP retry with exponential backoff (×3: 1s/2s/4s) on `TimeoutException` and `ConnectError`.
+- 5s timeout on every WebSocket send — a slow client no longer blocks others.
+- Robust `init_db()` supporting in-memory databases (`:memory:`).
+
+**Performance**
+- Three new DB indexes: `media_queue(emby_id)`, `media_queue(library_id)`, `ignored_media(emby_id)`.
+- `notified_detected` and `notified_thresholds` columns promoted into the main schema (no more lazy migrations).
+
+**Security**
+- Rate limiter: dead code removed, periodic cleanup every 500 calls (bounded memory).
+- `sanitize_url()`: `api_key`, `token`, `password` parameters are now masked in logs.
+- Scheduler intervals clamped to `[1, 10080]` — zero or negative values no longer crash APScheduler.
+- Unified password validation (frontend + backend): minimum **8 characters**.
+
+**Code Quality**
+- Shared `_path_matches()` utility for Radarr/Sonarr path matching (removes duplication).
+- Enriched Discord logs: media titles are logged on webhook failure.
+- Health check `/health` now detects scheduler jobs without `next_run_time` (zombie jobs).
+- `http_retry()` exported from the database module for reuse by all clients.
+
+**Discord Notifications (v2.3.3, integrated here)**
+- Immediate notification on media detection (with scheduled deletion date shown).
+- Configurable thresholds in the Discord settings tab (e.g. `7,1` for 7 days and 1 day before).
+- Dynamic titles for any threshold (e.g. `📅 Deletion in 14 days`).
+- Color-coded queue: Yellow `< 30d`, Orange `< 14d`, Red `< 7d`, animated glowing red `< 3d`.
+
+**Tests**
+- 15 new tests (`test_v240_fixes.py`): URL sanitization, HTTP retry, rate limiter, DB indexes.
+- Total: 169 tests.
+
+---
+
+## [2.3.2]
+
+- fix: Use calendar-date diff in UI countdown to match overlay logic (prevents 1-day overshoot).
+
+---
+
+## [2.3.x and earlier]
+
+See git tags and historical release bodies for incremental fixes (Jellyfin support in v2.1, encryption hardening in v2.0, various proxy/QUI/qBittorrent integration fixes in the v1.2 series, etc.).
+
+For the complete historical list of small patches, refer to the git tag messages or the GitHub Releases page.
+
+---
+
+**Note**: This CHANGELOG has been normalized to English. Original French notes from recent releases (particularly the Grok audit series in v3.4.x) have been translated for consistency while preserving technical accuracy. For the absolute latest or raw upstream notes, see https://github.com/carryozor/hygie/releases and the raw CHANGELOG.md.

@@ -167,6 +167,7 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
             "delete_at":         delete_at,
             "added_date":        added_date,
             "last_played":       item.get("last_viewed_at"),
+            "view_count":        int(item.get("view_count") or 0),
         }
         await insert_queue_entry(entry)
         added += 1

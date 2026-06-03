@@ -49,8 +49,8 @@ async def insert_queue_entry(entry: dict) -> None:
             (emby_id, title, media_type, library_id, library_name, file_path,
              poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
              seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
-             detected_at, delete_at, added_date, last_played, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+             detected_at, delete_at, added_date, last_played, view_count, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
             (
                 entry["emby_id"], entry["title"], entry["media_type"],
                 entry["library_id"], entry["library_name"], entry["file_path"],
@@ -60,6 +60,7 @@ async def insert_queue_entry(entry: dict) -> None:
                 entry.get("sonarr_series_id"), entry.get("season_number"),
                 entry["detected_at"], entry["delete_at"],
                 entry["added_date"], entry["last_played"],
+                entry.get("view_count", 0),
             ),
         )
         await db.commit()

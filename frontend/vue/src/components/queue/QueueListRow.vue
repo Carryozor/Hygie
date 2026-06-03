@@ -71,9 +71,13 @@
     <!-- Last played -->
     <td
       class="px-4 py-2 text-xs hidden xl:table-cell whitespace-nowrap"
-      :class="item.last_played ? 'text-[var(--muted)]' : 'text-red-400 font-medium'"
+      :class="item.last_played ? 'text-[var(--muted)]' : (item.view_count > 0 ? 'text-yellow-500' : 'text-red-400 font-medium')"
     >
-      {{ item.last_played ? formatDate(item.last_played) : t('queue.neverWatched') }}
+      {{ item.last_played
+        ? formatDate(item.last_played)
+        : item.view_count > 0
+          ? t('queue.watchedUnknownDate') || '✓ Vu'
+          : t('queue.neverWatched') }}
     </td>
 
     <!-- Added date -->

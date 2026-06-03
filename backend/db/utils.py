@@ -32,11 +32,22 @@ def sanitize_url(url: str) -> str:
 
 
 def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
-    """Parse an ISO-8601 string (with or without trailing Z) to an aware datetime."""
+    """Parse an ISO-8601 string to a timezone-aware UTC datetime.
+
+    Handles common Emby/Jellyfin date formats:
+    - "2024-01-15T10:30:00.0000000Z"  (7-decimal Z)
+    - "2024-01-15T10:30:00+00:00"     (explicit offset)
+    - "2024-01-15T10:30:00"           (naive — assumed UTC)
+    Naive datetimes (no tz info) are treated as UTC so comparisons with
+    now_utc() don't raise TypeError.
+    """
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, AttributeError):
         return None
 

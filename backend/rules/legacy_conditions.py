@@ -430,4 +430,5 @@ async def _evaluate_item(
         "delete_at": delete_at.isoformat(),
         "added_date": added_date.isoformat(),
         "last_played": last_played.isoformat() if last_played else None,
+        "view_count": play_count,
     }

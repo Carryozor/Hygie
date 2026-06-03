@@ -70,13 +70,31 @@ async def setup(body: SetupRequest, request: Request):
     }
 
 
+# Pre-computed Argon2id hash used when the username doesn't exist, so that
+# verify_password() still runs and takes the same time — prevents username
+# enumeration via response-time side-channel.
+_DUMMY_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4"
+    "$fq695FCj/XKNaWy20+AgjQ"
+    "$HxX7rtZRWI8Rbe2aP8xShI9CCWo50ZyKe2NHeedwsAg"
+)
+
+
 @router.post("/login")
 async def login(body: LoginRequest, request: Request):
-    ip   = get_client_ip(request)
+    ip = get_client_ip(request)
+    # Rate limit AVANT la vérification — empêche le bypass par alternance
+    # succès/échec et protège toutes les tentatives, valides ou non.
+    if rate_limit(f"login:{ip}"):
+        raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(body.username)
-    if not user or not verify_password(body.password, user["password_hash"]):
-        if rate_limit(f"login:{ip}"):
-            raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
+    # Toujours appeler verify_password pour éliminer le timing side-channel :
+    # sans ceci, un username inexistant répond ~170ms plus vite (pas d'Argon2).
+    password_ok = verify_password(
+        body.password,
+        user["password_hash"] if user else _DUMMY_HASH,
+    )
+    if not user or not password_ok:
         raise HTTPException(401, "Identifiants invalides")
     access_token  = create_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
@@ -89,8 +107,11 @@ async def login(body: LoginRequest, request: Request):
 
 
 @router.post("/refresh")
-async def refresh(body: RefreshRequest):
+async def refresh(body: RefreshRequest, request: Request):
     """Exchange a valid refresh token for a new access token."""
+    ip = get_client_ip(request)
+    if rate_limit(f"refresh:{ip}"):
+        raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     if not body.refresh_token:
         raise HTTPException(401, "Refresh token requis")
     username = await verify_refresh_token(body.refresh_token)

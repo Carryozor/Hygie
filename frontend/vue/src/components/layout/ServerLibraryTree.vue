@@ -33,11 +33,18 @@
 import { reactive } from 'vue'
 import { useServersStore } from '@/stores/servers'
 
-const servers = useServersStore()
-const collapsed = reactive({})
+const servers  = useServersStore()
+const LS_KEY   = 'hygie_sidebar_collapsed'
+
+function loadCollapsed() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+}
+
+const collapsed = reactive(loadCollapsed())
 
 function toggleServer(id) {
   collapsed[id] = !collapsed[id]
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ ...collapsed })) } catch { /* storage full */ }
 }
 
 function serverDotClass(type) {

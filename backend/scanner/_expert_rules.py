@@ -80,12 +80,18 @@ def _build_item_data(
     }
 
 
-async def _evaluate_expert_rules(item_data: dict, library_id=None) -> tuple[Optional[str], int]:
+async def _evaluate_expert_rules(
+    item_data: dict,
+    library_id=None,
+    *,
+    rules_cache: Optional[list] = None,
+) -> tuple[Optional[str], int]:
     """Return (action, grace_days) if any enabled expert rule matches, else (None, 7).
 
-    Rules with library_id=None apply globally; rules scoped to a library_id only apply there.
+    rules_cache: pre-loaded list of ExpertRule objects. Pass this to avoid one DB query
+    per item — load once per library scan and pass it through.
     """
-    rules = await _get_expert_rules(enabled_only=True)
+    rules = rules_cache if rules_cache is not None else await _get_expert_rules(enabled_only=True)
     for rule in rules:
         # library_ids (multi-select) takes precedence over legacy library_id
         if rule.library_ids is not None:

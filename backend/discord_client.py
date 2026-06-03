@@ -9,8 +9,10 @@ Discord ID resolution priority for mentions:
   1. seerr_user_rules.discord_id (manually configured in Hygie)
   2. Seerr user notification settings discordId (auto from Seerr)
 """
+import asyncio
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -22,6 +24,12 @@ from .db.settings_store import get_setting
 from .logmsg import lm
 
 logger = logging.getLogger(__name__)
+
+# Discord rate limit: 5 messages/second per webhook. Enforce a 220ms minimum
+# gap between send_alert calls to prevent the webhook from being blacklisted
+# when a large batch of deletions fails and each triggers its own alert.
+_DISCORD_ALERT_MIN_INTERVAL = 0.22  # seconds
+_discord_alert_last_ts: float = 0.0
 
 _KIND_COLORS = {
     "detected": 0x57F287,
@@ -253,6 +261,13 @@ async def send_alert(
     mention: Discord mention string (@here, <@ID>, <@&ROLE>) — goes in content field to actually ping.
     custom_msg: template string; supports {detail}, {title}, {count} vars via template_vars.
     """
+    global _discord_alert_last_ts
+    now = time.monotonic()
+    elapsed = now - _discord_alert_last_ts
+    if elapsed < _DISCORD_ALERT_MIN_INTERVAL:
+        await asyncio.sleep(_DISCORD_ALERT_MIN_INTERVAL - elapsed)
+    _discord_alert_last_ts = time.monotonic()
+
     webhook = await _get_alert_webhook()
     if not webhook:
         return False

@@ -28,6 +28,7 @@ from ..rules.legacy_conditions import _evaluate_conditions, _evaluate_item, _get
 from ..collection import sync_emby_collection
 from ._queue_entry import _build_queue_entry, _insert_queue_entry
 from ._expert_rules import _build_item_data, _evaluate_expert_rules
+from ..db.repositories import get_expert_rules as _get_expert_rules
 from ._consolidation import _consolidate_and_insert
 from ..rules.models import RuleAction as _RuleAction
 
@@ -73,6 +74,9 @@ async def _scan_library(
             for uid in user_ids
         ])
         user_data_cache = dict(zip(user_ids, results))
+
+    # Load expert rules once per library scan — avoids N DB queries (one per item)
+    expert_rules_cache = await _get_expert_rules(enabled_only=True)
 
     # Fetch activity log once per library scan — used as fallback when
     # Activity log: used as fallback for LastPlayedDate when Played=True but no date.
@@ -164,7 +168,7 @@ async def _scan_library(
                         seerr_user_id = seerr_data.get("user_id")
 
                 item_data             = _build_item_data(item, play_count, last_played, added_date, seerr_user_id)
-                action, rule_grace    = await _evaluate_expert_rules(item_data, lib["id"])
+                action, rule_grace    = await _evaluate_expert_rules(item_data, lib["id"], rules_cache=expert_rules_cache)
 
                 if action == _RuleAction.QUEUE.value:
                     tmdb_id            = str(item.get("ProviderIds", {}).get("Tmdb") or "")
@@ -253,6 +257,18 @@ async def reevaluate_library_queue(library_id: str) -> int:
     user_ids   = [u["Id"] for u in users] if users else []
     removed    = 0
 
+    # Batch-fetch user data for ALL users in one pass — avoids N×M sequential HTTP calls.
+    # Previously this was: for uid in user_ids: ud = await get_user_data(uid, emby_id)
+    # which caused N_items × N_users HTTP requests (e.g. 100 items × 3 users = 300 calls).
+    user_data_cache: dict = {}
+    if user_ids and pending:
+        emby_library_id = lib.get("emby_library_id") or library_id
+        results = await asyncio.gather(*[
+            get_library_user_data(uid, emby_library_id, server_id=server_id)
+            for uid in user_ids
+        ])
+        user_data_cache = dict(zip(user_ids, results))
+
     for row in pending:
         emby_id      = row["emby_id"]
         added_date   = parse_iso_dt(row.get("added_date"))
@@ -265,9 +281,7 @@ async def reevaluate_library_queue(library_id: str) -> int:
             never_watched = False
 
         for uid in user_ids:
-            ud = await get_user_data(uid, emby_id)
-            if not ud:
-                continue
+            ud = user_data_cache.get(uid, {}).get(emby_id) or {}
             pc     = ud.get("PlayCount") or 0
             played = bool(ud.get("Played"))
             play_count = max(play_count, max(pc, 1) if played else pc)

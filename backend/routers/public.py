@@ -1,4 +1,5 @@
 """Public no-auth endpoint — upcoming deletions calendar."""
+import hmac
 from collections import defaultdict
 from typing import Optional
 
@@ -48,7 +49,7 @@ async def public_upcoming(
     if cfg_pwd and not is_admin:
         if not password:
             return JSONResponse({"error": "password_required"}, status_code=401)
-        if password != cfg_pwd:
+        if not hmac.compare_digest(password.encode(), cfg_pwd.encode()):
             return JSONResponse({"error": "wrong_password"}, status_code=403)
 
     async with get_db() as db:

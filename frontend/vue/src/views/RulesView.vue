@@ -184,10 +184,22 @@ async function runRule(ruleId, libraryId, libraryIds) {
   runningId.value = `${prefix}-${ruleId}`
   try {
     await rules.runScan(libraryId, libraryIds)
-    // Poll scheduler until scan actually starts
     await status.fetchScheduler()
-  } catch { /* silent — scan may already be running */ }
-  finally { runningId.value = null }
+  } catch (err) {
+    // 409 = scan already running — surface it visibly
+    const status_code = err?.response?.status
+    if (status_code === 409) {
+      import('@/api/errorHandler').then(({ emitError }) =>
+        emitError(t('rules.scanAlreadyRunning') || 'Un scan est déjà en cours')
+      )
+    } else if (err) {
+      import('@/api/errorHandler').then(({ emitError, formatApiError }) =>
+        emitError(formatApiError(err))
+      )
+    }
+  } finally {
+    runningId.value = null
+  }
 }
 
 async function migrateFromLibraries() {
@@ -283,14 +295,21 @@ async function doDelete() {
 }
 
 async function onSaved({ type, data }) {
-  if (type === 'simple') {
-    if (modal.rule?.id) await rules.updateSimpleRule(modal.rule.id, data)
-    else await rules.createSimpleRule(data)
-  } else {
-    if (modal.rule?.id) await rules.updateExpertRule(modal.rule.id, data)
-    else await rules.createExpertRule(data)
+  try {
+    if (type === 'simple') {
+      if (modal.rule?.id) await rules.updateSimpleRule(modal.rule.id, data)
+      else await rules.createSimpleRule(data)
+    } else {
+      if (modal.rule?.id) await rules.updateExpertRule(modal.rule.id, data)
+      else await rules.createExpertRule(data)
+    }
+    modal.open = false
+  } catch (err) {
+    // errors from API calls are already shown as toasts by the errorHandler interceptor
+    // (5xx, 422). We catch here to prevent an unhandled rejection and keep the modal open
+    // so the user can retry — don't close modal on error.
+    console.error('onSaved error:', err)
   }
-  modal.open = false
 }
 
 onMounted(async () => {

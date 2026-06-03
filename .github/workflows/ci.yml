@@ -92,9 +92,9 @@ jobs:
             NOTES=$(git log --pretty=format:"- %s" --no-merges | head -30)
           fi
           {
-            echo "NOTES<<'EOF'"
+            echo "NOTES<<RELEASE_NOTES_EOF"
             echo "$NOTES"
-            echo "EOF"
+            echo "RELEASE_NOTES_EOF"
           } >> $GITHUB_OUTPUT
 
       - name: Create or update GitHub Release

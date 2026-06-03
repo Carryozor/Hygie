@@ -96,7 +96,8 @@ async def _mariadb_backup(backup_dir: str, ts: str) -> str:
 
     # Compress in a thread pool
     try:
-        import gzip, shutil
+        import gzip
+        import shutil
         def _compress():
             with open(dst_plain, "rb") as f_in, gzip.open(dst, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)

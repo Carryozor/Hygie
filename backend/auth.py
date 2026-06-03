@@ -87,7 +87,8 @@ def verify_password(password: str, password_hash: str) -> bool:
         return True
     except VerifyMismatchError:
         return False
-    except Exception:
+    except Exception as e:
+        logger.debug("verify_password unexpected error: %s", e)
         return False
 
 

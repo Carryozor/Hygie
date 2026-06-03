@@ -54,6 +54,9 @@ async def stats(user: str = Depends(require_auth)):
     }
 
 
+_VALID_STATUSES = frozenset({STATUS_PENDING, STATUS_DELETED, STATUS_ERROR})
+
+
 @router.get("")
 async def list_queue(
     user: str = Depends(require_auth),
@@ -65,6 +68,9 @@ async def list_queue(
     sort: str = "delete_at",
     sort_dir: str = Query("asc", alias="dir"),
 ):
+    if status and status not in _VALID_STATUSES:
+        raise HTTPException(422, f"status invalide : doit être l'un de {sorted(_VALID_STATUSES)}")
+
     sort_col = _SORT_MAP.get(sort, "delete_at")  # safe mapping — never raw interpolation
     sort_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
@@ -105,25 +111,30 @@ async def delete_now(
     """Manually trigger deletion of a single item."""
     async with get_db() as db:
         row = await db.fetch_one(
-            "SELECT * FROM media_queue WHERE id=?", (media_id,)
+            "SELECT * FROM media_queue WHERE id=? AND status=?", (media_id, STATUS_PENDING)
         )
         if not row:
-            raise HTTPException(404, "Média introuvable")
+            raise HTTPException(404, "Média introuvable ou déjà supprimé")
 
     dry_run = (await get_setting("dry_run") or "false").lower() == "true"
     ok = await _delete_media(row, dry_run)
 
     if ok:
         async with get_db() as db:
-            await db.execute(
-                "UPDATE media_queue SET status='deleted' WHERE id=?",
-                (media_id,),
+            # Re-verify row is still pending before marking deleted (prevents double-delete race)
+            still_pending = await db.fetch_one(
+                "SELECT id FROM media_queue WHERE id=? AND status=?", (media_id, STATUS_PENDING)
             )
-            await db.execute(
-                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
-                (media_id, "now"),
-            )
-            await db.commit()
+            if still_pending:
+                await db.execute(
+                    "UPDATE media_queue SET status=? WHERE id=?",
+                    (STATUS_DELETED, media_id),
+                )
+                await db.execute(
+                    "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                    (media_id, "now"),
+                )
+                await db.commit()
         return {"status": "deleted"}
     raise HTTPException(500, "Suppression échouée")
 

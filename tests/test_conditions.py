@@ -1,11 +1,14 @@
 """Unit tests for scheduler condition evaluation — pure functions, no DB or HTTP."""
 from datetime import datetime, timezone, timedelta
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from backend.rules.legacy_conditions import (
     _eval_op,
     _evaluate_conditions,
     _seerr_filter_passes,
+    _aggregate_user_data,
+    _resolve_arr_ids,
 )
 
 
@@ -234,3 +237,86 @@ def test_seerr_multiple_excludes():
     assert _seerr_filter_passes(10, conditions) is False
     assert _seerr_filter_passes(20, conditions) is False
     assert _seerr_filter_passes(30, conditions) is True
+
+
+# ─── _aggregate_user_data ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_aggregate_user_data_never_watched():
+    """All users have PlayCount=0 and Played=False → never_watched=True, play_count=0."""
+    cache = {
+        "u1": {"item1": {"PlayCount": 0, "Played": False}},
+        "u2": {"item1": {"PlayCount": 0, "Played": False}},
+    }
+    pc, nw, lp = await _aggregate_user_data(["u1", "u2"], "item1", cache, None)
+    assert pc == 0
+    assert nw is True
+    assert lp is None
+
+
+@pytest.mark.asyncio
+async def test_aggregate_user_data_played_true_no_playcount():
+    """Played=True + PlayCount=0 should count as play_count=1 (Emby manual mark watched)."""
+    cache = {"u1": {"item1": {"PlayCount": 0, "Played": True, "LastPlayedDate": None}}}
+    pc, nw, lp = await _aggregate_user_data(["u1"], "item1", cache, None)
+    assert pc == 1
+    assert nw is False
+
+
+@pytest.mark.asyncio
+async def test_aggregate_user_data_activity_log_fallback():
+    """When LastPlayedDate is absent, activity_log provides the date."""
+    cache = {"u1": {"item1": {"PlayCount": 1, "Played": True, "LastPlayedDate": ""}}}
+    activity_log = {"item1": "2025-01-15T10:00:00Z"}
+    pc, nw, lp = await _aggregate_user_data(["u1"], "item1", cache, activity_log)
+    assert lp is not None
+    assert lp.year == 2025
+
+
+@pytest.mark.asyncio
+async def test_aggregate_user_data_max_play_count_across_users():
+    """Most-played user wins (max aggregation)."""
+    cache = {
+        "u1": {"item1": {"PlayCount": 3, "Played": True, "LastPlayedDate": None}},
+        "u2": {"item1": {"PlayCount": 7, "Played": True, "LastPlayedDate": None}},
+    }
+    pc, nw, lp = await _aggregate_user_data(["u1", "u2"], "item1", cache, None)
+    assert pc == 7
+
+
+# ─── _resolve_arr_ids ──────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_resolve_arr_ids_movie_from_cache():
+    """Movie type uses radarr_cache when available."""
+    radarr_cache = {"/movies/Avatar.mkv": 42}
+    with patch("backend.rules.legacy_conditions.radarr_find_by_path_cached", return_value=42) as mock_cached:
+        rid, sid, ssid, snum = await _resolve_arr_ids(
+            "/movies/Avatar.mkv", "Movie", radarr_cache, None
+        )
+    assert rid == 42
+    assert sid is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_arr_ids_series_from_sonarr_cache():
+    """Episode type uses sonarr_cache entry."""
+    sonarr_cache = {}
+    fake_entry = {"ef_id": 99, "series_id": 5, "season_number": 2}
+    with patch("backend.rules.legacy_conditions.sonarr_get_cache_entry", return_value=fake_entry):
+        rid, sid, ssid, snum = await _resolve_arr_ids(
+            "/tv/Show/ep.mkv", "Episode", None, sonarr_cache
+        )
+    assert sid == 99
+    assert ssid == 5
+    assert snum == 2
+
+
+@pytest.mark.asyncio
+async def test_resolve_arr_ids_movie_no_cache_uses_http():
+    """Without cache, falls back to HTTP lookup for movies."""
+    with patch("backend.rules.legacy_conditions.radarr_find_by_path", new_callable=AsyncMock, return_value=77):
+        rid, sid, ssid, snum = await _resolve_arr_ids(
+            "/movies/Dune.mkv", "Movie", None, None
+        )
+    assert rid == 77

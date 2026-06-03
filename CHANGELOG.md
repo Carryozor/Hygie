@@ -4,6 +4,35 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.3.0] — 2026-06-03
+
+### Security
+- **SSRF fix** — `POST /api/settings/test-arr` now validates the URL scheme (http/https only) using the same `_validate_server_url` guard as all other server endpoints; `file://`, `ftp://`, and similar schemes are rejected with HTTP 422
+
+### Fixed
+- **Race condition** in manual delete (`POST /media/{id}/delete-now`) — row is re-verified within the same DB context before the final `UPDATE status='deleted'`, preventing double-delete when two requests overlap
+- **Status enum validation** — `GET /api/media` now rejects unknown `status` values with 422 instead of executing an unconstrained SQL query
+- **nonlocal antipattern** in `deletion.py` — replaced `nonlocal _error_count` with an accumulator dict `_counters`; semantics unchanged, no reliance on CPython closure-capture edge cases
+
+### Changed
+- **HTTP semantics** — `POST /api/settings/media-servers` returns `201 Created` instead of 200
+- **Frontend `start()` guard** (`stores/status.js`) — calling `start()` twice no longer stacks duplicate `setInterval` handles; idempotent guard added
+- **Memory leak** in `ServersTab.vue` — `_detectTimers` map is now cleared in `onUnmounted`, preventing timer accumulation across component remounts
+- **`verify_password`** in `auth.py` — broad `except Exception` now logs at DEBUG level instead of silently swallowing errors
+- **SQL placeholder doc** in `db/engine.py` — `_q()` now documents the known limitation with `?` inside string literals
+- **`backend/constants.py`** — new module centralizing server type strings and media type strings
+
+### Refactored
+- **`_evaluate_item`** decomposed: extracted `_aggregate_user_data()` and `_resolve_arr_ids()` helpers — function is now ~80 lines shorter
+- **`_run_scan_body`** — server iteration logic extracted into `_scan_single_server()` helper, reducing nesting depth
+
+### Tests
+- +7 tests for `_aggregate_user_data` and `_resolve_arr_ids` in `test_conditions.py`
+- +3 SSRF tests for `test-arr` endpoint in `test_routes.py`
+- Total: **344 passed** (was 334 in v3.2.0)
+
+---
+
 ## [3.0.0] — 2026-06-02
 
 This is the final v3.0.0 release. It supersedes all v3.0.0-alpha builds and incorporates

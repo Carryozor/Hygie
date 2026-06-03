@@ -250,7 +250,7 @@ async def list_media_servers(user: str = Depends(require_auth)):
     return servers
 
 
-@router.post("/media-servers")
+@router.post("/media-servers", status_code=201)
 async def add_media_server(body: MediaServerBody, user: str = Depends(require_auth)):
     # POST requires a non-empty URL — treat None (field absent) as empty string
     url = _validate_server_url(body.url or "", "url")
@@ -382,6 +382,7 @@ class ArrTestRequest(BaseModel):
 @router.post("/test-arr")
 async def test_arr_instance(body: ArrTestRequest, user: str = Depends(require_auth)):
     """Test a specific Radarr/Sonarr instance by URL and API key."""
+    _validate_server_url(body.url or "", "url")
     return await _test_arr(body.type, body.url, body.api_key)
 
 

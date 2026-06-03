@@ -79,10 +79,9 @@ async def run_deletion() -> None:
                     _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
                 except (ValueError, TypeError):
                     _alert_threshold = 3
-                _error_count = 0
+                _counters = {"errors": 0}
 
                 async def _delete_one(row: dict) -> bool:
-                    nonlocal _error_count
                     async with _del_sem:
                         ok = await _delete_media(
                             row, dry_run,
@@ -90,7 +89,7 @@ async def run_deletion() -> None:
                         )
                         await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
                         if not ok:
-                            _error_count += 1
+                            _counters["errors"] += 1
                             if _alert_del_error:
                                 _t = row.get("title", "?")
                                 await send_alert(
@@ -107,6 +106,7 @@ async def run_deletion() -> None:
                 )
                 deleted_count = sum(1 for r in results if r is True)
 
+                _error_count = _counters["errors"]
                 if _error_count >= _alert_threshold > 0:
                     await send_alert(
                         f"🚨 {_error_count} suppressions en échec",

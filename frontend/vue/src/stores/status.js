@@ -114,6 +114,8 @@ export const useStatusStore = defineStore('status', () => {
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   async function start() {
     if (!localStorage.getItem('hygie_token')) return
+    // Guard against duplicate start() calls creating stacked intervals
+    if (_schedulerInterval !== null) return
     const servers = useServersStore()
     await servers.fetch()
     await fetchScheduler()

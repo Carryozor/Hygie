@@ -172,6 +172,76 @@ async def _do_scan_one_library(
     return "success", f"{added} queued", added
 
 
+async def _scan_single_server(
+    server: dict,
+    *,
+    radarr_cache: dict,
+    sonarr_cache: dict,
+    seerr_cache: dict,
+) -> int:
+    """Scan one media server — Plex or Emby/Jellyfin. Returns count of items queued."""
+    server_id   = str(server.get("id", "0"))
+    server_type = server.get("type", "")
+    server_name = server.get("name") or ""
+    added = 0
+
+    if server_type == "plex":
+        plex_libraries = await get_enabled_libraries(server_id)
+        for lib in plex_libraries:
+            try:
+                n = await _scan_plex_library(server=server, library=lib, seerr_cache=seerr_cache)
+                added += n
+            except Exception as _pe:
+                await add_log("ERROR", f"Scan Plex {lib['name']}: {_pe}", "scan")
+        return added
+
+    if server_type not in ("emby", "jellyfin", ""):
+        await add_log("INFO", lm("scan.lib_ignored_type", server_id=server_id, type=server_type), "scan")
+        return 0
+
+    await ensure_server_uid(server_id)
+    libraries = await get_enabled_libraries(server_id)
+    if not libraries:
+        return 0
+
+    users    = await get_users(server_id=server_id)
+    user_ids = [u["Id"] for u in users] if users else []
+    queued_ids, ignored_ids = await get_queued_and_ignored_ids()
+
+    server_activity_log: dict = {}
+    try:
+        server_activity_log = await get_play_activity(server_id=server_id, days=730)
+    except Exception as _al_err:
+        logger.debug("activity log fetch failed for server %s: %s", server_id, _al_err)
+
+    try:
+        max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
+    except (ValueError, TypeError):
+        max_parallel = 3
+    _lib_sem = asyncio.Semaphore(max(1, max_parallel))
+
+    async def _scan_lib_with_sem(lib):
+        async with _lib_sem:
+            return await _scan_library(
+                lib, user_ids, server_id=server_id, server_name=server_name,
+                radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
+                seerr_cache=seerr_cache,
+                queued_ids=queued_ids, ignored_ids=ignored_ids,
+                activity_log=server_activity_log,
+            )
+
+    results = await asyncio.gather(
+        *[_scan_lib_with_sem(lib) for lib in libraries],
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, int):
+            added += r
+        elif isinstance(r, Exception):
+            await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
+    return added
+
+
 async def _run_scan_body(run_id: int) -> tuple[str, str]:
     """Inner scan logic — separated so run_scan() can wrap it with a timeout."""
     await add_log("INFO", lm("scan.started"), "job")
@@ -201,67 +271,12 @@ async def _run_scan_body(run_id: int) -> tuple[str, str]:
         sonarr_cache = await build_sonarr_path_cache()
 
         for server in enabled_servers:
-            server_id   = str(server.get("id", "0"))
-            server_type = server.get("type", "")
-            server_name = server.get("name") or ""
-
-            if server_type == "plex":
-                plex_libraries = await get_enabled_libraries(server_id)
-                for lib in plex_libraries:
-                    try:
-                        n = await _scan_plex_library(server=server, library=lib, seerr_cache=seerr_cache)
-                        added += n
-                    except Exception as _pe:
-                        await add_log("ERROR", f"Scan Plex {lib['name']}: {_pe}", "scan")
-                continue
-
-            if server_type not in ("emby", "jellyfin", ""):
-                await add_log("INFO", lm("scan.lib_ignored_type", server_id=server_id, type=server_type), "scan")
-                continue
-
-            await ensure_server_uid(server_id)
-            libraries = await get_enabled_libraries(server_id)
-            if not libraries:
-                continue
-
-            users    = await get_users(server_id=server_id)
-            user_ids = [u["Id"] for u in users] if users else []
-            queued_ids, ignored_ids = await get_queued_and_ignored_ids()
-
-            # Fetch activity log once per server — contains play events for all items.
-            # Previously fetched once per library inside _scan_library, causing N redundant
-            # HTTP paginations for the same 3,992-entry log.
-            server_activity_log: dict = {}
-            try:
-                server_activity_log = await get_play_activity(server_id=server_id, days=730)
-            except Exception as _al_err:
-                logger.debug("activity log fetch failed for server %s: %s", server_id, _al_err)
-
-            try:
-                max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
-            except (ValueError, TypeError):
-                max_parallel = 3
-            _lib_sem = asyncio.Semaphore(max(1, max_parallel))
-
-            async def _scan_lib_with_sem(lib):
-                async with _lib_sem:
-                    return await _scan_library(
-                        lib, user_ids, server_id=server_id, server_name=server_name,
-                        radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
-                        seerr_cache=seerr_cache,
-                        queued_ids=queued_ids, ignored_ids=ignored_ids,
-                        activity_log=server_activity_log,
-                    )
-
-            results = await asyncio.gather(
-                *[_scan_lib_with_sem(lib) for lib in libraries],
-                return_exceptions=True,
+            added += await _scan_single_server(
+                server,
+                radarr_cache=radarr_cache,
+                sonarr_cache=sonarr_cache,
+                seerr_cache=seerr_cache,
             )
-            for r in results:
-                if isinstance(r, int):
-                    added += r
-                elif isinstance(r, Exception):
-                    await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
 
         await add_log("INFO", lm("scan.done", n=added), "job")
         await _purge_stale_seerr_items()

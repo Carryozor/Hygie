@@ -194,7 +194,7 @@ v-else-if="plexState[srv._uid] && !plexState[srv._uid].loading"
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
@@ -429,6 +429,10 @@ async function saveServers() {
 }
 
 onMounted(loadServers)
+onUnmounted(() => {
+  for (const t of _detectTimers.values()) clearTimeout(t)
+  _detectTimers.clear()
+})
 </script>
 
 <style scoped>

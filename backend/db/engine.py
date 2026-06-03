@@ -80,7 +80,12 @@ class DbConn:
         self._dialect = dialect
 
     def _q(self, sql: str) -> str:
-        """Translate ? placeholders to %s for MariaDB."""
+        """Translate ? placeholders to %s for MariaDB.
+
+        Limitation: replaces ALL occurrences of '?' in the SQL string, including
+        any that appear inside string literals. Avoid embedding literal '?' characters
+        in SQL values — always bind them as parameters instead.
+        """
         if self._dialect == "mariadb":
             return sql.replace("?", "%s")
         return sql

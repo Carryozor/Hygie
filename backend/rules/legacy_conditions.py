@@ -229,6 +229,71 @@ async def _get_poster_url(
     return ""
 
 
+# ─── Item evaluation — helpers ────────────────────────────────────────────────
+
+async def _aggregate_user_data(
+    user_ids: list,
+    emby_id: str,
+    user_data_cache: Optional[dict],
+    activity_log: Optional[dict],
+) -> tuple:
+    """Return (play_count, never_watched, last_played) aggregated across all users."""
+    last_played: Optional[datetime] = None
+    play_count = 0
+    never_watched = True
+    for uid in user_ids:
+        if user_data_cache is not None:
+            ud = user_data_cache.get(uid, {}).get(emby_id) or {}
+        else:
+            ud = await get_user_data(uid, emby_id) or {}
+        pc     = ud.get("PlayCount") or 0
+        played = bool(ud.get("Played"))
+        # Emby returns Played=True with PlayCount=0 when items are manually marked
+        # as watched (right-click → Mark played) without being played via the player.
+        # Treat Played=True as play_count >= 1 so conditions and display are accurate.
+        effective_pc = max(pc, 1) if played else pc
+        play_count = max(play_count, effective_pc)
+        if played or pc > 0:
+            never_watched = False
+            lp_str = ud.get("LastPlayedDate") or ""
+            if not lp_str and activity_log is not None:
+                # Fallback: activity log stores most-recent stop date (all users merged)
+                lp_str = activity_log.get(emby_id) or ""
+            if lp_str:
+                lp = parse_iso_dt(lp_str)
+                if lp and (last_played is None or lp > last_played):
+                    last_played = lp
+    return play_count, never_watched, last_played
+
+
+async def _resolve_arr_ids(
+    file_path: str,
+    media_type: str,
+    radarr_cache: Optional[dict],
+    sonarr_cache: Optional[dict],
+) -> tuple:
+    """Return (radarr_id, sonarr_id, sonarr_series_id, season_number) from caches or HTTP."""
+    radarr_id_val: Optional[int] = None
+    sonarr_id_val: Optional[int] = None
+    sonarr_series_id_val: Optional[int] = None
+    season_number_val: Optional[int] = None
+    if media_type == "Movie":
+        radarr_id_val = (
+            radarr_find_by_path_cached(file_path, radarr_cache)
+            if radarr_cache is not None
+            else await radarr_find_by_path(file_path)
+        )
+    else:
+        sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
+        if sonarr_entry:
+            sonarr_id_val        = sonarr_entry["ef_id"]
+            sonarr_series_id_val = sonarr_entry["series_id"]
+            season_number_val    = sonarr_entry["season_number"]
+        else:
+            sonarr_id_val = await sonarr_find_by_path(file_path)
+    return radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val
+
+
 # ─── Item evaluation ──────────────────────────────────────────────────────────
 
 async def _evaluate_item(
@@ -285,32 +350,9 @@ async def _evaluate_item(
     if not added_date:
         return None
 
-    # Aggregate UserData across users
-    last_played: Optional[datetime] = None
-    play_count = 0
-    never_watched = True
-    for uid in user_ids:
-        if user_data_cache is not None:
-            ud = user_data_cache.get(uid, {}).get(emby_id) or {}
-        else:
-            ud = await get_user_data(uid, emby_id) or {}
-        pc     = ud.get("PlayCount") or 0
-        played = bool(ud.get("Played"))
-        # Emby returns Played=True with PlayCount=0 when items are manually marked
-        # as watched (right-click → Mark played) without being played via the player.
-        # Treat Played=True as play_count >= 1 so conditions and display are accurate.
-        effective_pc = max(pc, 1) if played else pc
-        play_count = max(play_count, effective_pc)
-        if played or pc > 0:
-            never_watched = False
-            lp_str = ud.get("LastPlayedDate") or ""
-            if not lp_str and activity_log is not None:
-                # Fallback: activity log stores most-recent stop date (all users merged)
-                lp_str = activity_log.get(emby_id) or ""
-            if lp_str:
-                lp = parse_iso_dt(lp_str)
-                if lp and (last_played is None or lp > last_played):
-                    last_played = lp
+    play_count, never_watched, last_played = await _aggregate_user_data(
+        user_ids, emby_id, user_data_cache, activity_log
+    )
 
     if not _evaluate_conditions(conditions, logic, added_date, last_played, play_count, never_watched):
         return None
@@ -383,25 +425,9 @@ async def _evaluate_item(
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)
     delete_at = now_utc() + timedelta(days=effective_grace)
 
-    # Radarr/Sonarr IDs (from cache or individual HTTP call)
-    radarr_id_val: Optional[int] = None
-    sonarr_id_val: Optional[int] = None
-    sonarr_series_id_val: Optional[int] = None
-    season_number_val: Optional[int] = None
-    if media_type == "Movie":
-        radarr_id_val = (
-            radarr_find_by_path_cached(file_path, radarr_cache)
-            if radarr_cache is not None
-            else await radarr_find_by_path(file_path)
-        )
-    else:
-        sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
-        if sonarr_entry:
-            sonarr_id_val = sonarr_entry["ef_id"]
-            sonarr_series_id_val = sonarr_entry["series_id"]
-            season_number_val = sonarr_entry["season_number"]
-        else:
-            sonarr_id_val = await sonarr_find_by_path(file_path)
+    radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val = await _resolve_arr_ids(
+        file_path, media_type, radarr_cache, sonarr_cache
+    )
 
     poster_url = await _get_poster_url(
         emby_id, tmdb_id=tmdb_id, media_type=media_type,

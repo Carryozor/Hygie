@@ -438,3 +438,37 @@ async def test_proxy_rejects_oversized_image(registered_client, monkeypatch):
     r = await c.get(f"/api/proxy/image?url={url}",
                     headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 413
+
+
+# ─── Security: SSRF on test_arr_instance ──────────────────────────────────────
+
+async def test_test_arr_rejects_file_scheme(registered_client):
+    """test-arr must reject non-http/https URLs to prevent SSRF."""
+    c, token = registered_client
+    r = await c.post(
+        "/api/settings/test-arr",
+        json={"type": "radarr", "url": "file:///etc/passwd", "api_key": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+async def test_test_arr_rejects_ftp_scheme(registered_client):
+    c, token = registered_client
+    r = await c.post(
+        "/api/settings/test-arr",
+        json={"type": "radarr", "url": "ftp://evil.com", "api_key": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+async def test_test_arr_accepts_http_scheme(registered_client):
+    """http:// URLs must be allowed (internal deployments — not 422)."""
+    c, token = registered_client
+    r = await c.post(
+        "/api/settings/test-arr",
+        json={"type": "radarr", "url": "http://localhost:7878", "api_key": "testkey"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code != 422

@@ -36,6 +36,7 @@ class StartupValidator:
         await self._check_secret_key(issues)
         await self._check_intervals(issues)
         await self._check_db_connectivity(issues)
+        await self._check_mariadb_defaults(issues)
         return issues
 
     # ── Individual checks ─────────────────────────────────────────────────────
@@ -56,6 +57,19 @@ class StartupValidator:
                 ))
         except (ValueError, TypeError):
             pass
+
+    async def _check_mariadb_defaults(self, issues: list) -> None:
+        """Warn if DATABASE_URL contains well-known default passwords."""
+        db_url = os.environ.get("DATABASE_URL", "")
+        for known_default in ("hygie_secret", "root_secret"):
+            if known_default in db_url:
+                issues.append(ValidationIssue(
+                    "WARN",
+                    f"DATABASE_URL contains known default password '{known_default}'. "
+                    "This is a security risk — the credentials are publicly known.",
+                    "Set DB_MARIADB_PASSWORD to a strong random password in your .env file.",
+                ))
+                break
 
     async def _check_encryption(self, issues: list) -> None:
         if not os.environ.get("HYGIE_ENCRYPTION_KEY"):

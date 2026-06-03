@@ -147,10 +147,14 @@ async def lifespan(app: FastAPI):
     _issues    = await _validator.run()
     _can_start = await _validator.log_results(_issues)
     if not _can_start:
-        logger.critical("Hygie startup aborted due to CRITICAL configuration issues.")
-        # Allow the app to start anyway so the health endpoint can report the problem,
-        # but log clearly that the configuration must be fixed.
-        # (A hard exit here would prevent the health endpoint from responding.)
+        logger.critical(
+            "Hygie startup aborted due to CRITICAL configuration issues. "
+            "Running with WORKERS>1 would cause asyncio.Lock() to not cross OS process "
+            "boundaries, leading to concurrent scans, duplicate queue entries, and data "
+            "corruption. Fix the configuration and restart."
+        )
+        import sys
+        sys.exit(1)
 
     # Schedule jobs — intervals stored in minutes, clamped to [1, 10080]
     try:
@@ -168,13 +172,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=scan_next, replace_existing=True)
     scheduler.add_job(run_deletion, "interval", minutes=del_min, id="deletion_job",
                       next_run_time=del_next, replace_existing=True)
-    # internal_cleanup runs silently (no job_history entries) on two schedules:
-    # every 12h for regular cleanup, and daily at 3am for overlay refresh.
+    # internal_cleanup runs once daily at 3am (no job_history entries).
+    # Previously double-scheduled (12h interval + cron 3am) which could overlap.
     scheduler.add_job(
-        _internal_cleanup, "interval", hours=12, id="internal_cleanup_12h", replace_existing=True
-    )
-    scheduler.add_job(
-        _internal_cleanup, "cron", hour=3, minute=0, id="internal_cleanup_3am", replace_existing=True
+        _internal_cleanup, "cron", hour=3, minute=0, id="internal_cleanup", replace_existing=True
     )
 
     # Backup job — interval from settings, default 24h. 0 or backup_enabled=false = disabled.
@@ -233,7 +234,7 @@ _allowed_origins = [
     o.strip() for o in
     os.environ.get("HYGIE_ALLOWED_ORIGINS", "").split(",")
     if o.strip()
-] or ["*"]
+] or ["http://localhost:8000", "http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,

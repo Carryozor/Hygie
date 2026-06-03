@@ -19,7 +19,7 @@ services:
       # MariaDB embarquée : utiliser docker-compose.embedded-mariadb.yml
       #                     docker compose -f docker-compose.yml -f docker-compose.embedded-mariadb.yml up
       # MariaDB externe   : DATABASE_URL=mysql+aiomysql://user:pass@host:3306/hygie
-      # MariaDB conteneur : DATABASE_URL=mysql+aiomysql://hygie:${DB_MARIADB_PASSWORD:-hygie_secret}@mariadb:3306/hygie
+      # MariaDB conteneur : DATABASE_URL=mysql+aiomysql://hygie:${DB_MARIADB_PASSWORD}@mariadb:3306/hygie
       - DATABASE_URL=${DATABASE_URL:-}
       - EMBEDDED_MARIADB=${EMBEDDED_MARIADB:-false}
       - EMBEDDED_MARIADB_PASSWORD=${EMBEDDED_MARIADB_PASSWORD:-}
@@ -43,12 +43,12 @@ services:
     environment:
       MYSQL_DATABASE: hygie
       MYSQL_USER: hygie
-      MYSQL_PASSWORD: ${DB_MARIADB_PASSWORD:-hygie_secret}
-      MYSQL_ROOT_PASSWORD: ${DB_MARIADB_ROOT_PASSWORD:-root_secret}
+      MYSQL_PASSWORD: ${DB_MARIADB_PASSWORD:?Set DB_MARIADB_PASSWORD in your .env file — do not use defaults}
+      MYSQL_ROOT_PASSWORD: ${DB_MARIADB_ROOT_PASSWORD:?Set DB_MARIADB_ROOT_PASSWORD in your .env file — do not use defaults}
     volumes:
       - hygie_mariadb:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "hygie", "-p${DB_MARIADB_PASSWORD:-hygie_secret}"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "hygie", "-p${DB_MARIADB_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 10

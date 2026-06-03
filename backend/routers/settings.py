@@ -394,6 +394,7 @@ class SeerrSyncRequest(BaseModel):
 @router.post("/sync-arr-from-seerr")
 async def sync_arr_from_seerr(body: SeerrSyncRequest, user: str = Depends(require_auth)):
     """Import Radarr/Sonarr instances from Seerr configuration and merge with existing ones."""
+    _validate_server_url(body.seerr_url or "", "seerr_url")
     try:
         return await _sync_arr(body.seerr_url, body.seerr_api_key)
     except ValueError as e:

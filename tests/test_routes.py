@@ -472,3 +472,26 @@ async def test_test_arr_accepts_http_scheme(registered_client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code != 422
+
+
+# ─── Security: SSRF on sync-arr-from-seerr ────────────────────────────────────
+
+async def test_sync_arr_rejects_file_scheme(registered_client):
+    """sync-arr-from-seerr must reject non-http/https URLs to prevent SSRF."""
+    c, token = registered_client
+    r = await c.post(
+        "/api/settings/sync-arr-from-seerr",
+        json={"seerr_url": "file:///etc/passwd", "seerr_api_key": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+async def test_sync_arr_rejects_ftp_scheme(registered_client):
+    c, token = registered_client
+    r = await c.post(
+        "/api/settings/sync-arr-from-seerr",
+        json={"seerr_url": "ftp://evil.com", "seerr_api_key": "x"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422

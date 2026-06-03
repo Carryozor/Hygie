@@ -133,8 +133,22 @@ async def _get_seerr_grace(
         return row["grace_days"] if row else default_grace
 
 
-async def _update_delete_at_if_pending(emby_id: str, lib: dict, grace_days: int, title: str):
-    """Recalculate delete_at = detected_at + grace_days for an item already in queue."""
+async def _update_delete_at_if_pending(
+    emby_id: str,
+    lib: dict,
+    grace_days: int,
+    title: str,
+    *,
+    last_played=None,
+    play_count: int = 0,
+):
+    """Recalculate delete_at and refresh play data for an item already in queue.
+
+    last_played and play_count are the CURRENT values from Emby, obtained during the
+    scan that found the item already queued. Persisting them ensures the queue view
+    shows accurate "last watched" data even when a user watched the item after it was
+    originally queued (previously the snapshot was frozen at insertion time).
+    """
     try:
         async with get_db() as db:
             row = await db.fetch_one(
@@ -153,9 +167,10 @@ async def _update_delete_at_if_pending(emby_id: str, lib: dict, grace_days: int,
                     new_delete_at = detected_at_dt + timedelta(days=effective_grace)
                     old_dt = parse_iso_dt(row_delete_at) if row_delete_at else None
                     changed = old_dt is None or abs((new_delete_at - old_dt).total_seconds()) > 3600
+                    lp_iso = last_played.isoformat() if last_played else None
                     await db.execute(
-                        "UPDATE media_queue SET delete_at=? WHERE id=?",
-                        (new_delete_at.isoformat(), row_id),
+                        "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
+                        (new_delete_at.isoformat(), lp_iso, play_count, row_id),
                     )
                     if changed:
                         # Reset threshold notifications so they fire again at the new deadline
@@ -294,7 +309,10 @@ async def _evaluate_item(
     # Skip if already in queue — but recalculate delete_at if grace changed
     if queued_ids is not None:
         if emby_id in queued_ids:
-            await _update_delete_at_if_pending(emby_id, lib, grace_days, title)
+            await _update_delete_at_if_pending(
+                emby_id, lib, grace_days, title,
+                last_played=last_played, play_count=play_count,
+            )
             return None
     else:
         async with get_db() as db:
@@ -313,10 +331,11 @@ async def _evaluate_item(
                     if detected_at_dt:
                         effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
                         new_delete_at = detected_at_dt + timedelta(days=effective_grace)
+                        lp_iso = last_played.isoformat() if last_played else None
                         async with get_db() as db2:
                             await db2.execute(
-                                "UPDATE media_queue SET delete_at=? WHERE id=?",
-                                (new_delete_at.isoformat(), row_id),
+                                "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
+                                (new_delete_at.isoformat(), lp_iso, play_count, row_id),
                             )
                             await db2.commit()
                 except Exception as e:

@@ -77,7 +77,7 @@
                 class="text-[var(--muted)] hover:text-red-400 transition-colors"
                 @click="removeGroup(gi)"
               >
-                <i class="fas fa-times text-xs" />
+                <i class="fas fa-xmark text-xs" />
               </button>
             </div>
           </div>

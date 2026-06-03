@@ -48,7 +48,7 @@
                   'border-[var(--accent)]/50 text-[var(--accent)] hover:bg-[var(--accent)]/10'"
           @click="syncFromSeerr"
         >
-          <i :class="['fas', syncing ? 'fa-spinner fa-spin' : syncState === 'ok' ? 'fa-check' : syncState === 'error' ? 'fa-times' : 'fa-download', 'text-xs']" />
+          <i :class="['fas', syncing ? 'fa-spinner fa-spin' : syncState === 'ok' ? 'fa-check' : syncState === 'error' ? 'fa-xmark' : 'fa-download', 'text-xs']" />
           {{ syncing ? t('settings.seerr.importing') : syncState === 'ok' ? t('settings.seerr.imported') : syncState === 'error' ? t('common.failed') : t('settings.seerr.import') }}
         </button>
         <span v-if="syncMsg" class="text-xs" :class="syncState === 'ok' ? 'text-green-400' : 'text-red-400'">
@@ -94,7 +94,7 @@ v-model="u._discord_id" type="text" :placeholder="t('settings.seerr.discordIdPla
           </div>
         </div>
         <p class="text-xs text-[var(--muted)]">
-          <i class="fas fa-info-circle mr-1" />{{ t('settings.seerr.howToFindDiscordId') }}
+          <i class="fas fa-circle-info mr-1" />{{ t('settings.seerr.howToFindDiscordId') }}
         </p>
       </div>
 

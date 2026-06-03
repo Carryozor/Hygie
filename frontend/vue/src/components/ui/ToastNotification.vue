@@ -15,7 +15,7 @@
             class="flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
             @click="remove(toast.id)"
           >
-            <i class="fas fa-times text-xs" />
+            <i class="fas fa-xmark text-xs" />
           </button>
         </div>
       </TransitionGroup>
@@ -40,7 +40,7 @@ function toastIcon(type) {
   if (type === 'error')   return 'fa-circle-exclamation'
   if (type === 'warning') return 'fa-triangle-exclamation'
   if (type === 'success') return 'fa-circle-check'
-  return 'fa-info-circle'
+  return 'fa-circle-info'
 }
 
 function add(message, type = 'error') {

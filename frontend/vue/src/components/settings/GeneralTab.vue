@@ -50,7 +50,7 @@
       :class="form.backup_enabled ? 'bg-green-500/5 border-green-500/30' : 'bg-red-500/5 border-red-500/30'"
     >
       <div class="flex items-center gap-2">
-        <i :class="['fas', form.backup_enabled ? 'fa-shield-alt text-green-400' : 'fa-exclamation-triangle text-red-400']" />
+        <i :class="['fas', form.backup_enabled ? 'fa-shield-halved text-green-400' : 'fa-triangle-exclamation text-red-400']" />
         <h2 class="font-semibold">{{ t('settings.general.backup.title') }}</h2>
       </div>
       <div class="flex items-center justify-between">

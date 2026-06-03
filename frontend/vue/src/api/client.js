@@ -27,7 +27,15 @@ api.interceptors.response.use(
   r => r,
   async err => {
     const originalReq  = err.config
-    const isPublicPage = ['/login', '/setup', '/public'].includes(window.location.pathname)
+    // Public routes: /login, /setup, and any /{slug} path (public calendar).
+    // The public calendar URL is /{slug} — a single-segment path that is NOT
+    // one of the known app routes. We detect it by checking the Vue router meta,
+    // or conservatively: any path that doesn't start with a known protected prefix.
+    const pathname = window.location.pathname
+    const KNOWN_PROTECTED = ['/', '/queue', '/calendar', '/rules', '/settings', '/logs', '/ignored', '/library']
+    const isPublicPage = ['/login', '/setup'].includes(pathname)
+      || (!KNOWN_PROTECTED.some(p => pathname === p || pathname.startsWith('/library/'))
+          && pathname.split('/').length === 2)  // single-segment path = public slug
     const is401        = err.response?.status === 401
     // Skip retry loop for auth endpoints themselves
     const isAuthEndpoint = originalReq?.url?.includes('/auth/')

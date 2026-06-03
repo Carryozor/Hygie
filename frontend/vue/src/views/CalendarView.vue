@@ -83,7 +83,7 @@
         <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
           <h3 class="font-semibold capitalize text-sm">{{ selectedDayLabel }}</h3>
           <button class="text-[var(--muted)] hover:text-white transition-colors" @click="selectedDay = null">
-            <i class="fas fa-times text-xs" />
+            <i class="fas fa-xmark text-xs" />
           </button>
         </div>
         <!-- Items -->

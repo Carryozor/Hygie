@@ -42,7 +42,7 @@
             :title="t('common.edit')"
             class="w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-[var(--bg3)] transition-colors"
             @click="openEdit(lib)">
-            <i class="fas fa-pencil text-xs" />
+            <i class="fas fa-pen text-xs" />
           </button>
           <button
             :title="t('common.delete')"
@@ -73,7 +73,7 @@
           <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
             <h3 class="font-semibold">{{ modal.id ? t('settings.libraries.modalEdit') : t('settings.libraries.modalCreate') }}</h3>
             <button class="text-[var(--muted)] hover:text-white" @click="modal.open = false">
-              <i class="fas fa-times" />
+              <i class="fas fa-xmark" />
             </button>
           </div>
           <div class="p-6 space-y-4">
@@ -96,7 +96,7 @@
                 :placeholder="t('settings.libraries.libIdPlaceholder')"
                 class="field font-mono" />
               <div v-if="embyLibError" class="text-xs text-red-400 mt-1">
-                <i class="fas fa-exclamation-triangle mr-1" />{{ embyLibError }}
+                <i class="fas fa-triangle-exclamation mr-1" />{{ embyLibError }}
               </div>
             </div>
             <div>
@@ -153,7 +153,7 @@
     />
 
     <div v-if="scanMsg" class="bg-green-500/10 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm">
-      <i class="fas fa-check-circle mr-1" />{{ scanMsg }}
+      <i class="fas fa-circle-check mr-1" />{{ scanMsg }}
     </div>
   </div>
 </template>

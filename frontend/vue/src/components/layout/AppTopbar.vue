@@ -9,7 +9,7 @@
         :title="t('auth.logout')"
         @click="handleLogout"
       >
-        <i class="fas fa-sign-out-alt" />
+        <i class="fas fa-right-from-bracket" />
       </button>
 
       <div class="w-px h-4 bg-[var(--border)]" />

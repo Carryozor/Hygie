@@ -135,7 +135,7 @@
           <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
             <h3 class="font-semibold capitalize text-sm">{{ selectedDayLabel }}</h3>
             <button class="text-[var(--muted)] hover:text-white w-7 h-7 flex items-center justify-center rounded hover:bg-[var(--bg3)] transition-colors" @click="selectedDay = null">
-              <i class="fas fa-times text-xs" />
+              <i class="fas fa-xmark text-xs" />
             </button>
           </div>
           <div class="divide-y divide-[var(--border)]">
@@ -157,7 +157,7 @@
               <div class="flex-1 min-w-0">
                 <div class="font-medium text-sm truncate flex items-center gap-1.5">
                   {{ item.title }}
-                  <i v-if="mediaLink(item)" class="fas fa-external-link-alt text-[10px] text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <i v-if="mediaLink(item)" class="fas fa-arrow-up-right-from-square text-[10px] text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div class="flex items-center gap-1.5 text-xs text-[var(--muted)]">
                   <span v-if="serverName(item.server_id)" class="flex items-center gap-1">
@@ -177,7 +177,7 @@
                 class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-xs text-[var(--muted)] hover:text-white hover:border-[var(--accent)]/50 transition-colors"
                 @click.stop
               >
-                <i class="fas fa-external-link-alt text-[10px]" />
+                <i class="fas fa-arrow-up-right-from-square text-[10px]" />
                 {{ lbl('viewOn') }} {{ serverName(item.server_id) }}
               </a>
             </div>

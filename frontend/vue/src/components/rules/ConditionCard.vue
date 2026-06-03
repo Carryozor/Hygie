@@ -41,7 +41,7 @@
         class="mt-1 flex-shrink-0 text-[var(--muted)] hover:text-red-400 transition-colors"
         @click="$emit('remove')"
       >
-        <i class="fas fa-times text-sm" />
+        <i class="fas fa-xmark text-sm" />
       </button>
     </div>
 

@@ -90,7 +90,7 @@ const serversWithLibraries = computed(() => {
 
 function typeIcon(type) {
   if (type === 'plex') return 'fa-plex'
-  if (type === 'jellyfin') return 'fa-jellyfish'
+  if (type === 'jellyfin') return 'fa-server'  // fa-jellyfish doesn't exist in FA
   return 'fa-server'
 }
 

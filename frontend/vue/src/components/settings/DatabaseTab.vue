@@ -100,7 +100,7 @@
           v-if="testResult !== null"
           class="mt-1.5 text-xs px-3 py-1.5 rounded-lg"
           :class="testResult.ok ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'">
-          <i :class="['fas', testResult.ok ? 'fa-check-circle' : 'fa-exclamation-circle', 'mr-1']" />
+          <i :class="['fas', testResult.ok ? 'fa-circle-check' : 'fa-circle-exclamation', 'mr-1']" />
           {{ testResult.message }}
         </div>
       </div>
@@ -142,7 +142,7 @@
             'bg-red-500/10 border border-red-500/30 text-red-400': jobStatus.status === 'error',
             'bg-[var(--bg3)] border border-[var(--border)] text-[var(--muted)]': !jobStatus.status,
           }">
-          <i :class="['fas mt-0.5', jobStatus.status === 'success' ? 'fa-check-circle text-green-400' : jobStatus.status === 'error' ? 'fa-times-circle text-red-400' : 'fa-spinner fa-spin']" />
+          <i :class="['fas mt-0.5', jobStatus.status === 'success' ? 'fa-circle-check text-green-400' : jobStatus.status === 'error' ? 'fa-circle-xmark text-red-400' : 'fa-spinner fa-spin']" />
           <div>
             <div class="font-medium">
               {{ jobStatus.status === 'success' ? t('settings.database.success') : jobStatus.status === 'error' ? t('settings.database.error') : t('settings.database.migrating') }}

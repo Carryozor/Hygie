@@ -13,7 +13,7 @@
             {{ editRule ? t('rules.edit') : t('rules.new') }}
           </h3>
           <button type="button" class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" @click="$emit('close')">
-            <i class="fas fa-times" />
+            <i class="fas fa-xmark" />
           </button>
         </div>
 

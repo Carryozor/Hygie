@@ -32,13 +32,13 @@
           :class="['w-8 h-8 rounded border flex items-center justify-center transition-colors',
             gridView ? 'bg-[var(--accent)] border-[var(--accent)]' : 'bg-[var(--bg2)] border-[var(--border)] text-[var(--muted)] hover:text-white']"
           @click="gridView = true"
-        ><i class="fas fa-th text-xs" /></button>
+        ><i class="fas fa-table-cells text-xs" /></button>
 
         <button
           class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg2)] border border-[var(--border)] hover:border-red-500/50 hover:text-red-400 rounded-lg text-xs text-[var(--muted)] transition-colors"
           @click="confirmPurge = true"
         >
-          <i class="fas fa-trash-alt text-xs" /> {{ t('queue.purgeDeleted') }}
+          <i class="fas fa-trash-can text-xs" /> {{ t('queue.purgeDeleted') }}
         </button>
       </div>
     </div>

@@ -16,7 +16,7 @@
       <StatCard
         :label="t('dashboard.stats.totalDeleted')"
         :value="stats.global.total_deleted ?? 0"
-        icon="fa-check-circle"
+        icon="fa-circle-check"
         color="green"
         :sub="`${currentMonthDeleted} ${t('dashboard.stats.thisMonth')}`"
       />
@@ -29,7 +29,7 @@
       <StatCard
         :label="t('dashboard.stats.errors')"
         :value="stats.global.queue?.error ?? 0"
-        icon="fa-exclamation-circle"
+        icon="fa-circle-exclamation"
         color="red"
       />
     </div>
@@ -39,7 +39,7 @@
       <StatCard
         :label="t('dashboard.stats.reclaimableSpace')"
         :value="stats.storage.queue?.reclaimable_size ?? 0"
-        icon="fa-hdd"
+        icon="fa-hard-drive"
         color="blue"
         format="bytes"
       />
@@ -143,7 +143,7 @@
       </div>
       <div v-if="loading" class="p-8 text-center text-[var(--muted)] text-sm">{{ t('common.loading') }}</div>
       <div v-else-if="!recentQueue.length" class="p-8 text-center text-[var(--muted)] text-sm">
-        <i class="fas fa-check-circle text-2xl mb-2 block opacity-30" />
+        <i class="fas fa-circle-check text-2xl mb-2 block opacity-30" />
         {{ t('dashboard.upcoming.empty') }}
       </div>
       <table v-else class="w-full text-sm">

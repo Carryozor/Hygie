@@ -166,7 +166,7 @@ const navItems = computed(() => [
   { to: '/',         icon: 'fa-chart-bar', label: t('nav.dashboard') },
   { to: '/queue',    icon: 'fa-list',      label: t('nav.queue') },
   { to: '/calendar', icon: 'fa-calendar',  label: t('nav.calendar') },
-  { to: '/rules',    icon: 'fa-sliders-h', label: t('nav.rules') },
+  { to: '/rules',    icon: 'fa-sliders', label: t('nav.rules') },
   { to: '/ignored',  icon: 'fa-ban',       label: t('nav.ignored') },
   { to: '/logs',     icon: 'fa-scroll',    label: t('nav.logs') },
   { to: '/settings', icon: 'fa-cog',       label: t('settings.title') },

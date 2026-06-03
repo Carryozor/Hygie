@@ -16,10 +16,10 @@
     </div>
 
     <div v-if="saved" role="status" class="bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-      <i class="fas fa-check-circle" /> {{ t('common.saved') }}
+      <i class="fas fa-circle-check" /> {{ t('common.saved') }}
     </div>
     <div v-if="saveError" class="bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-      <i class="fas fa-exclamation-triangle" /> {{ saveError }}
+      <i class="fas fa-triangle-exclamation" /> {{ saveError }}
     </div>
 
     <GeneralTab   v-show="activeTab === 'general'"    :form="form" />

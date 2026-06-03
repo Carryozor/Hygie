@@ -53,7 +53,7 @@
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editSimple(r)">
-              <i class="fas fa-pencil text-sm" />
+              <i class="fas fa-pen text-sm" />
             </button>
             <!-- Clone -->
             <button class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors" :title="t('common.clone', 'Cloner')" @click="cloneSimple(r)">
@@ -117,7 +117,7 @@
             </button>
             <!-- Edit -->
             <button class="text-[var(--muted)] hover:text-[var(--text)] transition-colors" :title="t('common.edit')" @click="editExpert(r)">
-              <i class="fas fa-pencil text-sm" />
+              <i class="fas fa-pen text-sm" />
             </button>
             <!-- Clone -->
             <button class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors" :title="t('common.clone', 'Cloner')" @click="cloneExpert(r)">

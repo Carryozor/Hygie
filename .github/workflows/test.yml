@@ -27,8 +27,12 @@ jobs:
       - name: Check schema consistency
         run: python3 scripts/check-schema.py
 
-      - name: Run tests
-        run: python3 -m pytest -q --tb=short
+      - name: Run tests with coverage
+        run: |
+          python3 -m pytest -q --tb=short \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-fail-under=50
 
       - name: Lint (ruff)
         run: python3 -m ruff check backend/ tests/
@@ -58,7 +62,6 @@ jobs:
       - name: Lint
         working-directory: frontend/vue
         run: npm run lint
-        continue-on-error: true   # Don't fail CI on existing warnings
 
       - name: Build frontend
         working-directory: frontend/vue

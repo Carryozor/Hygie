@@ -4,6 +4,37 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.4.0] — 2026-06-03
+
+### Security (CRITIQUE)
+- **SSRF** — `POST /api/settings/sync-arr-from-seerr` validait l'URL (fix SSRF sur test-arr en v3.3.0 mais oubli sur cet endpoint)
+- **Timing attack** — login ne comparait plus le hash si le username était inexistant (réponse 170ms plus rapide → enumération). Le hash dummy est maintenant toujours vérifié
+- **Rate limit bypass** — le rate_limit était appelé APRÈS la vérification du mot de passe; un attaquant pouvant alterner succès/échec bypasse le blocage. Désormais appelé AVANT
+- **Rate limit refresh** — endpoint `/api/auth/refresh` n'avait aucun rate limiting
+- **Comparaison timing-safe** — `password != cfg_pwd` sur le dashboard public remplacé par `hmac.compare_digest`
+
+### Security (P0)
+- **WORKERS > 1** — le démarrage avec plusieurs workers ne bloquait pas (WARN loggé mais app démarrait quand même). Désormais `sys.exit(1)` si WORKERS > 1 détecté — les locks asyncio ne traversent pas les barrières OS
+- **Passwords MariaDB par défaut** — `hygie_secret` / `root_secret` supprimés du docker-compose comme valeurs de fallback; `DB_MARIADB_PASSWORD` est maintenant requis avec message d'erreur explicite
+
+### Fixed
+- **CORS wildcard** — fallback de `["*"]` changé en `["http://localhost:8000", "http://localhost:5173"]`
+- **Double schedule cleanup** — `_internal_cleanup` était schedulé deux fois (interval 12h + cron 3h). Désormais un seul cron à 3h
+- **Storage task fire-and-forget** — `asyncio.create_task()` sans callback; les exceptions silencieuses maintenant loggées via `add_done_callback`
+- **Sort library_id** — `library_id` absent de `_SORT_MAP` → fallback silencieux sur `delete_at`. Corrigé
+
+### Performance
+- **N+1 HTTP dans `reevaluate_library_queue`** — l'appel `get_user_data(uid, emby_id)` par item × par user remplacé par un batch `get_library_user_data` avant la boucle (N×M → N+M)
+- **N+1 DB expert rules** — `get_expert_rules()` appelé par item évalué. Désormais chargé une fois par scan et passé en cache (`rules_cache=`)
+- **Discord rate limiting** — `send_alert` dispose d'un rate limiter à 220ms minimum entre appels pour éviter le blacklisting du webhook lors de suppressions en batch
+
+### CI/CD
+- **Coverage mesuré** — `pytest --cov=backend --cov-fail-under=50` ajouté au CI (actuel: 50%)
+- **Frontend lint strict** — `continue-on-error: true` supprimé du step lint ESLint
+- **`pytest-cov`** ajouté aux requirements-dev.txt
+
+---
+
 ## [3.3.0] — 2026-06-03
 
 ### Security

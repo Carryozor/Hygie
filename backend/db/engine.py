@@ -19,20 +19,29 @@ _pool: Any = None
 
 
 def _parse_mariadb_url(url: str) -> dict:
-    """Parse mysql+aiomysql://user:pass@host:3306/dbname into aiomysql kwargs."""
-    clean = url
-    for prefix in ("mysql+aiomysql://", "mariadb+aiomysql://", "mysql://", "mariadb://"):
-        if clean.startswith(prefix):
-            clean = clean[len(prefix):]
+    """Parse mysql+aiomysql://user:pass@host:3306/dbname into aiomysql kwargs.
+
+    Uses urllib.parse.urlparse for correctness — handles IPv6 brackets, special
+    characters in passwords (%-encoded), and non-standard ports without fragile
+    string splits that break on edge cases.
+    """
+    from urllib.parse import urlparse, unquote
+
+    # Normalize the scheme so urlparse can parse it as a standard URL
+    normalized = url
+    for prefix in ("mysql+aiomysql://", "mariadb+aiomysql://"):
+        if normalized.startswith(prefix):
+            normalized = "https://" + normalized[len(prefix):]
             break
-    user_pass, rest = clean.split("@", 1)
-    user, password = (user_pass.split(":", 1) if ":" in user_pass else (user_pass, ""))
-    host_port_db = rest
-    if "/" in host_port_db:
-        host_port, db = host_port_db.rsplit("/", 1)
-    else:
-        host_port, db = host_port_db, "hygie"
-    host, port = (host_port.rsplit(":", 1) if ":" in host_port else (host_port, "3306"))
+    if normalized.startswith(("mysql://", "mariadb://")):
+        normalized = "https://" + normalized.split("://", 1)[1]
+
+    parsed = urlparse(normalized)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 3306
+    user = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
+    db = (parsed.path or "/hygie").lstrip("/") or "hygie"
     return {"host": host, "port": int(port), "user": user, "password": password, "db": db}
 
 

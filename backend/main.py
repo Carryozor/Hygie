@@ -131,8 +131,18 @@ async def lifespan(app: FastAPI):
     await init_db()
     from .db.migrations import run_migrations
     await run_migrations()
+
+    # init_db_pool() can raise on bad DATABASE_URL (MariaDB host unreachable, bad credentials,
+    # malformed URL). Previously this crashed with a raw traceback before the StartupValidator
+    # could report it as a structured CRITICAL. We now capture the error and inject it into
+    # the validator so the operator sees a clean actionable message.
     from .db.engine import init_db_pool, close_db_pool
-    await init_db_pool()  # no-op for SQLite; creates aiomysql pool if DATABASE_URL is set
+    _db_pool_init_error: str = ""
+    try:
+        await init_db_pool()
+    except Exception as _pool_err:
+        _db_pool_init_error = str(_pool_err)
+        logger.critical("MariaDB pool initialization failed — startup will report CRITICAL: %s", _pool_err)
 
     # Configure log level from settings
     try:
@@ -143,7 +153,7 @@ async def lifespan(app: FastAPI):
 
     # Validate configuration — log WARN issues, block on CRITICAL
     from .startup_validator import StartupValidator
-    _validator = StartupValidator()
+    _validator = StartupValidator(db_pool_init_error=_db_pool_init_error)
     _issues    = await _validator.run()
     _can_start = await _validator.log_results(_issues)
     if not _can_start:

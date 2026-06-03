@@ -41,6 +41,11 @@ class DeletionContext:
     torrent_hash: Optional[str]  = None
     size_bytes:   int            = 0
 
+    # Tracks soft step failures — steps that failed but didn't abort the pipeline.
+    # Populated by steps that catch their own exceptions (SizeLookup, TorrentHash, etc.).
+    # Used by StatsStep and the pipeline to surface persistent partial failures.
+    step_warnings: list = field(default_factory=list)
+
     # ── Convenience properties ────────────────────────────────────────────────
     @property
     def title(self) -> str:
@@ -101,7 +106,8 @@ class SizeLookupStep(DeletionStep):
                     series = await sonarr_get_series_by_id(int(sid))
                     ctx.size_bytes = int((series.get("statistics") or {}).get("sizeOnDisk") or 0) if series else 0
         except Exception as e:
-            logger.debug("SizeLookupStep for '%s': %s", ctx.title, e)
+            logger.info("SizeLookupStep: size unavailable for '%s' (stats will show 0): %s", ctx.title, e)
+            ctx.step_warnings.append(f"SizeLookup: {e}")
 
 
 class TorrentHashStep(DeletionStep):
@@ -114,7 +120,8 @@ class TorrentHashStep(DeletionStep):
             from .deletion import _find_torrent_hash
             ctx.torrent_hash = await _find_torrent_hash(ctx.item)
         except Exception as e:
-            logger.debug("TorrentHashStep for '%s': %s", ctx.title, e)
+            logger.info("TorrentHashStep: hash unavailable for '%s' (qBit step will be skipped): %s", ctx.title, e)
+            ctx.step_warnings.append(f"TorrentHash: {e}")
 
 
 class DiscordNotifyStep(DeletionStep):
@@ -262,6 +269,11 @@ class DeletionPipeline:
                     type(step).__name__, ctx.title, e,
                 )
                 return False
+        if ctx.step_warnings:
+            logger.warning(
+                "Deletion of '%s' completed with %d soft step failure(s): %s",
+                ctx.title, len(ctx.step_warnings), "; ".join(ctx.step_warnings),
+            )
         return True
 
 

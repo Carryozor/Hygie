@@ -18,8 +18,14 @@ from .db.settings_store import get_setting, set_setting
 from .db.media_servers import get_media_servers, save_media_servers
 from .db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
 from .db.encryption import _decrypt_value
+from .arr_clients.circuit_breaker import get_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
+
+
+def _emby_breaker(server_id: str):
+    """Return the circuit breaker for the given Emby/Jellyfin server."""
+    return get_breaker(f"emby:{server_id}", failure_threshold=5, recovery_timeout=120.0)
 
 
 def _classify_network_error(e: Exception) -> str:
@@ -175,11 +181,14 @@ async def get_users(server_id: str = "0") -> List[dict]:
     url, key = await get_client(server_id)
     if not url or not key:
         return []
+    breaker = _emby_breaker(server_id)
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await client.get(f"{url}/Users", headers=_auth(key))
+            r = await breaker.call(lambda: client.get(f"{url}/Users", headers=_auth(key)))
             if r.status_code == 200:
                 return r.json()
+    except CircuitOpenError:
+        logger.warning("Circuit breaker OPEN for emby:%s — get_users skipped", server_id)
     except Exception as e:
         logger.warning(f"get_users error: {e}")
     return []
@@ -200,12 +209,17 @@ async def get_items_in_library(
         "Limit": limit,
         "StartIndex": start,
     }
+    breaker = _emby_breaker(server_id)
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            r = await http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=params))
+            r = await breaker.call(
+                lambda: http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=params))
+            )
             if r.status_code == 200:
                 data = r.json()
                 return data.get("Items", []), data.get("TotalRecordCount", 0)
+    except CircuitOpenError:
+        logger.warning("Circuit breaker OPEN for emby:%s — get_items_in_library skipped (lib=%s)", server_id, library_id)
     except Exception as e:
         logger.warning(f"get_items_in_library error: {e}")
     return [], 0

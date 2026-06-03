@@ -4,6 +4,30 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.4.1] — 2026-06-03
+
+Corrections issues identifiées lors de l'audit Grok (ingénieur senior + architecte senior).
+
+### Fixed
+
+- **Init order DB pool** — `init_db_pool()` (MariaDB) crashait avec un traceback brut avant le `StartupValidator` si `DATABASE_URL` était malformé ou le serveur unreachable. Désormais l'erreur est capturée et injectée dans le validator comme `CRITICAL` structuré avec message actionnable
+- **`_parse_mariadb_url` fragile** — le parsing naïf par `split("@")` cassait sur les IPv6, les caractères spéciaux %-encodés dans les mots de passe, et les ports non standard. Remplacé par `urllib.parse.urlparse` + `unquote`
+- **Circuit breakers Emby + Plex non câblés** — `get_users()` et `get_items_in_library()` dans `emby_client.py` n'utilisaient pas le circuit breaker existant. Si Emby était down, chaque item tentait sa connexion jusqu'au timeout de 2h. Désormais un circuit breaker par `server_id` (seuil: 5 échecs, recovery: 120s)
+- **`PlexClient._get()` sans circuit breaker** — toutes les requêtes Plex passent maintenant par `get_breaker(f"plex:{server_id}")`
+
+### Changed
+
+- **Visibilité étapes pipeline** — `SizeLookupStep` et `TorrentHashStep` loggaient leurs échecs à `DEBUG` (invisibles en prod). Passés à `INFO` + enregistrés dans `ctx.step_warnings`. Le pipeline log un `WARNING` en fin de suppression si des étapes softes ont échoué
+- **`StartupValidator`** accepte maintenant `db_pool_init_error` en paramètre pour relayer proprement les erreurs d'init du pool MariaDB
+
+### Tests
+
+- +4 tests `_parse_mariadb_url` (caractères spéciaux, schemes multiples, port par défaut)
+- +2 tests `StartupValidator` (injection d'erreur pool, check connectivity normal)
+- Total: **352 passed**
+
+---
+
 ## [3.4.0] — 2026-06-03
 
 ### Security (CRITIQUE)

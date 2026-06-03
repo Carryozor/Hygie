@@ -7,6 +7,7 @@ from typing import Optional
 import httpx
 
 from .db.utils import TIMEOUT_MEDIUM, TIMEOUT_SHORT
+from .arr_clients.circuit_breaker import get_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,20 @@ def _extract_tmdb_id(guids: list) -> str:
 class PlexClient:
     """Async HTTP client for a single Plex Media Server."""
 
-    def __init__(self, url: str, token: str) -> None:
+    def __init__(self, url: str, token: str, server_id: str = "plex") -> None:
         self._url = url.rstrip("/")
         self._token = token
         self._headers = {**_PLEX_HEADERS, "X-Plex-Token": token}
+        self._breaker = get_breaker(f"plex:{server_id}", failure_threshold=5, recovery_timeout=120.0)
 
     async def _get(self, path: str, params: dict | None = None) -> dict:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
-            resp = await client.get(
-                f"{self._url}{path}",
-                headers=self._headers,
-                params=params or {},
+            resp = await self._breaker.call(
+                lambda: client.get(
+                    f"{self._url}{path}",
+                    headers=self._headers,
+                    params=params or {},
+                )
             )
             resp.raise_for_status()
             return resp.json()
@@ -244,4 +248,4 @@ def build_plex_client(server: dict) -> Optional["PlexClient"]:
     if not url or not token:
         logger.warning("Plex server %s has no URL or token", server.get("id"))
         return None
-    return PlexClient(url=url, token=token)
+    return PlexClient(url=url, token=token, server_id=str(server.get("id", "plex")))

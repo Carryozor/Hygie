@@ -27,7 +27,15 @@ class ValidationIssue:
 
 
 class StartupValidator:
-    """Validates Hygie configuration at startup and reports issues via logs."""
+    """Validates Hygie configuration at startup and reports issues via logs.
+
+    db_pool_init_error: if init_db_pool() raised before the validator ran,
+    pass the error string here so it surfaces as a structured CRITICAL instead
+    of a raw traceback crash.
+    """
+
+    def __init__(self, db_pool_init_error: str = "") -> None:
+        self._db_pool_init_error = db_pool_init_error
 
     async def run(self) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -35,7 +43,18 @@ class StartupValidator:
         await self._check_encryption(issues)
         await self._check_secret_key(issues)
         await self._check_intervals(issues)
-        await self._check_db_connectivity(issues)
+        # If the DB pool already failed to initialize, report it immediately
+        # instead of re-running a connectivity check that will also fail.
+        if self._db_pool_init_error:
+            issues.append(ValidationIssue(
+                "CRITICAL",
+                f"MariaDB pool initialization failed: {self._db_pool_init_error}",
+                "Check DATABASE_URL format, host reachability, credentials, and that the "
+                "MariaDB server is running. Common causes: bad password, wrong host/port, "
+                "IPv6 address in URL, special characters in password.",
+            ))
+        else:
+            await self._check_db_connectivity(issues)
         await self._check_mariadb_defaults(issues)
         return issues
 

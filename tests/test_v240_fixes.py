@@ -236,3 +236,46 @@ def test_interval_bounds_clamp():
     assert clamp("360") == 360
     assert clamp("1") == 1
     assert clamp("10080") == 10080
+
+
+# ─── StartupValidator pool init error injection ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_startup_validator_reports_pool_init_error_as_critical(tmp_path):
+    """When init_db_pool fails, the error should surface as CRITICAL via the validator."""
+    import os
+    import backend.db.utils as _u
+    import backend.db.engine as _e
+    import backend.db.schema as _schema
+    import backend.db.settings_store as _ss
+    db_path = str(tmp_path / "val.db")
+    _u.DB_PATH = _e.SQLITE_PATH = _schema.DB_PATH = _ss.DB_PATH = db_path
+
+    from backend.startup_validator import StartupValidator
+    # Simulate init_db_pool() failing with a connection error
+    validator = StartupValidator(db_pool_init_error="Connection refused: db.example.com:3306")
+    issues = await validator.run()
+    critical = [i for i in issues if i.level == "CRITICAL"]
+    assert len(critical) >= 1
+    assert "Connection refused" in critical[0].message
+
+
+@pytest.mark.asyncio
+async def test_startup_validator_no_pool_error_runs_connectivity_check(tmp_path):
+    """When no pool error, the normal connectivity check runs."""
+    import backend.db.utils as _u
+    import backend.db.engine as _e
+    import backend.db.schema as _schema
+    import backend.db.settings_store as _ss
+    db_path = str(tmp_path / "val2.db")
+    _u.DB_PATH = _e.SQLITE_PATH = _schema.DB_PATH = _ss.DB_PATH = db_path
+
+    # Init DB so connectivity check succeeds
+    from backend.db.schema import init_db
+    await init_db()
+
+    from backend.startup_validator import StartupValidator
+    validator = StartupValidator()
+    issues = await validator.run()
+    critical = [i for i in issues if i.level == "CRITICAL" and "connectivity" in i.message.lower()]
+    assert len(critical) == 0  # DB is accessible — no connectivity CRITICAL

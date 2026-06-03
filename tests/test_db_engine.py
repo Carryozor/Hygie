@@ -71,3 +71,33 @@ async def test_fetch_one_missing_returns_none(db):
     async with get_db() as conn:
         row = await conn.fetch_one("SELECT * FROM t WHERE id=?", (999,))
     assert row is None
+
+
+# ─── _parse_mariadb_url robustness ────────────────────────────────────────────
+
+def test_parse_mariadb_url_standard():
+    from backend.db.engine import _parse_mariadb_url
+    r = _parse_mariadb_url("mysql+aiomysql://user:pass@localhost:3306/hygie")
+    assert r == {"host": "localhost", "port": 3306, "user": "user", "password": "pass", "db": "hygie"}
+
+
+def test_parse_mariadb_url_special_chars_in_password():
+    from backend.db.engine import _parse_mariadb_url
+    r = _parse_mariadb_url("mysql+aiomysql://user:p%40ss%21@db.example.com:3307/mydb")
+    assert r["password"] == "p@ss!"
+    assert r["port"] == 3307
+    assert r["db"] == "mydb"
+
+
+def test_parse_mariadb_url_default_port():
+    from backend.db.engine import _parse_mariadb_url
+    r = _parse_mariadb_url("mariadb+aiomysql://root:secret@db/hygie")
+    assert r["port"] == 3306
+    assert r["host"] == "db"
+
+
+def test_parse_mariadb_url_mariadb_scheme():
+    from backend.db.engine import _parse_mariadb_url
+    r = _parse_mariadb_url("mariadb://user:pass@host:3306/dbname")
+    assert r["host"] == "host"
+    assert r["db"] == "dbname"

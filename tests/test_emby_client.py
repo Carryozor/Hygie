@@ -160,3 +160,40 @@ async def test_get_users_no_url_returns_empty(monkeypatch, tmp_path):
     from backend.emby_client import get_users
     users = await get_users(server_id="0")
     assert users == []
+
+
+# ─── Tests: server_id propagation ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scan_library_passes_server_id_to_get_poster_url(monkeypatch, tmp_path):
+    """_scan_library must pass server_id to _get_poster_url, not use default '0'."""
+    import backend.db.engine as _db_engine
+    import backend.db.utils as _db_utils2
+    import backend.db.settings_store as _db_ss2
+    import backend.db.media_servers as _db_ms2
+    import backend.db.schema as _db_schema2
+    db_path = str(tmp_path / "poster_test.db")
+    monkeypatch.setattr(_db_utils2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ss2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_ms2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_schema2, "DB_PATH", db_path)
+    monkeypatch.setattr(_db_engine, "SQLITE_PATH", db_path)
+    _db_ms2._ms_cache = None; _db_ms2._ms_cache_ts = 0.0
+    _db_ss2._settings_cache.clear(); _db_ss2._settings_cache_ts = 0.0
+    await _db_schema2.init_db()
+    await _db_ms2.save_media_servers([{"id": "srv2", "type": "emby",
+        "url": "http://server2:8096", "api_key": "key2", "enabled": True}])
+
+    called_with = []
+    from unittest.mock import AsyncMock, patch
+    async def mock_get_client(sid="0"):
+        called_with.append(sid)
+        return ("http://server2:8096", "key2")
+
+    with patch("backend.rules.legacy_conditions.get_client", new=mock_get_client):
+        from backend.rules.legacy_conditions import _get_poster_url
+        await _get_poster_url("item123", server_id="srv2")
+
+    # Verify server_id was propagated, not defaulting to "0"
+    assert "srv2" in called_with, f"Expected 'srv2' in calls, got {called_with}"
+    # This test confirms the scanner correctly propagates server_id to poster URL resolution

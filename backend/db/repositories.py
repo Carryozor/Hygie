@@ -41,29 +41,56 @@ async def get_enabled_libraries(server_id: str) -> list[dict]:
         )
 
 
+_INSERT_SQL = """INSERT INTO media_queue
+    (emby_id, title, media_type, library_id, library_name, file_path,
+     poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
+     seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
+     detected_at, delete_at, added_date, last_played, view_count, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"""
+
+
+def _entry_params(entry: dict) -> tuple:
+    return (
+        entry["emby_id"], entry["title"], entry["media_type"],
+        entry["library_id"], entry["library_name"], entry["file_path"],
+        entry["poster_url"], entry["tmdb_id"],
+        entry["seerr_id"], entry["seerr_user_id"], entry["seerr_username"],
+        entry["seerr_request_url"], entry["radarr_id"], entry["sonarr_id"],
+        entry.get("sonarr_series_id"), entry.get("season_number"),
+        entry["detected_at"], entry["delete_at"],
+        entry["added_date"], entry["last_played"],
+        entry.get("view_count", 0),
+    )
+
+
 async def insert_queue_entry(entry: dict) -> None:
     """Insert one row into media_queue (status='pending')."""
     async with get_db() as db:
-        await db.execute(
-            """INSERT INTO media_queue
-            (emby_id, title, media_type, library_id, library_name, file_path,
-             poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-             seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
-             detected_at, delete_at, added_date, last_played, view_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
-            (
-                entry["emby_id"], entry["title"], entry["media_type"],
-                entry["library_id"], entry["library_name"], entry["file_path"],
-                entry["poster_url"], entry["tmdb_id"],
-                entry["seerr_id"], entry["seerr_user_id"], entry["seerr_username"],
-                entry["seerr_request_url"], entry["radarr_id"], entry["sonarr_id"],
-                entry.get("sonarr_series_id"), entry.get("season_number"),
-                entry["detected_at"], entry["delete_at"],
-                entry["added_date"], entry["last_played"],
-                entry.get("view_count", 0),
-            ),
-        )
+        await db.execute(_INSERT_SQL, _entry_params(entry))
         await db.commit()
+
+
+async def insert_queue_entries_batch(entries: list) -> None:
+    """Insert multiple media_queue rows atomically (all-or-nothing).
+
+    If any entry fails (e.g. duplicate emby_id UNIQUE constraint), the entire
+    batch is explicitly rolled back and the exception propagated to the caller.
+    Explicit rollback makes the atomicity guarantee portable across SQLite and
+    MariaDB without relying on implicit connection-close behavior.
+    """
+    if not entries:
+        return
+    params_seq = [_entry_params(e) for e in entries]
+    async with get_db() as db:
+        try:
+            await db.executemany(_INSERT_SQL, params_seq)
+            await db.commit()
+        except Exception:
+            try:
+                await db.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
 
 
 async def mark_notified_detected(emby_id: str) -> None:

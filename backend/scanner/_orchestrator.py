@@ -20,6 +20,7 @@ from ..discord_client import send_alert
 from ..notifications import _send_pending_notifications
 from ..collection import sync_emby_collection
 from ..logmsg import lm
+from ..emby_client import get_play_activity
 from ._emby_scanner import _scan_library
 from ._plex_scanner import _scan_plex_library
 
@@ -151,11 +152,21 @@ async def _do_scan_one_library(
         _irows      = await _db.fetch_all("SELECT emby_id FROM ignored_media")
         ignored_ids = {r["emby_id"] for r in _irows}
 
+    # Fetch activity log once per single-library scan (same as per-server optimization
+    # in _run_scan_body). Passing activity_log=None would cause _scan_library to fetch
+    # it internally, which is equivalent but less explicit.
+    _activity_log: dict = {}
+    try:
+        _activity_log = await get_play_activity(server_id=server_id, days=730)
+    except Exception as _al_e:
+        logger.debug("activity log fetch failed for server %s: %s", server_id, _al_e)
+
     added = await _scan_library(
         lib, user_ids, server_id=server_id, server_name=server_name,
         radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
         seerr_cache=seerr_cache,
         queued_ids=queued_ids, ignored_ids=ignored_ids,
+        activity_log=_activity_log,
     )
     await add_log("INFO", lm("scan.done", n=added), "job")
     return "success", f"{added} queued", added
@@ -217,6 +228,15 @@ async def _run_scan_body(run_id: int) -> tuple[str, str]:
             user_ids = [u["Id"] for u in users] if users else []
             queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 
+            # Fetch activity log once per server — contains play events for all items.
+            # Previously fetched once per library inside _scan_library, causing N redundant
+            # HTTP paginations for the same 3,992-entry log.
+            server_activity_log: dict = {}
+            try:
+                server_activity_log = await get_play_activity(server_id=server_id, days=730)
+            except Exception as _al_err:
+                logger.debug("activity log fetch failed for server %s: %s", server_id, _al_err)
+
             try:
                 max_parallel = int(await get_setting("max_parallel_library_scans") or "3")
             except (ValueError, TypeError):
@@ -230,6 +250,7 @@ async def _run_scan_body(run_id: int) -> tuple[str, str]:
                         radarr_cache=radarr_cache, sonarr_cache=sonarr_cache,
                         seerr_cache=seerr_cache,
                         queued_ids=queued_ids, ignored_ids=ignored_ids,
+                        activity_log=server_activity_log,
                     )
 
             results = await asyncio.gather(

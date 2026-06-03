@@ -45,11 +45,14 @@ async def _scan_library(
     seerr_cache: Optional[dict] = None,
     queued_ids: Optional[set] = None,
     ignored_ids: Optional[set] = None,
+    activity_log: Optional[dict] = None,
 ) -> int:
     """Scan one Emby/Jellyfin library — returns count of items added.
 
     Caches and sets should be built once in the calling orchestrator and
     passed here to avoid redundant HTTP/DB calls.
+    activity_log: pre-fetched {item_id: last_stop_date_iso} from the Emby activity
+    log. When None, the scanner fetches it internally (backward compatibility).
     """
     conditions       = json.loads(lib.get("conditions") or "[]")
     logic            = lib.get("logic") or "AND"
@@ -72,14 +75,15 @@ async def _scan_library(
         user_data_cache = dict(zip(user_ids, results))
 
     # Fetch activity log once per library scan — used as fallback when
-    # UserData.LastPlayedDate is null despite Played=True (items manually marked
-    # as watched via Seerr or the Emby UI without going through the player).
-    # Format: {item_id: {user_id: iso_date_string}}
-    activity_log: dict = {}
-    try:
-        activity_log = await get_play_activity(server_id=server_id, days=730)
-    except Exception as _al_err:
-        logger.debug("activity log fetch failed: %s", _al_err)
+    # Activity log: used as fallback for LastPlayedDate when Played=True but no date.
+    # When the orchestrator passes activity_log (pre-fetched once per server),
+    # we skip the fetch here. Otherwise we fetch it (single-library scan path).
+    if activity_log is None:
+        activity_log = {}
+        try:
+            activity_log = await get_play_activity(server_id=server_id, days=730)
+        except Exception as _al_err:
+            logger.debug("activity log fetch failed: %s", _al_err)
 
     # Direct update: write last_played + view_count for any pending queue entry
     # that has a play record in the activity log — regardless of whether the item

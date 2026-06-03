@@ -225,10 +225,21 @@ class MediaServerBody(BaseModel):
 
 
 def _validate_server_url(value: Optional[str], field: str) -> str:
-    if not value:
+    """Validate a server URL field.
+
+    None  → field absent in PATCH request, return "" (no change to existing value).
+    ""    → field explicitly set to empty string, rejected with 422.
+    "ftp" → wrong scheme, rejected with 422.
+    """
+    if value is None:
         return ""
     val = value.strip()
-    if val and urlparse(val).scheme.lower() not in ("http", "https"):
+    if not val:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field}: l'URL ne peut pas être vide",
+        )
+    if urlparse(val).scheme.lower() not in ("http", "https"):
         raise HTTPException(status_code=422, detail=f"{field}: le schéma doit être http ou https")
     return val.rstrip("/")
 
@@ -241,7 +252,8 @@ async def list_media_servers(user: str = Depends(require_auth)):
 
 @router.post("/media-servers")
 async def add_media_server(body: MediaServerBody, user: str = Depends(require_auth)):
-    url = _validate_server_url(body.url, "url")
+    # POST requires a non-empty URL — treat None (field absent) as empty string
+    url = _validate_server_url(body.url or "", "url")
     ext_url = _validate_server_url(body.ext_url, "ext_url")
     servers = await get_media_servers()
     new_id = str(max([int(s.get("id", 0)) for s in servers], default=-1) + 1)

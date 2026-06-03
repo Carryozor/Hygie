@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 _SORT_MAP: dict = {
     "title":          "title",
     "library_name":   "library_name",
+    "library_id":     "library_id",
     "media_type":     "media_type",
     "delete_at":      "delete_at",
     "detected_at":    "detected_at",

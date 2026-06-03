@@ -195,6 +195,10 @@ async def get_storage(user: str = Depends(require_auth)):
         async with _storage_task_lock:
             if _storage_refresh_task is None or _storage_refresh_task.done():
                 _storage_refresh_task = asyncio.create_task(_fetch_storage_data())
+                _storage_refresh_task.add_done_callback(
+                    lambda t: logger.warning("storage cache refresh failed: %s", t.exception())
+                    if not t.cancelled() and t.exception() is not None else None
+                )
         return _storage_cache["data"]
 
     # Cold start — no data at all, must wait

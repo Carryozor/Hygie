@@ -19,6 +19,7 @@ from ..emby_client import (
     get_client,
     get_items_in_library,
     get_library_user_data,
+    get_play_activity,
     get_user_data,
     get_users,
 )
@@ -70,6 +71,36 @@ async def _scan_library(
         ])
         user_data_cache = dict(zip(user_ids, results))
 
+    # Fetch activity log once per library scan — used as fallback when
+    # UserData.LastPlayedDate is null despite Played=True (items manually marked
+    # as watched via Seerr or the Emby UI without going through the player).
+    # Format: {item_id: {user_id: iso_date_string}}
+    activity_log: dict = {}
+    try:
+        activity_log = await get_play_activity(server_id=server_id, days=730)
+    except Exception as _al_err:
+        logger.debug("activity log fetch failed: %s", _al_err)
+
+    # Direct update: write last_played + view_count for any pending queue entry
+    # that has a play record in the activity log — regardless of whether the item
+    # still meets deletion conditions. This runs BEFORE _evaluate_item so the
+    # display is correct even if the conditions check short-circuits the update path.
+    if activity_log:
+        try:
+            from ..db.engine import get_db as _get_db
+            async with _get_db() as _db:
+                for _eid, _date in activity_log.items():
+                    if _date:
+                        await _db.execute(
+                            "UPDATE media_queue SET last_played=?, view_count=MAX(COALESCE(view_count,0),1) "
+                            "WHERE emby_id=? AND status='pending' "
+                            "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
+                            (_date, _eid, _date),
+                        )
+                await _db.commit()
+        except Exception as _upd_err:
+            logger.debug("activity log DB update failed: %s", _upd_err)
+
     seerr_ext_url: str = await get_setting("seerr_external_url") or ""
     dry_run = await get_bool_setting("dry_run")
 
@@ -84,6 +115,7 @@ async def _scan_library(
             entry = await _evaluate_item(
                 item, lib, conditions, logic, grace_days, user_ids, seerr_conditions,
                 user_data_cache=user_data_cache,
+                activity_log=activity_log,
                 radarr_cache=radarr_cache,
                 sonarr_cache=sonarr_cache,
                 seerr_cache=seerr_cache,
@@ -107,10 +139,14 @@ async def _scan_library(
                 last_played = None
                 added_date  = parse_iso_dt(item.get("DateCreated") or "")
                 for uid in user_ids:
-                    ud = (user_data_cache.get(uid) or {}).get(emby_id) or {}
-                    pc = ud.get("PlayCount") or 0
-                    play_count = max(play_count, pc)
+                    ud     = (user_data_cache.get(uid) or {}).get(emby_id) or {}
+                    pc     = ud.get("PlayCount") or 0
+                    played = bool(ud.get("Played"))
+                    play_count = max(play_count, max(pc, 1) if played else pc)
                     lp_str = ud.get("LastPlayedDate") or ""
+                    if not lp_str and (played or pc > 0):
+                        # Fallback: activity log stores most-recent stop date across all users
+                        lp_str = activity_log.get(emby_id) or ""
                     if lp_str:
                         lp = parse_iso_dt(lp_str)
                         if lp and (last_played is None or lp > last_played):
@@ -228,9 +264,10 @@ async def reevaluate_library_queue(library_id: str) -> int:
             ud = await get_user_data(uid, emby_id)
             if not ud:
                 continue
-            pc = ud.get("PlayCount") or 0
-            play_count = max(play_count, pc)
-            if ud.get("Played") or pc > 0:
+            pc     = ud.get("PlayCount") or 0
+            played = bool(ud.get("Played"))
+            play_count = max(play_count, max(pc, 1) if played else pc)
+            if played or pc > 0:
                 never_watched = False
                 lp_str = ud.get("LastPlayedDate") or ""
                 if lp_str:

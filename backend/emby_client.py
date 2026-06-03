@@ -272,6 +272,64 @@ async def get_user_data(user_id: str, item_id: str, server_id: str = "0") -> Opt
     return None
 
 
+async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
+    """Fetch Emby activity log and return {item_id: most_recent_stop_date_iso}.
+
+    Used as a fallback when UserData.LastPlayedDate is null despite Played=True —
+    which happens when items are marked as played via Seerr or manually in the UI
+    without going through the Emby player.
+
+    NOTE: the activity log UserId is a short numeric string (e.g. "3"), NOT the
+    full UUID from /Users. We therefore store only the most-recent date across
+    ALL users per item so callers don't need to match user ID formats.
+    """
+    from datetime import datetime, timedelta, timezone
+    url, key = await get_client(server_id)
+    if not url or not key:
+        return {}
+
+    min_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    result: dict = {}   # {item_id: most_recent_stop_date_iso}
+    start  = 0
+    limit  = 500
+
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+            while True:
+                r = await client.get(
+                    f"{url}/System/ActivityLog/Entries",
+                    headers=_auth(key),
+                    params={
+                        "minDate":    min_date,
+                        "hasUserId":  "true",
+                        "limit":      limit,
+                        "startIndex": start,
+                    },
+                )
+                if r.status_code != 200:
+                    break
+                body  = r.json()
+                items = body.get("Items", [])
+                for entry in items:
+                    if entry.get("Type") not in ("playback.stop",):
+                        continue
+                    item_id = str(entry.get("ItemId") or "")
+                    date    = entry.get("Date") or ""
+                    if not item_id or not date:
+                        continue
+                    # Keep the most recent stop date across ALL users for this item
+                    if item_id not in result or date > result[item_id]:
+                        result[item_id] = date
+                total = body.get("TotalRecordCount", 0)
+                start += len(items)
+                if not items or start >= total:
+                    break
+    except Exception as e:
+        logger.warning("get_play_activity error: %s", e)
+
+    return result
+
+
 async def delete_item(item_id: str, server_id: str = "0") -> bool:
     """Delete an item from the media server. Removes the hardlink but not the physical file."""
     url, key = await get_client(server_id)

@@ -242,6 +242,7 @@ async def _evaluate_item(
     *,
     ctx: Optional[ScanContext] = None,
     user_data_cache: Optional[dict] = None,
+    activity_log: Optional[dict] = None,
     radarr_cache: Optional[dict] = None,
     sonarr_cache: Optional[dict] = None,
     seerr_cache: Optional[dict] = None,
@@ -293,11 +294,19 @@ async def _evaluate_item(
             ud = user_data_cache.get(uid, {}).get(emby_id) or {}
         else:
             ud = await get_user_data(uid, emby_id) or {}
-        pc = ud.get("PlayCount") or 0
-        play_count = max(play_count, pc)
-        if ud.get("Played") or pc > 0:
+        pc     = ud.get("PlayCount") or 0
+        played = bool(ud.get("Played"))
+        # Emby returns Played=True with PlayCount=0 when items are manually marked
+        # as watched (right-click → Mark played) without being played via the player.
+        # Treat Played=True as play_count >= 1 so conditions and display are accurate.
+        effective_pc = max(pc, 1) if played else pc
+        play_count = max(play_count, effective_pc)
+        if played or pc > 0:
             never_watched = False
             lp_str = ud.get("LastPlayedDate") or ""
+            if not lp_str and activity_log is not None:
+                # Fallback: activity log stores most-recent stop date (all users merged)
+                lp_str = activity_log.get(emby_id) or ""
             if lp_str:
                 lp = parse_iso_dt(lp_str)
                 if lp and (last_played is None or lp > last_played):

@@ -191,9 +191,29 @@ function initGroups(initial) {
   return [defaultGroup()]
 }
 
+// When a server is disabled or removed, its libraries must be excluded from
+// library_ids so the rule no longer targets them. Without this filter, a rule
+// created when Plex was enabled would still show "Films (Plex)" after Plex
+// is disabled, and the user couldn't remove it (disabled servers don't appear
+// in the LibraryTreePicker).
+function filterEnabledLibraryIds(ids) {
+  if (!ids) return null
+  const enabledServerIds = new Set(
+    (servers.servers || [])
+      .filter(s => s.enabled !== false)
+      .map(s => String(s.id))
+  )
+  const allLibs = servers.libraries || []
+  const filtered = ids.filter(libId => {
+    const lib = allLibs.find(l => String(l.id) === String(libId))
+    return lib && enabledServerIds.has(String(lib.server_id ?? '0'))
+  })
+  return filtered.length ? filtered : null
+}
+
 const form = reactive({
   name:             props.initial.name             ?? '',
-  library_ids:      props.initial.library_ids      ?? null,
+  library_ids:      filterEnabledLibraryIds(props.initial.library_ids),
   condition_groups: initGroups(props.initial),
   operator:         props.initial.operator         ?? 'AND',
   action:           props.initial.action           ?? 'queue',

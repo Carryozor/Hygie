@@ -58,13 +58,23 @@ const hasContent = computed(() =>
   props.conditionGroups.length > 0 || props.libraryIds !== undefined
 )
 
+const enabledServerIds = computed(() => {
+  // Only show libraries from enabled servers — disabled servers are excluded
+  // so rules don't display "Films" twice when one server is disabled.
+  return new Set(
+    (serversStore.servers || [])
+      .filter(s => s.enabled !== false)
+      .map(s => String(s.id))
+  )
+})
+
 const libraryNames = computed(() => {
   if (!Array.isArray(props.libraryIds)) return []
   const allLibs = serversStore.libraries || []
-  return props.libraryIds.map(id => {
-    const lib = allLibs.find(l => String(l.id) === String(id))
-    return lib ? lib.name : id
-  })
+  return props.libraryIds
+    .map(id => allLibs.find(l => String(l.id) === String(id)))
+    .filter(lib => lib && enabledServerIds.value.has(String(lib.server_id ?? '0')))
+    .map(lib => lib.name)
 })
 
 const fieldLabels = computed(() => ({

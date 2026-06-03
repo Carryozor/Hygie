@@ -12,8 +12,11 @@
       {{ t('settings.servers.empty') }}
     </div>
 
-    <div v-for="(srv, idx) in mediaServers" :key="srv._uid" class="bg-[var(--bg2)] border rounded-xl overflow-hidden" :class="serverBorderClass(srv.type)">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]" :class="serverHeaderClass(srv.type)">
+    <div v-for="(srv, idx) in mediaServers" :key="srv._uid"
+      class="border rounded-xl overflow-hidden transition-colors duration-500"
+      :class="[serverBorderClass(srv), serverBodyClass(srv)]">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] transition-colors duration-500"
+        :class="serverHeaderClass(srv)">
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-black/20">
             <ServiceIcon v-if="serverService(srv.type)" :name="serverService(srv.type)" :size="22" />
@@ -32,6 +35,17 @@ class="text-xs px-3 py-1.5 rounded-lg border transition-colors"
             {{ srv._testing ? '…' : srv._testOk === true ? t('common.ok') : srv._testOk === false ? `✗ ${t('common.failed')}` : t('common.test') }}
           </button>
           <span v-if="srv._testMsg && !srv._testing" class="text-xs" :class="srv._testOk ? 'text-green-400' : 'text-red-400'">{{ srv._testMsg }}</span>
+          <!-- Purge queue — appears when server is saved and disabled (or always for manual cleanup) -->
+          <button
+            v-if="srv.id"
+            :disabled="srv._purging"
+            class="text-xs px-2 py-1 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-50 flex items-center gap-1"
+            :title="t('settings.servers.purgeQueueTitle', 'Vider la file d\'attente de ce serveur')"
+            @click="purgeServerQueue(srv)"
+          >
+            <i :class="['fas', srv._purging ? 'fa-spinner fa-spin' : 'fa-trash-can', 'text-[10px]']" />
+            {{ srv._purging ? '…' : (srv._purged != null ? `✓ ${srv._purged}` : t('settings.servers.purgeQueue', 'Vider la file')) }}
+          </button>
           <button class="text-[var(--muted)] hover:text-red-400 transition-colors" @click="removeServer(idx)">
             <i class="fas fa-trash text-sm" />
           </button>
@@ -209,20 +223,92 @@ const webhookUrl = computed(() => {
 })
 
 const SERVER_CONFIG = {
-  emby:     { service: 'emby',     border: 'border-green-600/30',  header: 'bg-green-600/10' },
-  jellyfin: { service: 'jellyfin', border: 'border-blue-500/30',   header: 'bg-blue-500/10' },
-  plex:     { service: 'plex',     border: 'border-yellow-500/30', header: 'bg-yellow-500/10' },
+  emby: {
+    service:   'emby',
+    border:    'border-green-600/30',
+    header:    'bg-green-600/10',
+    body:      'bg-[var(--bg2)]',
+    borderOk:  'border-green-500/70',
+    headerOk:  'bg-green-500/[0.12]',
+    bodyOk:    'bg-green-500/[0.05]',
+  },
+  jellyfin: {
+    service:   'jellyfin',
+    border:    'border-violet-500/30',
+    header:    'bg-violet-500/10',
+    body:      'bg-[var(--bg2)]',
+    borderOk:  'border-violet-500/70',
+    headerOk:  'bg-violet-500/[0.12]',
+    bodyOk:    'bg-violet-500/[0.05]',
+  },
+  plex: {
+    service:   'plex',
+    border:    'border-orange-500/30',
+    header:    'bg-orange-500/10',
+    body:      'bg-[var(--bg2)]',
+    borderOk:  'border-orange-500/70',
+    headerOk:  'bg-orange-500/[0.12]',
+    bodyOk:    'bg-orange-500/[0.05]',
+  },
 }
-const DEF = { service: null, border: 'border-[var(--border)]', header: '' }
+const DEF = {
+  service: null,
+  border: 'border-[var(--border)]', borderOk: 'border-[var(--border)]',
+  header: '',                        headerOk: '',
+  body: 'bg-[var(--bg2)]',          bodyOk: 'bg-[var(--bg2)]',
+}
 
-function serverService(type)     { return (SERVER_CONFIG[type] || DEF).service }
-function serverBorderClass(type) { return (SERVER_CONFIG[type] || DEF).border }
-function serverHeaderClass(type) { return (SERVER_CONFIG[type] || DEF).header }
+function serverService(type)    { return (SERVER_CONFIG[type] || DEF).service }
+function serverBorderClass(srv) {
+  const cfg = SERVER_CONFIG[srv.type] || DEF
+  return srv._testOk === true ? cfg.borderOk : cfg.border
+}
+function serverHeaderClass(srv) {
+  const cfg = SERVER_CONFIG[srv.type] || DEF
+  return srv._testOk === true ? cfg.headerOk : cfg.header
+}
+function serverBodyClass(srv) {
+  const cfg = SERVER_CONFIG[srv.type] || DEF
+  return srv._testOk === true ? cfg.bodyOk : cfg.body
+}
 
 function addServer() {
   mediaServers.value.push({ _uid: ++_uid, id: null, name: '', url: '', api_key: '', ext_url: '', type: '', enabled: true, _showKey: true, _testing: false, _testOk: null, _testMsg: '' })
 }
 function removeServer(idx) { mediaServers.value.splice(idx, 1) }
+
+// ── Persistence: save/restore test results in localStorage ───────────────────
+const LS_KEY = 'hygie_srv_status'
+
+function saveStatus() {
+  const out = {}
+  for (const s of mediaServers.value) {
+    if (s.id && s._testOk !== null) out[s.id] = s._testOk
+  }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(out)) } catch { /* storage full */ }
+}
+
+function restoreStatus() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}')
+    for (const s of mediaServers.value) {
+      if (s.id && saved[s.id] !== undefined) s._testOk = saved[s.id]
+    }
+  } catch { /* ignore corrupt data */ }
+}
+
+// Silent background test — no spinner, no user-visible state change
+async function silentTest(srv) {
+  if (!srv.id || !srv.url) return
+  try {
+    const { data } = await api.post(`/settings/media-servers/${srv.id}/test`)
+    srv._testOk = !!data.ok
+    if (data.server_type && data.server_type !== 'unknown') srv.type = data.server_type
+  } catch {
+    srv._testOk = false
+  }
+  saveStatus()
+}
 
 async function testServer(srv) {
   if (!srv.id) return
@@ -234,6 +320,7 @@ async function testServer(srv) {
     srv._testMsg = (!data.ok && errKey && te(errKey)) ? t(errKey) : (data.message || '')
     if (data.server_type) srv.type = data.server_type
     await statusStore.checkServerHealth()
+    saveStatus()   // persist result
   } catch { srv._testOk = false; srv._testMsg = '' }
   finally { srv._testing = false }
 }
@@ -283,10 +370,32 @@ async function addPlexSection(srv, section) {
   } catch { /* silent */ }
 }
 
+async function purgeServerQueue(srv) {
+  if (!srv.id || srv._purging) return
+  srv._purging = true
+  srv._purged  = null
+  try {
+    const { data } = await api.post(`/settings/media-servers/${srv.id}/purge-queue`)
+    srv._purged = data.purged ?? 0
+    // Auto-clear the count after 4s
+    setTimeout(() => { srv._purged = null }, 4000)
+  } catch { srv._purged = null }
+  finally { srv._purging = false }
+}
+
 async function loadServers() {
   try {
     const { data } = await api.get('/settings/media-servers')
-    mediaServers.value = (data || []).map(s => ({ ...s, _uid: ++_uid, _showKey: false, _testing: false, _testOk: null, _testMsg: '' }))
+    mediaServers.value = (data || []).map(s => ({
+      ...s, _uid: ++_uid, _showKey: false, _testing: false, _testOk: null, _testMsg: '',
+      _purging: false, _purged: null,
+    }))
+    // Restore previous results immediately (no visual flash while tests run)
+    restoreStatus()
+    // Re-validate all configured servers silently in the background
+    mediaServers.value
+      .filter(s => s.id && s.url)
+      .forEach(s => silentTest(s))
   } catch { /* silent */ }
 }
 
@@ -296,7 +405,8 @@ async function saveServers() {
     const current    = (await api.get('/settings/media-servers')).data || []
     const currentIds = new Set(current.map(s => String(s.id)))
     for (const srv of mediaServers.value) {
-      const { _uid, _showKey, _testing, _testOk, ...payload } = srv
+      // Strip all internal UI-only fields before sending to the API
+      const { _uid, _showKey, _testing, _testOk, _testMsg, _purging, _purged, ...payload } = srv
       if (!payload.id) {
         const { data } = await api.post('/settings/media-servers', payload)
         srv.id = data.id

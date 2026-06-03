@@ -2,7 +2,8 @@
 <template>
   <tr
     class="border-b border-[var(--border)] hover:bg-[var(--bg3)] transition-colors"
-    :class="rowUrgencyClass(item.delete_at, item.status)"
+    :class="[rowUrgencyClass(item.delete_at, item.status), serverDisabled ? 'opacity-50' : '']"
+    :title="serverDisabled ? 'Serveur désactivé — cet élément ne sera pas supprimé' : undefined"
   >
     <!-- Poster -->
     <td class="px-3 py-1.5 w-14">
@@ -42,6 +43,11 @@
             'bg-[var(--muted)]': !server.type,
           }" />
         <span class="text-xs text-[var(--muted)] truncate max-w-[80px]">{{ server.name }}</span>
+        <span v-if="serverDisabled" class="text-[9px] text-orange-400 bg-orange-400/10 rounded px-1">off</span>
+      </span>
+      <span v-else-if="serverDisabled" class="text-xs text-orange-400 flex items-center gap-1">
+        <i class="fas fa-plug text-[9px]" />
+        <span>désactivé</span>
       </span>
       <span v-else class="text-xs text-[var(--muted)]">—</span>
     </td>
@@ -117,6 +123,7 @@ const props = defineProps({
   item: { type: Object, required: true },
   server: { type: Object, default: null },
   seerrExternalUrl: { type: String, default: '' },
+  serverDisabled: { type: Boolean, default: false },
   daysLabel: Function,
   daysClass: Function,
   rowUrgencyClass: Function,

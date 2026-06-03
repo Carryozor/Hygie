@@ -54,9 +54,10 @@
           @click="triggerScan"
         >
           <div class="flex items-center gap-1.5">
-            <i :class="['fas', (triggering === 'scan' || scanRunning) ? 'fa-spinner fa-spin' : 'fa-magnifying-glass', 'w-4 text-center opacity-70']" />
-            <span v-if="scanRunning || triggering === 'scan'" class="flex items-center gap-0.5">
+            <i class="fas fa-magnifying-glass w-4 text-center opacity-70" />
+            <span v-if="scanRunning || triggering === 'scan'" class="flex items-center gap-1">
               {{ triggering === 'scan' ? t('sidebar.launching') : t('sidebar.scanRunning') }}
+              <span class="dots-anim"><span>•</span><span>•</span><span>•</span></span>
             </span>
             <span v-else>{{ t('sidebar.nextScan') }}</span>
           </div>
@@ -85,8 +86,9 @@
         >
           <div class="flex items-center gap-1.5">
             <i class="fas fa-trash-can w-4 text-center opacity-70" />
-            <span v-if="deletionRunning || triggering === 'deletion'" class="flex items-center gap-0.5">
+            <span v-if="deletionRunning || triggering === 'deletion'" class="flex items-center gap-1">
               {{ triggering === 'deletion' ? t('sidebar.launching') : t('sidebar.deletionRunning') }}
+              <span class="dots-anim"><span>•</span><span>•</span><span>•</span></span>
             </span>
             <span v-else>{{ t('sidebar.nextDeletion') }}</span>
           </div>

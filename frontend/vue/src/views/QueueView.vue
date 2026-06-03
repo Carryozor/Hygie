@@ -94,6 +94,7 @@
               :status-label="statusLabel"
               :status-class="statusClass"
               :is-series="isSeries"
+              :server-disabled="isServerDisabled(item)"
               @delete="triggerDelete"
               @ignore="openIgnore"
             />
@@ -110,6 +111,7 @@
           :days-label="daysLabel"
           :grid-banner-class="gridBannerClass"
           :is-series="isSeries"
+          :server-disabled="isServerDisabled(item)"
           @delete="triggerDelete"
           @ignore="openIgnore"
         />
@@ -212,7 +214,18 @@ const seerrExternalUrl = computed(() => (settings.settings.seerr_external_url ||
 function serverForItem(item) {
   const lib = serversStore.libraries.find(l => l.id === item.library_id)
   if (!lib) return null
-  return serversStore.servers.find(s => String(s.id) === String(lib.server_id))
+  return serversStore.servers.find(s => String(s.id) === String(lib.server_id)) || null
+}
+
+function isServerDisabled(item) {
+  const srv = serverForItem(item)
+  // Server removed entirely OR explicitly disabled
+  if (!srv) {
+    // Check if the library still exists but server is gone
+    const lib = serversStore.libraries.find(l => l.id === item.library_id)
+    return !!lib  // library exists but no server → server was removed
+  }
+  return srv.enabled === false
 }
 
 function openIgnore(item) {

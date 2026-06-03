@@ -276,6 +276,12 @@ async def update_media_server(server_id: str, body: MediaServerBody, user: str =
             if body.enabled is not None:
                 s["enabled"] = body.enabled
     await save_media_servers(servers)
+
+    # When a server is disabled, purge its pending deletion queue items —
+    # those items would never be deleted anyway since the server is offline.
+    if body.enabled is False:
+        await _purge_server_queue(server_id)
+
     return {"servers": servers}
 
 
@@ -284,7 +290,49 @@ async def delete_media_server(server_id: str, user: str = Depends(require_auth))
     servers = await get_media_servers()
     servers = [s for s in servers if str(s.get("id")) != server_id]
     await save_media_servers(servers)
+    # Also purge pending queue items for the deleted server
+    await _purge_server_queue(server_id)
     return {"servers": servers}
+
+
+async def _purge_server_queue(server_id: str) -> int:
+    """Delete pending media_queue entries from all libraries of a given server.
+
+    Called when a server is disabled or removed. Returns the number of rows deleted.
+    """
+    from ..db.engine import get_db
+    from ..db.logs import add_log
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            "SELECT mq.id FROM media_queue mq "
+            "JOIN libraries l ON mq.library_id = l.id "
+            "WHERE l.server_id = ? AND mq.status = 'pending'",
+            (server_id,),
+        )
+        if not rows:
+            return 0
+        ids = [r["id"] for r in rows]
+        ph  = ",".join("?" * len(ids))
+        await db.execute_write(
+            f"DELETE FROM media_queue WHERE id IN ({ph})", tuple(ids)
+        )
+        await db.commit()
+    await add_log(
+        "INFO",
+        f"Serveur {server_id} désactivé/supprimé : {len(ids)} entrée(s) retirée(s) de la file d'attente",
+        "system",
+    )
+    return len(ids)
+
+
+@router.post("/media-servers/{server_id}/purge-queue")
+async def purge_server_queue_endpoint(server_id: str, user: str = Depends(require_auth)):
+    """Manually purge all pending deletion queue items for a given server.
+
+    Useful after disabling a server to immediately clean up leftover entries.
+    """
+    count = await _purge_server_queue(server_id)
+    return {"purged": count}
 
 
 @router.post("/media-servers/{server_id}/test")

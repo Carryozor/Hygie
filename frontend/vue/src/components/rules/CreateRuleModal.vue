@@ -110,24 +110,15 @@ const canSave = computed(() => {
 })
 
 async function save() {
-  // We emit 'saved' synchronously, but the parent handler (onSaved) is async.
-  // To properly track the async save state, we use a Promise that resolves
-  // when the parent's handler finishes. The parent must call the resolve/reject
-  // callbacks passed in the event payload (or we just keep saving=true until
-  // the modal closes via props.open becoming false).
+  if (saving.value) return          // guard against double-click
   saving.value = true
-  try {
-    // Emit the event. The parent's onSaved is async but emit() is sync,
-    // so we can't directly await it here. We keep saving=true and let
-    // the parent close the modal on success or keep it open on error.
-    emit('saved', { type: ruleType.value, data: { ...formData.value } })
-  } catch {
-    saving.value = false
-  }
+  // emit() is synchronous — onSaved in the parent is async and returns a Promise
+  // that we cannot directly await here. We pass a done() callback so the parent
+  // can signal completion (success or error) and let us reset the saving state.
+  emit('saved', {
+    type: ruleType.value,
+    data: { ...formData.value },
+    done: () => { saving.value = false },
+  })
 }
-
-// Reset saving state when the modal closes (parent sets open=false on success)
-watch(() => props.open, (v) => {
-  if (!v) saving.value = false
-})
 </script>

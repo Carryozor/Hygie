@@ -2,7 +2,8 @@
 <template>
   <div
     class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl overflow-hidden group relative"
-    :class="item.status !== 'pending' ? 'opacity-60' : ''"
+    :class="[item.status !== 'pending' ? 'opacity-60' : '', serverDisabled ? 'opacity-40 border-orange-500/20' : '']"
+    :title="serverDisabled ? 'Serveur désactivé — cet élément ne sera pas supprimé' : undefined"
   >
     <!-- Poster -->
     <div class="relative aspect-[2/3] bg-[var(--bg3)] flex items-center justify-center overflow-hidden">
@@ -57,6 +58,10 @@
       >{{ item.title }}</a>
       <span v-else class="text-xs font-medium truncate block" :title="item.title">{{ item.title }}</span>
       <div class="text-[10px] text-[var(--muted)] truncate">{{ item.library_name }}</div>
+      <div v-if="serverDisabled" class="text-[9px] text-orange-400 flex items-center gap-0.5 mt-0.5">
+        <i class="fas fa-plug" />
+        serveur off
+      </div>
     </div>
   </div>
 </template>
@@ -67,10 +72,11 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 defineProps({
-  item: { type: Object, required: true },
-  daysLabel: Function,
+  item:           { type: Object,  required: true },
+  serverDisabled: { type: Boolean, default: false },
+  daysLabel:      Function,
   gridBannerClass: Function,
-  isSeries: Function,
+  isSeries:       Function,
 })
 
 defineEmits(['delete', 'ignore'])

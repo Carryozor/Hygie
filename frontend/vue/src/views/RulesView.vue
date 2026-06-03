@@ -39,12 +39,16 @@
                 <span v-if="r.discord_id"> · Discord: {{ r.discord_id }}</span>
               </div>
             </div>
-            <!-- Enabled toggle -->
+            <!-- Enabled toggle — dot pulses when a scan is running -->
             <button
-              :class="['text-xs px-2 py-0.5 rounded-full transition-colors', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']"
+              :class="['text-xs px-2 py-0.5 rounded-full transition-colors flex items-center gap-1.5', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']"
               :title="r.enabled ? t('rules.disable') : t('rules.enable')"
               @click="toggleSimple(r)"
             >
+              <span v-if="r.enabled" class="relative flex-shrink-0 h-3 w-3">
+                <span v-if="scanRunning" class="absolute inset-0 rounded-full border-2 border-green-400/80 border-t-transparent animate-spin" />
+                <span class="absolute inset-[3px] rounded-full bg-green-500" />
+              </span>
               {{ r.enabled ? t('common.enabled') : t('common.disabled') }}
             </button>
             <!-- Run -->
@@ -104,11 +108,15 @@
                 <template v-if="r.library_id"> · {{ libraryName(r.library_id) }}</template>
               </div>
             </div>
-            <!-- Toggle enabled -->
+            <!-- Toggle enabled — dot pulses when a scan is running -->
             <button
-              :class="['text-xs px-2 py-0.5 rounded-full transition-colors', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']"
+              :class="['text-xs px-2 py-0.5 rounded-full transition-colors flex items-center gap-1.5', r.enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--border)] text-[var(--muted)]']"
               @click="rules.toggleExpertRule(r.id)"
             >
+              <span v-if="r.enabled" class="relative flex-shrink-0 h-3 w-3">
+                <span v-if="scanRunning" class="absolute inset-0 rounded-full border-2 border-green-400/80 border-t-transparent animate-spin" />
+                <span class="absolute inset-[3px] rounded-full bg-green-500" />
+              </span>
               {{ r.enabled ? t('common.enabled') : t('common.disabled') }}
             </button>
             <!-- Run -->
@@ -172,6 +180,7 @@ const { t } = useI18n()
 const rules   = useRulesStore()
 const servers = useServersStore()
 const status  = useStatusStore()
+const scanRunning = computed(() => status.scanRunning)
 
 const migrating  = ref(false)
 const migrateMsg = ref(null)
@@ -294,7 +303,7 @@ async function doDelete() {
   else await rules.deleteExpertRule(id)
 }
 
-async function onSaved({ type, data }) {
+async function onSaved({ type, data, done }) {
   try {
     if (type === 'simple') {
       if (modal.rule?.id) await rules.updateSimpleRule(modal.rule.id, data)
@@ -305,10 +314,11 @@ async function onSaved({ type, data }) {
     }
     modal.open = false
   } catch (err) {
-    // errors from API calls are already shown as toasts by the errorHandler interceptor
-    // (5xx, 422). We catch here to prevent an unhandled rejection and keep the modal open
-    // so the user can retry — don't close modal on error.
+    // API errors (5xx, 422) are already shown as toasts by the errorHandler interceptor.
+    // We catch here to prevent an unhandled rejection and keep the modal open for retry.
     console.error('onSaved error:', err)
+  } finally {
+    done?.()   // always unblock the Save button, regardless of success or failure
   }
 }
 

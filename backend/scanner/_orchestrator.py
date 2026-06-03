@@ -106,6 +106,12 @@ async def _do_scan_one_library(
     server_name = _srv.get("name") or ""
     server_type = _srv.get("type", "")
 
+    # Skip libraries whose server is disabled — avoids re-queuing items for an
+    # inactive server when a rule triggers a targeted scan on specific libraries.
+    if _srv and _srv.get("enabled") is False:
+        await add_log("INFO", f"Scan ignoré : serveur '{server_name}' désactivé", "scan")
+        return "skipped", f"server {server_name!r} disabled", 0
+
     await add_log("INFO", lm("scan.lib_started", id=lib_name), "job")
 
     # Build Seerr cache if caller did not provide one

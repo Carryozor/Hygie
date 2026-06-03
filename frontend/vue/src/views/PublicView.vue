@@ -310,6 +310,10 @@ function serverItemUrl(item) {
     return `${base}/web/index.html#!/item?id=${embyId}${uid ? `&serverId=${uid}` : ''}`
   if (srv.type === 'jellyfin')
     return `${base}/web/index.html#!/details?id=${embyId}${uid ? `&serverId=${uid}` : ''}`
+  if (srv.type === 'plex')
+    // Plex web — rating key stored as emby_id. The #!/item?key= path works when
+    // the user is already authenticated on the same Plex instance.
+    return `${base}/web/index.html#!/item?key=/library/metadata/${embyId}`
   return base
 }
 

@@ -1,9 +1,11 @@
 """Public no-auth endpoint — upcoming deletions calendar."""
 from collections import defaultdict
+from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
+from ..auth import verify_token
 from ..db.settings_store import get_setting
 from ..db.engine import get_db
 from ..db.media_servers import get_media_servers
@@ -19,8 +21,16 @@ def _clean_url(raw: str) -> str:
 
 
 @router.get("/api/public/upcoming")
-async def public_upcoming(slug: str = "", password: str = ""):
-    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true."""
+async def public_upcoming(
+    slug: str = "",
+    password: str = "",
+    authorization: Optional[str] = Header(default=None),
+):
+    """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true.
+
+    Authenticated admins (valid Bearer token) bypass the public dashboard password.
+    Anonymous visitors must supply the configured password if one is set.
+    """
     enabled = await get_setting("public_dashboard_enabled")
     if enabled != "true":
         return JSONResponse({"error": "disabled"}, status_code=403)
@@ -29,8 +39,13 @@ async def public_upcoming(slug: str = "", password: str = ""):
     if cfg_slug and slug != cfg_slug:
         return JSONResponse({"error": "not_found"}, status_code=404)
 
+    # Admins with a valid token bypass the public password requirement
+    is_admin = False
+    if authorization and authorization.startswith("Bearer "):
+        is_admin = bool(verify_token(authorization[7:]))
+
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
-    if cfg_pwd:
+    if cfg_pwd and not is_admin:
         if not password:
             return JSONResponse({"error": "password_required"}, status_code=401)
         if password != cfg_pwd:

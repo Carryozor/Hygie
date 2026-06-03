@@ -31,7 +31,12 @@ const showLayout = computed(() => !route.meta.public)
 
 function onUnauthorized() {
   auth.logout()
-  router.push('/login')
+  // Do NOT redirect if already on a public route (public calendar, login, setup).
+  // A stale token in localStorage would otherwise kick anonymous users off the
+  // public calendar page when auth.fetchMe() returns 401.
+  if (!route.meta.public) {
+    router.push('/login')
+  }
 }
 
 onMounted(() => {

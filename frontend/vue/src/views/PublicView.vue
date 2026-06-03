@@ -417,7 +417,11 @@ async function loadDashboard(password = '') {
   if (slug.value) params.set('slug', slug.value)
   if (password)   params.set('password', password)
   try {
-    const res  = await fetch(`/api/public/upcoming?${params}`)
+    // Send admin token if present so admins bypass the public password requirement
+    const headers = {}
+    const token = localStorage.getItem('hygie_token')
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res  = await fetch(`/api/public/upcoming?${params}`, { headers })
     const data = await res.json()
     if (res.status === 404)  { disabled.value = true; return }
     if (res.status === 403 && data.error === 'disabled') { disabled.value = true; return }

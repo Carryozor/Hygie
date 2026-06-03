@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  docker:
+    name: Build & Push Docker
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: VERSION=${{ steps.version.outputs.VERSION }}
+          tags: |
+            ghcr.io/carryozor/hygie:latest
+            ghcr.io/carryozor/hygie:${{ steps.version.outputs.VERSION }}
+
+  release:
+    name: GitHub Release
+    needs: docker
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract section for this version, strip the header line
+          NOTES=$(awk '
+            /^## \['"${VERSION}"'\]/ { flag=1; next }
+            flag && /^## \[/ { flag=0 }
+            flag { print }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES=$(git log --pretty=format:"- %s" --no-merges | head -30)
+          fi
+          # Write to a file — avoids heredoc delimiter collision and
+          # length limits on GITHUB_OUTPUT for large changelogs.
+          echo "$NOTES" > /tmp/changelog-section.md
+          echo "notes_file=/tmp/changelog-section.md" >> $GITHUB_OUTPUT
+
+      - name: Create or update GitHub Release
+        # FIX: pass NOTES via env var, not ${{ }} inline substitution.
+        # Inlining ${{ steps.changelog.outputs.NOTES }} directly into a `run:` shell
+        # script causes bash to interpret backticks in the CHANGELOG as command
+        # substitution, breaking the release step whenever release notes contain
+        # inline code like `get_users()` or `f"plex:{server_id}"`.
+        # Using env: passes the value as a real shell variable ($NOTES) where
+        # backticks inside double-quoted expansions are safe string content.
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          REPO: ${{ github.repository }}
+        run: |
+          NOTES_FILE="${{ steps.changelog.outputs.notes_file }}"
+
+          # Build the release body in a temp file — avoids all quoting issues
+          {
+            echo "## Docker"
+            echo ""
+            echo '```yaml'
+            echo "image: ghcr.io/carryozor/hygie:${VERSION}"
+            echo '```'
+            echo ""
+            echo "## Release Notes"
+            echo ""
+            cat "$NOTES_FILE"
+            echo ""
+            echo "---"
+            echo "Full details in [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md)."
+          } > /tmp/release-body.md
+
+          if gh release view "v${VERSION}" --repo "${REPO}" &>/dev/null; then
+            gh release edit "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes-file /tmp/release-body.md \
+              --repo "${REPO}"
+          else
+            gh release create "v${VERSION}" \
+              --title "v${VERSION}" \
+              --notes-file /tmp/release-body.md \
+              --repo "${REPO}"
+          fi

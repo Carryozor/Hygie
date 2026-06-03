@@ -1,0 +1,47 @@
+{
+  "name": "hygie-frontend",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test": "npm run test:unit",
+    "test:e2e": "playwright test",
+    "lint": "eslint src --ext .vue,.js",
+    "lint:fix": "eslint src --ext .vue,.js --fix",
+    "format": "prettier --write src"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "@vueuse/core": "^10.11.0",
+    "axios": "^1.7.2",
+    "pinia": "^2.1.7",
+    "simple-icons": "^13.21.0",
+    "vue": "^3.4.29",
+    "vue-i18n": "^11.4.4",
+    "vue-router": "^4.3.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
+    "@vitejs/plugin-vue": "^5.0.5",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@vue/test-utils": "^2.4.10",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.9.1",
+    "globals": "^17.6.0",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.38",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1",
+    "vitest": "^4.1.7",
+    "vue-eslint-parser": "^10.4.0"
+  }
+}

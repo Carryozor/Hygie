@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hygie</title>
+<link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/css/hygie.css"/>
+<link rel="stylesheet" href="/static/css/fa.min.css"/>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-card" id="auth-mode" data-mode="login">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px">
+      <img src="/static/img/favicon-32.png" width="40" height="40" style="border-radius:10px" alt="Hygie">
+      <div>
+        <div id="auth-title" style="font-size:20px;font-weight:700;color:#e2e8f0">Connexion</div>
+        <div id="auth-subtitle" style="font-size:12px;color:var(--muted);margin-top:2px">Connectez-vous à Hygie</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom d'utilisateur</label>
+        <input class="input" id="auth-username" autocomplete="username" placeholder="admin">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Mot de passe</label>
+        <input class="input" id="auth-password" type="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div id="auth-error" style="display:none;background:#ef444418;border:1px solid #ef444440;border-radius:8px;padding:8px 12px;font-size:12px;color:#ef4444"></div>
+      <button id="auth-btn" class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;margin-top:4px">Se connecter</button>
+    </div>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="app-shell" style="display:none">
+
+<aside class="sidebar">
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 6px 20px">
+    <img src="/static/img/favicon-32.png" width="34" height="34" style="border-radius:8px" alt="Hygie">
+    <div>
+      <div style="font-weight:700;font-size:16px;color:#e2e8f0;letter-spacing:.5px">Hygie</div>
+      <div style="font-size:10px;color:var(--muted)">Media Manager</div>
+    </div>
+  </div>
+  <nav style="display:flex;flex-direction:column;gap:2px">
+    <button class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')"><i class="fas fa-chart-pie"></i data-i18n="nav_dashboard">Tableau de bord</button>
+    <button class="nav-item" id="nav-calendar" onclick="showPage('calendar')"><i class="fas fa-calendar-days"></i data-i18n="nav_calendar">Calendrier</button>
+    <button class="nav-item" id="nav-queue" onclick="showPage('queue')"><i class="fas fa-hourglass-half"></i data-i18n="nav_queue">File d'attente</button>
+    <button class="nav-item" id="nav-libraries" onclick="showPage('libraries')"><i class="fas fa-layer-group"></i data-i18n="nav_libraries">Bibliothèques</button>
+    <button class="nav-item" id="nav-settings" onclick="showPage('settings')"><i class="fas fa-sliders"></i data-i18n="nav_settings">Paramètres</button>
+    <button class="nav-item" id="nav-logs" onclick="showPage('logs')"><i class="fas fa-terminal"></i data-i18n="nav_logs">Logs</button>
+    <button class="nav-item" id="nav-jobs" onclick="showPage('jobs')"><i class="fas fa-clock-rotate-left"></i data-i18n="nav_jobs">Historique jobs</button>
+    <button class="nav-item" id="nav-storage" onclick="showPage('storage')"><i class="fas fa-hard-drive"></i data-i18n="nav_storage">Stockage</button>
+    <button class="nav-item" id="nav-ignored" onclick="showPage('ignored')"><i class="fas fa-ban"></i data-i18n="nav_ignored">Ignorés</button>
+  </nav>
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+    <!-- Toggle Dry Run interactif -->
+    <div id="sidebar-dry-run-wrap" style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);transition:background .2s,border-color .2s;cursor:pointer" onclick="document.getElementById('sidebar-dry-run').click()">
+      <div style="display:flex;align-items:center;gap:7px;pointer-events:none">
+        <i id="sidebar-dry-run-icon" class="fas fa-flask" style="font-size:11px;color:var(--muted)"></i>
+        <span id="sidebar-dry-run-label" style="font-size:12px;color:var(--muted);user-select:none">Dry Run</span>
+      </div>
+      <label class="toggle-wrap" style="flex-shrink:0;pointer-events:none">
+        <input type="checkbox" id="sidebar-dry-run" onchange="toggleSidebarDryRun(this.checked)" onclick="event.stopPropagation()">
+        <div class="toggle-track"></div><div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <!-- Barres de décompte scan / vérification -->
+    <div style="padding:0 4px;display:flex;flex-direction:column;gap:8px">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:10px;color:#475569;display:flex;align-items:center;gap:4px"><i class="fas fa-magnifying-glass" style="font-size:9px;color:#6366f1"></i><span data-i18n="Scan bibliothèques">Scan bibliothèques</span></span>
+          <span id="scan-countdown" style="font-size:10px;color:#64748b">—</span>
+        </div>
+        <div style="height:3px;background:#ffffff08;border-radius:2px;overflow:hidden">
+          <div id="scan-progress-bar" style="height:100%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:2px;width:0%;transition:width 1s linear"></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:10px;color:#475569;display:flex;align-items:center;gap:4px"><i class="fas fa-trash-can" style="font-size:9px;color:#10b981"></i><span data-i18n="Vérification">Vérification</span></span>
+          <span id="del-countdown" style="font-size:10px;color:#64748b">—</span>
+        </div>
+        <div style="height:3px;background:#ffffff08;border-radius:2px;overflow:hidden">
+          <div id="del-progress-bar" style="height:100%;background:linear-gradient(90deg,#10b981,#34d399);border-radius:2px;width:0%;transition:width 1s linear"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 4px 0">
+      <i class="fas fa-globe" style="font-size:10px;color:var(--muted);flex-shrink:0"></i>
+      <select id="lang-selector" class="select" style="flex:1;font-size:11px;padding:3px 6px;height:26px" onchange="setLang(this.value)">
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="de">Deutsch</option>
+        <option value="it">Italiano</option>
+        <option value="pl">Polski</option>
+      </select>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;border-top:1px solid var(--border);margin-top:4px">
+      <span id="user-display" style="font-size:12px;color:var(--muted)"></span>
+      <span id="app-version" style="font-size:10px;color:#374151"></span>
+      <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="logout()" title="Déconnexion"><i class="fas fa-right-from-bracket"></i></button>
+    </div>
+    <a href="https://github.com/sponsors/carryozor" target="_blank" rel="noopener noreferrer"
+       style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff12;color:#f472b6;font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;cursor:pointer"
+       onmouseover="this.style.background='#f472b620';this.style.borderColor='#f472b640'"
+       onmouseout="this.style.background='#ffffff08';this.style.borderColor='#ffffff12'">
+      <i class="fas fa-heart" style="font-size:14px;animation:heartbeat 1.5s ease-in-out infinite"></i>
+      Soutenir Hygie
+    </a>
+  </div>
+</aside>
+
+<main style="flex:1;overflow-y:auto;padding:28px">
+
+<!-- Dashboard -->
+<div id="page-dashboard" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Tableau de bord</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="triggerScan()"><i class="fas fa-magnifying-glass"></i>Scanner</button>
+      <button class="btn btn-primary" onclick="triggerDeletion()"><i class="fas fa-trash-can"></i>Vérifier suppressions</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_pending">En attente</div><div class="stat-num" style="color:#f59e0b" id="stat-pending">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_deleted">Supprimés (session)</div><div class="stat-num" style="color:#10b981" id="stat-deleted">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_excluded">Exclus</div><div class="stat-num" style="color:#94a3b8" id="stat-excluded">—</div></div>
+    <div class="card stat-card"><div class="stat-label" data-i18n="dash_stat_errors">Erreurs</div><div class="stat-num" style="color:#ef4444" id="stat-error">—</div></div>
+  </div>
+  <!-- Lifetime global stats -->
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Statistiques globales (depuis le début)</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#10b981" id="global-deleted">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_deleted">Suppressions totales</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#94a3b8" id="global-ignored">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_ignored">Médias ignorés</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:26px;font-weight:700;color:var(--accent2)" id="global-scans">—</div>
+        <div style="font-size:11px;color:var(--muted)" data-i18n="dash_global_scans">Scans effectués</div>
+      </div>
+      <div style="text-align:center">
+        <div id="global-bar" style="display:flex;gap:2px;align-items:flex-end;height:32px;justify-content:center"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" data-i18n="dash_global_months">12 derniers mois</div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="padding:20px">
+    <div style="font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px"><i class="fas fa-calendar-xmark" style="color:#f59e0b"></i>Prochaines suppressions</div>
+    <div id="upcoming-list" style="display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+<!-- Queue -->
+<div id="page-queue" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">File d'attente</h1>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="input" id="queue-search" placeholder="Rechercher..." data-i18n="queue_search" data-i18n-attr="placeholder" style="width:180px" oninput="debounceSearch()">
+      <div style="display:flex;gap:4px;background:#ffffff08;border-radius:8px;padding:3px">
+        <button id="tab-all"     class="tab-btn tab-active" onclick="setQueueTab('')">Tous</button>
+        <button id="tab-pending" class="tab-btn" onclick="setQueueTab('pending')">⏳ En attente</button>
+        <button id="tab-deleted" class="tab-btn" onclick="setQueueTab('deleted')">✅ Supprimés</button>
+        <button id="tab-error"   class="tab-btn" onclick="setQueueTab('error')">❌ Erreurs</button>
+      </div>
+      <button id="view-toggle-btn" class="btn btn-ghost" style="font-size:12px" onclick="toggleViewMode()"><i class="fas fa-th-large"></i>Vue grille</button>
+
+      <button class="btn btn-ghost" style="font-size:12px" onclick="purgeDeleted()" title="Vider les entrées supprimées"><i class="fas fa-broom"></i>Purger</button>
+    </div>
+  </div>
+  <!-- Bulk bar -->
+  <div id="bulk-bar" style="display:none;align-items:center;gap:10px;background:#6366f118;border:1px solid #6366f140;border-radius:10px;padding:10px 16px;margin-bottom:12px">
+    <span id="bulk-count" style="font-size:13px;color:var(--accent2);font-weight:500"></span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="bulkExclude()"><i class="fas fa-ban"></i>Exclure</button>
+      <button class="btn btn-danger" style="padding:5px 12px;font-size:12px" onclick="bulkDelete()"><i class="fas fa-trash"></i>Supprimer</button>
+    </div>
+  </div>
+  <div id="queue-table-wrap" class="card" style="overflow:hidden">
+    <table>
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" id="chk-all" onclick="toggleSelectAll()" style="accent-color:var(--accent);width:14px;height:14px"></th>
+        <th class="sortable" onclick="sortQueue('title')">Titre <span id="si-title"></span></th>
+        <th class="sortable" onclick="sortQueue('library_name')">Bibliothèque <span id="si-library_name"></span></th>
+        <th class="sortable" onclick="sortQueue('seerr_username')">Demandé par <span id="si-seerr_username"></span></th>
+        <th class="sortable" onclick="sortQueue('added_date')">Ajouté le <span id="si-added_date"></span></th>
+        <th class="sortable" onclick="sortQueue('last_played')"><span data-i18n="Vu le">Vu le</span> <span id="si-last_played"></span></th>
+        <th class="sortable" onclick="sortQueue('delete_at')"><span data-i18n="Suppression">Suppression</span> <span id="si-delete_at"></span></th>
+        <th class="sortable" onclick="sortQueue('status')"><span data-i18n="Statut">Statut</span> <span id="si-status"></span></th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody id="queue-tbody"><tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Chargement...</td></tr></tbody>
+    </table>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)">
+        <span id="queue-count">—</span>
+        <span style="color:var(--border)">|</span>
+        <span>Afficher :</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(20)">20</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(50)">50</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(100)">100</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" onclick="setPageSize(1000)">Tout</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="btn-prev" class="btn btn-ghost" style="padding:5px 12px" onclick="queuePage(-1)">‹ Préc.</button>
+        <button id="btn-next" class="btn btn-ghost" style="padding:5px 12px" onclick="queuePage(1)">Suiv. ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Libraries -->
+<div id="page-libraries" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Bibliothèques</h1>
+    <button class="btn btn-primary" onclick="openAddLibrary()"><i class="fas fa-plus"></i>Ajouter</button>
+  </div>
+  <div id="libraries-list" style="display:flex;flex-direction:column;gap:12px">Chargement...</div>
+</div>
+
+<!-- Settings -->
+<div id="page-settings" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Paramètres</h1>
+    <button class="btn btn-primary" style="padding:8px 20px" onclick="saveSettings()"><i class="fas fa-floppy-disk"></i>Enregistrer</button>
+  </div>
+  <div>
+
+    <!-- ── Tab bar ── -->
+    <div style="display:flex;gap:2px;background:#0a0c14;padding:4px;border-radius:10px;margin-bottom:16px;overflow-x:auto">
+      <button class="settings-tab active" data-stab="general" onclick="switchSettingsTab('general')"><i class="fas fa-sliders"></i> Général</button>
+      <button class="settings-tab" id="stab-media" data-stab="media" onclick="switchSettingsTab('media')">
+        <span id="stab-media-icon-wrap"><i class="fas fa-photo-film" style="font-size:13px;color:#a78bfa"></i></span>
+        <span id="stab-media-label">Serveur Multimédia</span>
+        <span id="stab-media-pill" style="display:none;font-size:9px;padding:1px 5px;border-radius:10px;font-weight:600"></span>
+      </button>
+      <button class="settings-tab" data-stab="radarr" onclick="switchSettingsTab('radarr')"><img src="/static/img/icons/radarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Radarr</button>
+      <button class="settings-tab" data-stab="sonarr" onclick="switchSettingsTab('sonarr')"><img src="/static/img/icons/sonarr.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Sonarr</button>
+      <button class="settings-tab" data-stab="seerr" onclick="switchSettingsTab('seerr')"><img src="/static/img/icons/overseerr.png" width="16" height="16" style="border-radius:3px" onerror="this.src='/static/img/icons/jellyseerr.png';this.onerror=null"> Seerr</button>
+      <button class="settings-tab" data-stab="qbit" onclick="switchSettingsTab('qbit')"><img src="/static/img/icons/qbittorrent.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> qBittorrent</button>
+      <button class="settings-tab" data-stab="discord" onclick="switchSettingsTab('discord')"><img src="/static/img/icons/discord.png" width="16" height="16" style="border-radius:3px" onerror="this.style.display='none'"> Discord</button>
+    </div>
+
+    <!-- ── Général ── -->
+    <div id="spanel-general" class="card" style="padding:20px">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#6366f110;border:1px solid #6366f130;border-radius:8px;padding:8px 12px;font-size:11px;color:#818cf8;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-flask"></i> Le Mode Dry Run est accessible depuis le bas de la barre latérale gauche.
+        </div>
+        <!-- dry-run-toggle kept hidden for JS sync -->
+        <input type="checkbox" id="dry-run-toggle" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Niveau de log</label>
+            <select class="select" id="log_level" style="width:100%">
+              <option value="DEBUG">DEBUG — tout logger</option>
+              <option value="INFO">INFO — actions & tâches</option>
+              <option value="WARN">WARN — avertissements+</option>
+              <option value="ERROR">ERROR — erreurs uniquement</option>
+            </select>
+          </div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Rétention historique (jours)</label>
+            <input class="input" id="deleted_retention_days" type="number" min="0" placeholder="90">
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div id="backup-enabled-wrap" style="display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);transition:background .2s,border-color .2s;cursor:pointer" onclick="document.getElementById('backup_enabled').click()">
+                <i id="backup-enabled-icon" class="fas fa-database" style="font-size:11px;color:var(--muted)"></i>
+                <span id="backup-enabled-label" style="font-size:12px;color:var(--muted);user-select:none">Sauvegarde automatique</span>
+                <label class="toggle-wrap" style="flex-shrink:0;pointer-events:none">
+                  <input type="checkbox" id="backup_enabled" onchange="onBackupEnabledChange(this.checked)" onclick="event.stopPropagation()">
+                  <div class="toggle-track"></div><div class="toggle-thumb"></div>
+                </label>
+              </div>
+              <span id="backup-disabled-badge" data-i18n="⚠️ Backup désactivé" style="display:none;font-size:11px;font-weight:600;color:#ef4444;background:#ef444420;border:1px solid #ef444440;padding:2px 8px;border-radius:4px">⚠️ Backup désactivé</span>
+            </div>
+            <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="triggerManualBackup()"><i class="fas fa-database"></i>Sauvegarder maintenant</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 100px 120px;gap:10px;margin-bottom:8px">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Dossier</label>
+              <input class="input" id="backup_path" placeholder="/app/data/backups"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Fréquence (h)</label>
+              <input class="input" id="backup_interval_hours" type="number" min="1" max="168" placeholder="24"></div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Backups conservés</label>
+              <input class="input" id="backup_retention_count" type="number" min="1" max="90" placeholder="7"></div>
+          </div>
+          <div id="backup-list-wrap" style="display:none;margin-top:8px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Backups existants</div>
+            <div id="backup-list" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto"></div>
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-top:4px" onclick="loadBackupList()"><i class="fas fa-list"></i>Voir les backups</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:10px">Planification</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:11px;color:var(--muted);width:180px;flex-shrink:0">Scan toutes les</label>
+              <input id="scan_interval_value" type="number" min="1" class="input" style="width:70px;border-radius:6px 0 0 6px;border-right:none" value="6" oninput="updateIntervalPreview('scan')">
+              <select id="scan_interval_unit" class="select" style="border-radius:0 6px 6px 0;width:100px" onchange="updateIntervalPreview('scan')">
+                <option value="h">heures</option>
+                <option value="m">minutes</option>
+              </select>
+              <span id="scan_interval_preview" style="font-size:11px;color:var(--muted)"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label style="font-size:11px;color:var(--muted);width:180px;flex-shrink:0">Vérification suppressions</label>
+              <input id="deletion_check_interval_value" type="number" min="1" class="input" style="width:70px;border-radius:6px 0 0 6px;border-right:none" value="1" oninput="updateIntervalPreview('deletion_check')">
+              <select id="deletion_check_interval_unit" class="select" style="border-radius:0 6px 6px 0;width:100px" onchange="updateIntervalPreview('deletion_check')">
+                <option value="h">heures</option>
+                <option value="m">minutes</option>
+              </select>
+              <span id="deletion_check_interval_preview" style="font-size:11px;color:var(--muted)"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Serveur Multimédia ── -->
+    <div id="spanel-media" style="display:none">
+      <!-- Server list -->
+      <div id="media-servers-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:12px"></div>
+      <!-- Add server button -->
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;border:1px dashed var(--border)" onclick="addMediaServer()">
+        <i class="fas fa-plus"></i>Ajouter un serveur multimédia
+      </button>
+      <!-- Collection section — shown only for Emby servers -->
+      <div id="media-emby-only" class="card" style="display:none;padding:20px;margin-top:12px">
+        <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:8px">Collection "Bientôt supprimé"</div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:10px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom de la collection (vide = désactivé)</label>
+            <input class="input" id="emby_leaving_soon_collection" placeholder="ex: Bientôt supprimé"></div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Délai (jours)</label>
+            <input class="input" id="emby_leaving_soon_days" type="number" min="1" max="365" placeholder="30"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle-wrap"><input type="checkbox" id="emby_leaving_soon_overlay"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+            <div><div style="font-size:12px;font-weight:500;color:#e2e8f0">Bandeau sur les affiches</div><div style="font-size:10px;color:var(--muted)">Ajoute "Supprimé dans Xj" sur l'affiche Emby</div></div>
+          </div>
+          <button class="btn btn-ghost" onclick="syncEmbyCollection()"><i class="fas fa-rotate"></i>Sync collection</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Radarr ── -->
+    <div id="spanel-radarr" class="card" style="display:none;padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img src="/static/img/icons/radarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <div><div style="font-size:15px;font-weight:600">Radarr</div><div style="font-size:11px;color:var(--muted)">Gestion des films</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL</label><input class="input" id="radarr_url" placeholder="http://192.168.1.10:7878"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="radarr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('radarr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <!-- ── Sonarr ── -->
+    <div id="spanel-sonarr" class="card" style="display:none;padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img src="/static/img/icons/sonarr.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <div><div style="font-size:15px;font-weight:600">Sonarr</div><div style="font-size:11px;color:var(--muted)">Gestion des séries</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL</label><input class="input" id="sonarr_url" placeholder="http://192.168.1.10:8989"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="sonarr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('sonarr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <!-- ── Seerr ── -->
+    <div id="spanel-seerr" class="card" style="display:none;padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img src="/static/img/icons/overseerr.png" width="32" height="32" style="border-radius:8px" onerror="this.src='/static/img/icons/jellyseerr.png';this.onerror=null">
+        <div><div style="font-size:15px;font-weight:600">Seerr</div><div style="font-size:11px;color:var(--muted)">Overseerr / Jellyseerr</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL interne (API)</label><input class="input" id="seerr_url" placeholder="http://seerr:5055"></div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL externe (liens cliquables)</label>
+          <input class="input" id="seerr_external_url" placeholder="https://seerr.mondomaine.fr">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Utilisée pour les liens dans la file d'attente.</div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Clé API</label><input class="input" id="seerr_api_key" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('seerr')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <!-- ── qBittorrent ── -->
+    <div id="spanel-qbit" class="card" style="display:none;padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img src="/static/img/icons/qbittorrent.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <div><div style="font-size:15px;font-weight:600">qBittorrent</div><div style="font-size:11px;color:var(--muted)">Compatible Gluetun / QUI</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL qBittorrent</label><input class="input" id="qbit_url" placeholder="http://gluetun:8080"></div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">URL proxy QUI <span style="color:#6366f1;font-size:10px">(optionnel — remplace l'URL directe)</span></label>
+          <input class="input" id="qbit_proxy_url" type="password" placeholder="••••••••">
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;padding:6px;background:#0a0c14;border-radius:4px">Si vous utilisez <b style="color:#e2e8f0">QUI</b> comme proxy qBittorrent. Ce champ est chiffré.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Utilisateur</label><input class="input" id="qbit_user" placeholder="admin"></div>
+          <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Mot de passe</label><input class="input" id="qbit_password" type="password" placeholder="••••••••"></div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:8px">Action lors d'une suppression Hygie</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Action sur le torrent</label>
+              <select class="select" id="qbit_action" style="width:100%">
+                <option value="tag_only">🏷️ Tag uniquement — torrent reste dans qBit, fichier continue de seeder</option>
+                <option value="delete_torrent">🗑️ Supprimer torrent + fichier — qBit supprime tout (deleteFiles=true)</option>
+              </select>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;padding:6px;background:#0a0c14;border-radius:4px">
+                <b style="color:#e2e8f0">Tag</b> : fichier reste seedé, aucun orphelin possible.<br>
+                <b style="color:#e2e8f0">Supprimer</b> : qBittorrent efface le torrent ET le fichier physique.
+              </div>
+            </div>
+            <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom du tag (si "Ajouter un tag")</label>
+              <input class="input" id="qbit_tag" placeholder="ex: Supprimé-Hygie" style="width:240px">
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" style="align-self:flex-start" onclick="testConn('qbit')"><i class="fas fa-plug"></i>Tester</button>
+      </div>
+    </div>
+
+    <!-- ── Discord ── -->
+    <div id="spanel-discord" class="card" style="display:none;padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <img src="/static/img/icons/discord.png" width="32" height="32" style="border-radius:8px" onerror="this.style.display='none'">
+        <div><div style="font-size:15px;font-weight:600">Discord</div><div style="font-size:11px;color:var(--muted)">Notifications webhook</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook notifications (suppressions, détections)</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="input" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
+            <button class="btn btn-ghost" onclick="testConn('discord')"><i class="fab fa-discord"></i>Tester</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Webhook alertes admin — optionnel <span style="font-style:italic">(utilise le webhook principal par défaut)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="input" id="discord_webhook_alerts" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
+            <button class="btn btn-ghost" onclick="testConn('discord_alerts')"><i class="fab fa-discord"></i>Tester</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:12px;font-weight:500;color:#e2e8f0;margin-bottom:4px">Paliers de notification</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Nombre de jours avant suppression où envoyer une notification (séparés par des virgules). Ex: <code style="background:#1a1d2e;padding:1px 4px;border-radius:3px">7,1</code></div>
+          <input class="input" id="discord_notif_thresholds" placeholder="7,1" style="max-width:200px">
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:12px;font-weight:600;color:#e2e8f0;margin-bottom:6px">Alertes critiques</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">Reçois une alerte Discord quand un problème technique survient (indépendant des notifications média).</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+
+            <!-- Échec suppression -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_deletion_error" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Échec suppression média</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('deletion_error')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-deletion_error" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_deletion_error_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_deletion_error_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}, {title}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Échec scan -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_scan_failure" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Échec scan bibliothèque</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('scan_failure')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-scan_failure" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_scan_failure_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_scan_failure_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seerr inaccessible -->
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="discord_alert_seerr_failure" style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0">
+                <span style="font-size:12px;color:#e2e8f0;flex:1">Seerr inaccessible lors d'un scan</span>
+                <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;color:var(--muted)" onclick="toggleAlertCustom('seerr_failure')"><i class="fas fa-sliders" style="margin-right:4px"></i>Personnaliser</button>
+              </div>
+              <div id="alert-custom-seerr_failure" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0">Mention</label>
+                  <input class="input" id="discord_alert_seerr_failure_mention" placeholder="@here, <@ID>, <@&ROLE>" style="flex:1;font-size:12px">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <label style="font-size:11px;color:var(--muted);width:70px;flex-shrink:0;padding-top:5px">Message</label>
+                  <div style="flex:1">
+                    <textarea class="input" id="discord_alert_seerr_failure_msg" placeholder="Message personnalisé (laisser vide pour défaut)" style="height:54px;resize:vertical;font-size:12px"></textarea>
+                    <div style="font-size:10px;color:#475569;margin-top:3px">Variables : {detail}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;margin-top:2px;padding:0 4px">
+              <span style="font-size:12px;color:#e2e8f0;white-space:nowrap">Seuil d'alerte groupée :</span>
+              <input class="input" type="number" id="discord_alert_error_threshold" min="1" max="100" style="width:70px" placeholder="3">
+              <span style="font-size:11px;color:var(--muted)">erreurs en un cycle → 1 alerte</span>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div>
+              <div style="font-size:12px;font-weight:500;color:#e2e8f0">Mentions utilisateurs</div>
+              <div style="font-size:10px;color:var(--muted)">Associez chaque utilisateur Seerr à son ID Discord pour les mentions dans les notifications.</div>
+            </div>
+            <button class="btn btn-ghost" style="font-size:12px" onclick="loadDiscordMappings()"><i class="fas fa-rotate-right"></i></button>
+          </div>
+          <div id="discord-mappings-list" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:12px;color:var(--muted);font-style:italic">Cliquez sur actualiser pour charger les utilisateurs Seerr</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Logs -->
+<div id="page-logs" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Logs</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select class="select" id="log-level-filter" onchange="loadLogs()">
+        <option value="">Tous niveaux</option><option value="DEBUG">DEBUG</option>
+        <option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
+      </select>
+      <select class="select" id="log-cat-filter" onchange="loadLogs()">
+        <option value="">Toutes catégories</option><option value="job">Tâches</option>
+        <option value="scan">Scan</option><option value="deletion">Suppressions</option><option value="system">Système</option>
+      </select>
+      <button class="btn btn-ghost" onclick="loadLogs()"><i class="fas fa-rotate-right"></i></button>
+      <button class="btn btn-ghost" onclick="clearLogs()"><i class="fas fa-trash"></i></button>
+    </div>
+  </div>
+  <div class="card" style="padding:16px;font-family:monospace;max-height:72vh;overflow-y:auto" id="logs-container">Chargement...</div>
+</div>
+
+<!-- Jobs -->
+<div id="page-jobs" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Historique des jobs</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="triggerScan()"><i class="fas fa-magnifying-glass"></i>Scanner</button>
+      <button class="btn btn-primary" onclick="triggerDeletion()"><i class="fas fa-trash-can"></i>Vérifier</button>
+      <button class="btn btn-ghost" onclick="loadJobs()"><i class="fas fa-rotate-right"></i></button>
+    </div>
+  </div>
+  <div id="scheduler-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px"></div>
+  <div id="queue-table-wrap" class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Job</th><th>Démarré</th><th>Terminé</th><th>Durée</th><th>Statut</th><th>Résultat</th></tr></thead>
+      <tbody id="jobs-tbody"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">Chargement...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Calendar -->
+<div id="page-calendar" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Calendrier des suppressions</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="calPrevMonth()"><i class="fas fa-chevron-left"></i></button>
+      <span id="cal-title" style="font-size:15px;font-weight:600;color:#e2e8f0;align-self:center;min-width:160px;text-align:center"></span>
+      <button class="btn btn-ghost" onclick="calNextMonth()"><i class="fas fa-chevron-right"></i></button>
+      <button class="btn btn-ghost" onclick="calGoToday()" title="Aujourd'hui" style="margin-left:4px"><i class="fas fa-calendar-day"></i></button>
+    </div>
+  </div>
+  <div class="card" style="padding:20px">
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:8px">
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Lun</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Mar</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Mer</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Jeu</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Ven</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Sam</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:8px">Dim</div>
+    </div>
+    <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px"></div>
+  </div>
+  <div id="cal-detail" style="margin-top:16px"></div>
+</div>
+
+<!-- Storage -->
+<div id="page-storage" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Stockage</h1>
+    <button class="btn btn-ghost" onclick="loadStorage()"><i class="fas fa-rotate-right"></i>Actualiser</button>
+  </div>
+  <div id="storage-content" style="display:flex;flex-direction:column;gap:16px">
+    <div style="text-align:center;padding:40px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+<!-- Ignored -->
+<div id="page-ignored" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <h1 style="font-size:22px;font-weight:600;color:#e2e8f0">Médias ignorés</h1>
+      <p style="font-size:13px;color:var(--muted);margin-top:4px">Ces médias ne seront jamais ajoutés automatiquement à la file d'attente, même s'ils remplissent les conditions.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input class="input" id="ignored-search" placeholder="Rechercher..." style="width:200px" oninput="debounceIgnoredSearch()">
+      <button class="btn btn-ghost" onclick="loadIgnored()"><i class="fas fa-rotate-right"></i></button>
+    </div>
+  </div>
+  <div id="ignored-list" style="display:flex;flex-direction:column;gap:10px">
+    <div style="text-align:center;padding:40px;color:var(--muted)">Chargement...</div>
+  </div>
+</div>
+
+</main>
+</div><!-- /app-shell -->
+
+<!-- Modal Library -->
+<div id="modal-library" class="modal-bg" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal" style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="font-size:17px;font-weight:600;color:#e2e8f0" id="modal-title">Bibliothèque</h2>
+      <button class="btn btn-ghost" style="padding:6px 10px" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Nom</label><input class="input" id="lib-name" placeholder="ex: Films"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Bibliothèque Emby</label><select class="select" id="lib-emby-id" style="width:100%"><option>Chargement...</option></select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Délai de grâce (jours)</label><input class="input" id="lib-grace" type="number" min="0" value="7">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">Entre détection et suppression</div>
+        </div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Logique</label>
+          <select class="select" id="lib-logic" style="width:100%">
+            <option value="AND">ET — toutes les conditions</option><option value="OR">OU — au moins une</option>
+          </select>
+        </div>
+      </div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Unité de suppression</label>
+        <select class="select" id="lib-deletion-unit" style="width:100%">
+          <option value="episode">Épisode — suppression individuelle</option>
+          <option value="season">Saison — supprimer toute la saison quand tous les épisodes sont éligibles</option>
+          <option value="series">Série — supprimer toute la série quand tous les épisodes sont éligibles</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Pour les séries et animés. Les films ignorent ce réglage.</div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:12px;font-weight:600;color:#e2e8f0">Conditions</label>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="addCondition()"><i class="fas fa-plus"></i>Ajouter</button>
+        </div>
+        <div id="conditions-container" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:8px;background:#0a0c14;border-radius:6px">
+          💡 <span data-i18n="lib_hint">Un média est mis en file si la combinaison de conditions est satisfaite, puis supprimé après le délai de grâce.</span>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#e2e8f0">Filtres par utilisateur Seerr</label>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Inclure ou exclure certains utilisateurs Seerr de cette règle</div>
+          </div>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="addSeerrCondition()"><i class="fas fa-plus"></i>Ajouter</button>
+        </div>
+        <div id="seerr-conditions-container" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="saveLibrary()"><i class="fas fa-floppy-disk"></i>Enregistrer</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ignore Reason -->
+<div id="modal-ignore" class="modal-bg" style="display:none" onclick="if(event.target===this)closeIgnoreModal()">
+  <div class="modal" style="padding:24px;max-width:440px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:17px;font-weight:600;color:#e2e8f0">Ignorer définitivement</h2>
+      <button class="btn btn-ghost" style="padding:6px 10px" onclick="closeIgnoreModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="ignore-media-info" style="display:flex;align-items:center;gap:12px;padding:12px;background:#0a0c14;border-radius:8px;margin-bottom:14px"></div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px">Raison (optionnelle)</label>
+      <input class="input" id="ignore-reason" placeholder="ex: Garder pour mes enfants, Ne pas supprimer...">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px">Expiration automatique</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input class="input" id="ignore-expire" type="number" min="0" placeholder="0 = permanent" style="width:160px">
+        <span style="font-size:13px;color:var(--muted)">jours (0 ou vide = permanent)</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">Après ce délai, le média sera retiré de la liste d'exclusion et pourra être détecté à nouveau.</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;padding:8px;background:#f59e0b08;border:1px solid #f59e0b30;border-radius:6px">
+      ⚠️ Ce média sera retiré de la file d'attente et ne sera plus jamais ajouté automatiquement par Hygie (sauf expiration).
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-danger" style="flex:1;justify-content:center" onclick="confirmIgnore()"><i class="fas fa-ban"></i>Ignorer définitivement</button>
+      <button class="btn btn-ghost" onclick="closeIgnoreModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmation (remplace les confirm() natifs) -->
+<div id="modal-confirm" class="modal-bg" style="display:none" onclick="if(event.target===this)_confirmReject()">
+  <div class="modal" style="padding:28px;max-width:400px">
+    <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px">
+      <div id="confirm-icon-wrap" style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i id="confirm-icon" class="fas fa-question" style="font-size:18px"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="confirm-title" style="font-size:16px;font-weight:600;color:#e2e8f0;margin-bottom:6px"></div>
+        <div id="confirm-body" style="font-size:13px;color:var(--muted);line-height:1.5"></div>
+      </div>
+    </div>
+    <div id="confirm-detail" style="display:none;background:#0a0c14;border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" style="padding:8px 20px" onclick="_confirmReject()">Annuler</button>
+      <button id="confirm-ok-btn" class="btn btn-danger" style="padding:8px 20px" onclick="_confirmResolve()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+<script src="/static/js/i18n.js?v={{ version }}"></script>
+<script src="/static/js/api.js?v={{ version }}"></script>
+<script src="/static/js/ui.js?v={{ version }}"></script>
+<script src="/static/js/auth.js?v={{ version }}"></script>
+<script src="/static/js/nav.js?v={{ version }}"></script>
+<script src="/static/js/dashboard.js?v={{ version }}"></script>
+<script src="/static/js/queue.js?v={{ version }}"></script>
+<script src="/static/js/libraries.js?v={{ version }}"></script>
+<script src="/static/js/settings.js?v={{ version }}"></script>
+<script src="/static/js/logs.js?v={{ version }}"></script>
+<script src="/static/js/jobs.js?v={{ version }}"></script>
+<script src="/static/js/ignored.js?v={{ version }}"></script>
+<script src="/static/js/websocket.js?v={{ version }}"></script>
+<script src="/static/js/calendar.js?v={{ version }}"></script>
+<script src="/static/js/storage.js?v={{ version }}"></script>
+<script src="/static/js/unmonitored.js?v={{ version }}"></script>
+<script src="/static/js/app.js?v={{ version }}"></script>
+</body>
+</html>

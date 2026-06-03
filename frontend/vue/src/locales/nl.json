@@ -1,0 +1,542 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "queue": "Wachtrij",
+    "calendar": "Kalender",
+    "rules": "Regels",
+    "ignored": "Genegeerd",
+    "logs": "Logboek",
+    "settings": "Instellingen",
+    "libraries": "Bibliotheken"
+  },
+  "common": {
+    "save": "Opslaan",
+    "saving": "Opslaan…",
+    "saved": "Instellingen opgeslagen.",
+    "cancel": "Annuleren",
+    "delete": "Verwijderen",
+    "edit": "Bewerken",
+    "test": "Testen",
+    "refresh": "Vernieuwen",
+    "loading": "Laden...",
+    "none": "Geen",
+    "all": "Alle",
+    "enabled": "Actief",
+    "disabled": "Inactief",
+    "add": "Toevoegen",
+    "close": "Sluiten",
+    "confirm": "Bevestigen",
+    "yes": "Ja",
+    "no": "Nee",
+    "error": "Fout",
+    "success": "Succes",
+    "unknown": "Onbekend",
+    "name": "Naam",
+    "actions": "Acties",
+    "status": "Status",
+    "type": "Type",
+    "url": "URL",
+    "apiKey": "API-sleutel",
+    "search": "Zoeken…",
+    "items": "item(s)",
+    "ok": "✓ OK",
+    "failed": "Mislukt",
+    "select": "— Selecteren —",
+    "today": "Vandaag",
+    "user": "Gebruiker",
+    "password": "Wachtwoord",
+    "inProgress": "Bezig…",
+    "noResults": "Geen resultaten",
+    "discover": "Ontdekken"
+  },
+  "auth": {
+    "login": "Inloggen",
+    "logout": "Uitloggen",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "loginBtn": "Inloggen",
+    "loggingIn": "Inloggen...",
+    "invalidCredentials": "Ongeldige inloggegevens",
+    "setupTitle": "Eerste installatie",
+    "setupBtn": "Account aanmaken",
+    "changePassword": "Wachtwoord wijzigen",
+    "currentPassword": "Huidig wachtwoord",
+    "newPassword": "Nieuw wachtwoord",
+    "support": "Ondersteunen"
+  },
+  "sidebar": {
+    "dryRun": "Proefrun",
+    "dryRunActive": "Proefrun actief",
+    "nextScan": "Volgende scan",
+    "scanRunning": "Scan bezig",
+    "launching": "Starten",
+    "nextDeletion": "Volgende verwijdering",
+    "deletionRunning": "Verwijdering bezig"
+  },
+  "status": {
+    "pending": "In behandeling",
+    "deleted": "Verwijderd",
+    "error": "Fout",
+    "active": "Actief",
+    "inactive": "Inactief"
+  },
+  "media": {
+    "movie": "Film",
+    "series": "Serie",
+    "episode": "Aflevering",
+    "season": "Seizoen",
+    "movies": "Films"
+  },
+  "days": {
+    "exceeded": "Overschreden",
+    "today": "Vandaag",
+    "tomorrow": "Morgen",
+    "in": "Over",
+    "inDays": "over {n}d",
+    "imminent": "dreigend"
+  },
+  "settings": {
+    "title": "Instellingen",
+    "tabs": {
+      "general": "Algemeen",
+      "servers": "Servers",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord",
+      "database": "Database"
+    },
+    "saveError": "Opslaan mislukt",
+    "general": {
+      "logs": {
+        "title": "Logboek",
+        "level": "Logniveau"
+      },
+      "maxParallelScans": "Max. parallelle scans",
+      "scheduling": {
+        "title": "Planning",
+        "scanInterval": "Scaninterval (min)",
+        "deletionInterval": "Verwijderingsinterval (min)",
+        "deletedRetention": "Bewaring verwijderde media (dagen)",
+        "logRetention": "Logbewaring (dagen)",
+        "historyRetention": "Geschiedenisbewaring (dagen)"
+      },
+      "backup": {
+        "title": "Databaseback-up",
+        "auto": "Automatische back-up",
+        "before": "Vóór elke verwijderingscyclus",
+        "interval": "Interval (uren)",
+        "retention": "Aantal te bewaren back-ups",
+        "path": "Back-upmap",
+        "manual": "Handmatige back-up",
+        "existing": "Bestaande back-ups",
+        "created": "Back-up aangemaakt",
+        "failed": "Back-up mislukt"
+      },
+      "publicDashboard": {
+        "title": "Openbaar dashboard",
+        "enable": "Openbaar dashboard inschakelen",
+        "description": "Pagina zonder aanmelding met de verwijderingskalender",
+        "url": "Volledige URL:",
+        "slug": "URL-segment (optioneel)",
+        "slugPlaceholder": "my-calendar",
+        "password": "Wachtwoord (optioneel)",
+        "passwordHelp": "Indien ingesteld, moeten bezoekers dit wachtwoord invoeren om toegang te krijgen tot het dashboard."
+      }
+    },
+    "servers": {
+      "description": "Beheer uw Emby-, Jellyfin- en Plex-servers",
+      "add": "Server toevoegen",
+      "empty": "Geen server geconfigureerd.",
+      "unnamed": "Naamloze server",
+      "unknownType": "onbekend type",
+      "localUrl": "Lokale URL",
+      "externalUrl": "Externe URL (optioneel)",
+      "apiKey": "API-sleutel",
+      "plexToken": "Plex-token (X-Plex-Token)",
+      "howToGetToken": "Hoe het token te krijgen?",
+      "linux": "Linux:",
+      "windows": "Windows:",
+      "webhookSecret": "Webhook-geheim",
+      "plexPassOnly": "(alleen Plex Pass)",
+      "secretOptional": "Optioneel geheim…",
+      "webhookUrl": "Webhook-URL:",
+      "plexOverlay": "Plex-poster-overlay",
+      "overlayDesc": "Banner «Verwijderd over Xd» — vereist Plex Pass",
+      "plexSections": "Plex-secties",
+      "added": "✓ Toegevoegd",
+      "addSection": "+ Toevoegen",
+      "discoverFirst": "Klik op Ontdekken om Plex-secties te tonen.",
+      "saveThenDiscover": "Sla de server eerst op en klik dan op Ontdekken.",
+      "leavingSoonCollection": "Collectie «Binnenkort verwijderd»",
+      "leavingSoonOverlay": "Overlay «Verwijderd over Xd»",
+      "bannerDesc": "Banner op posters",
+      "collectionName": "Collectienaam",
+      "leavingSoonDefault": "Binnenkort verwijderd",
+      "thresholdDays": "Drempel in dagen",
+      "save": "Servers opslaan",
+      "plexSettings": "Plex-instellingen",
+      "error": {
+        "plex": "Kan Plex-server niet bereiken"
+      },
+      "errors": {
+        "dns_failure": "Server niet gevonden: het adres kan niet worden opgelost. Controleer de URL.",
+        "connection_refused": "Verbinding geweigerd: controleer de poort en of de service actief is.",
+        "host_unreachable": "Host niet bereikbaar: controleer het IP-adres en de netwerkconnectiviteit.",
+        "timeout": "Verbindingstime-out: de server reageert niet.",
+        "ssl_error": "SSL/TLS-fout: probeer http:// als de server geen certificaat heeft.",
+        "network_error": "Netwerkfout: kan de server niet bereiken.",
+        "missing_config": "URL of API-sleutel ontbreekt.",
+        "http_401": "Ongeldige API-sleutel (401): controleer de sleutel in de instellingen.",
+        "http_403": "Toegang geweigerd (403): de sleutel heeft niet de vereiste rechten.",
+        "http_404": "Eindpunt niet gevonden (404): controleer of de URL correct is.",
+        "http_502": "Slechte gateway (502): een reverse proxy geeft een fout.",
+        "http_503": "Service niet beschikbaar (503): de server is aan het opstarten."
+      }
+    },
+    "arr": {
+      "instanceName": "Instantienaam",
+      "apiKey": "API-sleutel",
+      "radarr": {
+        "add": "Radarr-instantie toevoegen",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Sonarr-instantie toevoegen",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
+    },
+    "seerr": {
+      "title": "Overseerr / Jellyseerr",
+      "urlPlaceholder": "http://seerr:5055",
+      "externalUrl": "Externe URL (links in meldingen)",
+      "externalUrlPlaceholder": "https://seerr.mijndomein.nl",
+      "importRadarrSonarr": "Radarr & Sonarr importeren uit Seerr",
+      "importDescription": "Seerr kent uw Radarr- en Sonarr-instanties al. Klik om ze automatisch te importeren.",
+      "import": "Instanties importeren",
+      "importing": "Importeren…",
+      "imported": "Geïmporteerd!",
+      "discordIds": {
+        "title": "Discord-ID's van gebruikers",
+        "description": "Koppel een Discord-ID aan elke Seerr-gebruiker voor gepersonaliseerde meldingen"
+      },
+      "loadUsers": "Gebruikers laden",
+      "seerrId": "Seerr-ID:",
+      "discordIdPlaceholder": "Discord-ID (bijv. 123456789012345678)",
+      "howToFindDiscordId": "Om een Discord-ID te vinden: schakel de ontwikkelaarsmodus in Discord in, klik dan met rechts op de gebruiker → ID kopiëren.",
+      "noUsers": "Geen Seerr-gebruikers gevonden. Controleer de configuratie.",
+      "error": {
+        "contactFailed": "Kan Seerr niet bereiken"
+      }
+    },
+    "qbit": {
+      "url": "qBittorrent-URL",
+      "urlPlaceholder": "http://qbittorrent:8080",
+      "quiProxy": "QUI-proxy-URL",
+      "quiProxyOptional": "QUI-proxy-URL (optioneel)",
+      "quiProxyPlaceholder": "http://qui:3000",
+      "actions": {
+        "title": "Acties bij verwijdering",
+        "pause": "Torrent pauzeren",
+        "deleteNoFiles": "Torrent verwijderen (zonder bestanden)",
+        "deleteWithFiles": "Torrent + bestanden verwijderen",
+        "applyTag": "Tag op torrent toepassen"
+      },
+      "tagDefault": "hygie-deleted",
+      "orLabel": "EN/OF"
+    },
+    "discord": {
+      "title": "Discord-meldingen",
+      "webhookMain": "Hoofd-webhook (verwijderingsmeldingen)",
+      "webhookPlaceholder": "https://discord.com/api/webhooks/…",
+      "thresholdsLabel": "Meldingsdrempels (dagen vóór verwijdering, kommagescheiden)",
+      "thresholdsPlaceholder": "30,14,7,3,1",
+      "thresholdsHelp": "Een Discord-bericht wordt verzonden D-30, D-14, D-7…",
+      "errorThreshold": "Foutdrempel voor waarschuwing (0 = uitgeschakeld)",
+      "mentionPlaceholder": "Vermelding ({'@'}rol / {'@'}gebruiker)",
+      "messagePlaceholder": "Aangepast bericht",
+      "alerts": {
+        "title": "Systeemwaarschuwingen",
+        "webhook": "Waarschuwings-webhook (kritieke fouten)",
+        "deletionError": "Verwijderingsfout",
+        "scanFailure": "Scanfout",
+        "seerrFailure": "Seerr-fout"
+      }
+    },
+    "libraries": {
+      "description": "Configureer de te bewaken bibliotheken",
+      "add": "Toevoegen",
+      "empty": "Geen bibliotheek geconfigureerd.",
+      "active": "Actief",
+      "inactive": "Inactief",
+      "graceDaysBadge": "{n}d respijt",
+      "scanRunning": "Scan bezig…",
+      "scanTrigger": "Scan starten",
+      "scanLaunched": "Scan van \"{name}\" gestart.",
+      "noConditions": "Geen conditie — alle media worden verwerkt",
+      "modalCreate": "Nieuwe bibliotheek",
+      "modalEdit": "Bibliotheek bewerken",
+      "fieldServer": "Server",
+      "fieldLibrary": "Emby / Jellyfin / Plex bibliotheek",
+      "fieldName": "Weergavenaam",
+      "fieldGraceDays": "Respijtperiode (dagen)",
+      "fieldDeletionUnit": "Verwijderingseenheid",
+      "fieldEnabled": "Actieve bibliotheek",
+      "unitEpisode": "Aflevering",
+      "unitSeason": "Seizoen",
+      "unitSeries": "Serie",
+      "choose": "— Kies —",
+      "libIdPlaceholder": "Bibliotheek ID (bijv. 3e2c4a)",
+      "namePlaceholder": "Films, Series…",
+      "nameRequired": "Naam is vereist.",
+      "idRequired": "Bibliotheek ID is vereist.",
+      "loadError": "Kan bibliotheken niet laden van de server.",
+      "deleteConfirm": "Bibliotheek \"{name}\" verwijderen? Gekoppelde media in de wachtrij worden niet verwijderd.",
+      "saving": "Opslaan…",
+      "saveError": "Fout bij opslaan."
+    },
+    "database": {
+      "title": "Database",
+      "type": "Type",
+      "connection": "Verbinding",
+      "tables": "Tabellen",
+      "refresh": "Vernieuwen",
+      "rowCount": "rijen",
+      "migrate": "Migratie",
+      "direction": "Richting",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "Doel-URL",
+      "targetPath": "Doel-SQLite-pad",
+      "testConn": "Verbinding testen",
+      "testOk": "Verbinding geslaagd",
+      "testFail": "Verbinding mislukt",
+      "dryRun": "Dry run",
+      "dryRunHint": "Testmodus — geen data geschreven",
+      "startMigration": "Migratie starten",
+      "migrating": "Migratie bezig…",
+      "success": "Migratie voltooid",
+      "error": "Migratie mislukt",
+      "alreadyRunning": "Er loopt al een migratie",
+      "restartHint": "Migratie geslaagd. Herstart Hygie met",
+      "restartEnvHint": "in uw .env om de nieuwe database te activeren.",
+      "noJob": "Geen migratie uitgevoerd.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
+    }
+  },
+  "logs": {
+    "all": "Alle",
+    "debug": "Debug",
+    "info": "Info",
+    "warning": "Waarschuwing",
+    "error": "Fout",
+    "noLogs": "Geen logs.",
+    "markSeen": "Markeer als gezien",
+    "markSeenAll": "Alles als gezien markeren",
+    "ackAll": "Alles bevestigen",
+    "reset": "Resetten",
+    "entries": "vermelding(en)"
+  },
+  "rules": {
+    "expert": "Expertenregels",
+    "simple": "Eenvoudige regels",
+    "create": "Regel aanmaken",
+    "noRules": "Geen regels geconfigureerd.",
+    "allLibraries": "Alle bibliotheken",
+    "libraries": "Bibl.",
+    "title": "Regels",
+    "new": "Nieuwe regel",
+    "edit": "Regel bewerken",
+    "type": {
+      "simpleDesc": "Aangepaste respijtperiode per Seerr-gebruiker en bibliotheek.",
+      "expertDesc": "Geavanceerde condities op niet-bekeken dagen, beoordeling, grootte, mediatype…"
+    },
+    "nameLabel": "Regelnaam",
+    "namePlaceholder": "Mijn regel…",
+    "actionLabel": "Actie",
+    "allLibrariesLabel": "Alle",
+    "selected": "geselecteerd",
+    "conditionBlocks": "Conditieblokken",
+    "noBlocks": "Geen blokken — klik op «Blok toevoegen»",
+    "blockLabel": "Blok {n}",
+    "addCondition": "+ Conditie",
+    "noConditions": "Geen condities",
+    "addBlock": "+ Blok toevoegen",
+    "priority": "Prioriteit",
+    "graceDays": "Respijtperiode (dagen)",
+    "active": "Regel actief",
+    "conditions": "conditie(s)",
+    "blocks": "blok(ken)",
+    "confirmDelete": "Deze regel definitief verwijderen?",
+    "discordIdPlaceholder": "bijv. 123456789012345678",
+    "disable": "Uitschakelen",
+    "enable": "Inschakelen",
+    "runScan": "Scan starten",
+    "action": {
+      "queue": "Toevoegen aan verwijderingswachtrij",
+      "notifyOnly": "Alleen melden"
+    },
+    "expertSection": {
+      "title": "Expertenregels",
+      "empty": "Geen expertenregels.",
+      "migrate": "Migreren vanuit bibliotheken",
+      "migrating": "Migreren...",
+      "migrateTooltip": "Bibliotheekvoorwaarden omzetten naar expertenregels",
+      "migrateNone": "Geen nieuwe regels aan te maken (al gemigreerd).",
+      "migrateSuccess": "{n} regel(s) succesvol aangemaakt.",
+      "migrateError": "Migratiefout."
+    },
+    "simpleSection": {
+      "title": "Eenvoudige regels (Seerr)",
+      "empty": "Geen eenvoudige regels.",
+      "namePlaceholder": "Bijv: Alice — Alleen films",
+      "seerrUser": "Seerr-gebruiker",
+      "loadingUsers": "Gebruikers laden…",
+      "searchUsers": "Gebruiker zoeken…",
+      "selected": "Geselecteerd:",
+      "noUsers": "Geen Seerr-gebruikers gevonden.",
+      "discordIdOptional": "Discord-ID (optioneel)"
+    },
+    "recap": {
+      "libraries": "Bibl.:",
+      "noneSelected": "geen geselecteerd",
+      "allLibraries": "Alle bibliotheken"
+    }
+  },
+  "queue": {
+    "title": "Wachtrij",
+    "empty": "Geen media in wachtrij.",
+    "deleteAt": "Verwijdering op",
+    "daysLeft": "dagen resterend",
+    "ignore": "Negeren",
+    "purgeDeleted": "Verwijderde opschonen",
+    "neverWatched": "Nooit bekeken",
+    "deleteNow": "Nu verwijderen",
+    "ignoreTitle": "Negeren",
+    "ignoreReason": "Reden (optioneel)",
+    "reasonPlaceholder": "Reden…",
+    "expiration": "Vervaldatum (dagen, 0 = permanent)",
+    "confirmDelete": "Dit medium nu van de server verwijderen?",
+    "confirmPurge": "Alle verwijderde vermeldingen uit de wachtrij opschonen?",
+    "purge": "Opschonen",
+    "error": {
+      "loadFailed": "Kan wachtrij niet laden."
+    },
+    "filters": {
+      "all": "Alle",
+      "pending": "In behandeling",
+      "deleted": "Verwijderd",
+      "errors": "Fouten"
+    },
+    "columns": {
+      "title": "Titel",
+      "library": "Bibliotheek",
+      "requester": "Aanvrager",
+      "lastPlayed": "Laatst afgespeeld",
+      "addedAt": "Toegevoegd op",
+      "status": "Status",
+      "deletion": "Verwijdering",
+      "server": "Server"
+    }
+  },
+  "ignored": {
+    "count": "genegeerd",
+    "empty": "Geen genegeerde media.",
+    "permanent": "Permanent",
+    "requeue": "Opnieuw in wachtrij",
+    "remove": "Definitief verwijderen",
+    "confirmRemove": "Dit medium uit de negeerlst verwijderen?",
+    "removeBtn": "Verwijderen",
+    "error": {
+      "loadFailed": "Kan genegeerde media niet laden."
+    },
+    "columns": {
+      "title": "Titel",
+      "library": "Bibliotheek",
+      "reason": "Reden",
+      "ignoredAt": "Genegeerd op",
+      "expires": "Verloopt"
+    }
+  },
+  "calendar": {
+    "more": "+{n} meer",
+    "summary": "geplande verwijdering(en) deze maand",
+    "days": {
+      "mon": "Ma",
+      "tue": "Di",
+      "wed": "Wo",
+      "thu": "Do",
+      "fri": "Vr",
+      "sat": "Za",
+      "sun": "Zo"
+    }
+  },
+  "setup": {
+    "welcome": "Welkom bij Hygie",
+    "subtitle": "Maak uw beheerdersaccount aan om te beginnen.",
+    "creating": "Aanmaken...",
+    "createAccount": "Account aanmaken",
+    "error": "Fout bij aanmaken account"
+  },
+  "conditions": {
+    "daysNotWatched": "Dagen niet bekeken",
+    "daysNotWatchedShort": "dagen niet bek.",
+    "playCount": "Afspeelbeurten",
+    "rating": "Beoordeling",
+    "fileSize": "Grootte (GB)",
+    "addedDaysAgo": "Toegevoegd (dagen geleden)",
+    "addedDaysAgoShort": "toeg. (dagen gel.)",
+    "mediaType": "Mediatype",
+    "type": "type",
+    "seerrUser": "Seerr-gebruiker",
+    "seerrUserShort": "Seerr-gebr.",
+    "showNames": "Namen tonen",
+    "showIds": "ID's tonen",
+    "selectedCount": "{n} geselecteerd",
+    "noUsers": "Geen Seerr-gebruikers"
+  },
+  "operators": {
+    "in": "in",
+    "notIn": "niet in"
+  },
+  "dashboard": {
+    "stats": {
+      "pending": "In behandeling",
+      "total": "totaal",
+      "totalDeleted": "Totale verwijderingen",
+      "thisMonth": "deze maand",
+      "ignored": "Genegeerd",
+      "errors": "Fouten",
+      "reclaimableSpace": "Terugwinbare ruimte",
+      "moviesInLibrary": "Films in bibliotheek",
+      "seriesInLibrary": "Series in bibliotheek",
+      "scansPerformed": "Scans uitgevoerd"
+    },
+    "upcoming": {
+      "title": "5 volgende verwijderingen",
+      "viewAll": "Alles bekijken",
+      "empty": "Geen geplande verwijdering"
+    },
+    "diskUsage": {
+      "title": "Schijfruimte"
+    },
+    "error": {
+      "loadFailed": "Kan dashboard-gegevens niet laden."
+    },
+    "queue": {
+      "added": "Toegevoegd"
+    },
+    "library": {
+      "inLibrary": "In bibliotheek",
+      "onDisk": "Op schijf",
+      "missing": "Ontbrekend",
+      "monitored": "Bewaakt",
+      "unmonitored": "Niet bewaakt",
+      "episodesOnDisk": "Afleveringen op schijf",
+      "totalEpisodes": "Totaal afleveringen",
+      "episodesAired": "Uitgezonden afleveringen"
+    }
+  }
+}

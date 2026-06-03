@@ -1,0 +1,542 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "queue": "Queue",
+    "calendar": "Calendar",
+    "rules": "Rules",
+    "ignored": "Ignored",
+    "logs": "Logs",
+    "settings": "Settings",
+    "libraries": "Libraries"
+  },
+  "common": {
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Settings saved.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "test": "Test",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "none": "None",
+    "all": "All",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "error": "Error",
+    "success": "Success",
+    "unknown": "Unknown",
+    "name": "Name",
+    "actions": "Actions",
+    "status": "Status",
+    "type": "Type",
+    "url": "URL",
+    "apiKey": "API Key",
+    "search": "Search…",
+    "items": "item(s)",
+    "ok": "✓ OK",
+    "failed": "Failed",
+    "select": "— Select —",
+    "today": "Today",
+    "user": "User",
+    "password": "Password",
+    "inProgress": "In progress…",
+    "noResults": "No results",
+    "discover": "Discover"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "username": "Username",
+    "password": "Password",
+    "loginBtn": "Sign in",
+    "loggingIn": "Signing in...",
+    "invalidCredentials": "Invalid credentials",
+    "setupTitle": "Initial Setup",
+    "setupBtn": "Create Account",
+    "changePassword": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "support": "Support"
+  },
+  "sidebar": {
+    "dryRun": "Dry Run",
+    "dryRunActive": "Dry Run active",
+    "nextScan": "Next scan",
+    "scanRunning": "Scan running",
+    "launching": "Launching",
+    "nextDeletion": "Next deletion",
+    "deletionRunning": "Deletion running"
+  },
+  "status": {
+    "pending": "Pending",
+    "deleted": "Deleted",
+    "error": "Error",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "media": {
+    "movie": "Movie",
+    "series": "Series",
+    "episode": "Episode",
+    "season": "Season",
+    "movies": "Movies"
+  },
+  "days": {
+    "exceeded": "Exceeded",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "in": "In",
+    "inDays": "in {n}d",
+    "imminent": "imminent"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "general": "General",
+      "servers": "Servers",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord",
+      "database": "Database"
+    },
+    "saveError": "Save failed",
+    "general": {
+      "logs": {
+        "title": "Logs",
+        "level": "Log level"
+      },
+      "maxParallelScans": "Max parallel scans",
+      "scheduling": {
+        "title": "Scheduling",
+        "scanInterval": "Scan interval (min)",
+        "deletionInterval": "Deletion interval (min)",
+        "deletedRetention": "Deleted media retention (days)",
+        "logRetention": "Log retention (days)",
+        "historyRetention": "History retention (days)"
+      },
+      "backup": {
+        "title": "Database backup",
+        "auto": "Automatic backup",
+        "before": "Before each deletion cycle",
+        "interval": "Interval (hours)",
+        "retention": "Number of backups to keep",
+        "path": "Backup folder",
+        "manual": "Manual backup",
+        "existing": "Existing backups",
+        "created": "Backup created",
+        "failed": "Backup failed"
+      },
+      "publicDashboard": {
+        "title": "Public dashboard",
+        "enable": "Enable public dashboard",
+        "description": "Page without login showing the deletion calendar",
+        "url": "Full URL:",
+        "slug": "URL segment (optional)",
+        "slugPlaceholder": "my-calendar",
+        "password": "Password (optional)",
+        "passwordHelp": "If set, visitors will need to enter this password to access the dashboard."
+      }
+    },
+    "servers": {
+      "description": "Manage your Emby, Jellyfin and Plex servers",
+      "add": "Add server",
+      "empty": "No server configured.",
+      "unnamed": "Unnamed server",
+      "unknownType": "unknown type",
+      "localUrl": "Local URL",
+      "externalUrl": "External URL (optional)",
+      "apiKey": "API Key",
+      "plexToken": "Plex Token (X-Plex-Token)",
+      "howToGetToken": "How to get the token?",
+      "linux": "Linux:",
+      "windows": "Windows:",
+      "webhookSecret": "Webhook Secret",
+      "plexPassOnly": "(Plex Pass only)",
+      "secretOptional": "Optional secret…",
+      "webhookUrl": "Webhook URL:",
+      "plexOverlay": "Plex poster overlay",
+      "overlayDesc": "Banner «Deleted in Xd» — requires Plex Pass",
+      "plexSections": "Plex Sections",
+      "added": "✓ Added",
+      "addSection": "+ Add",
+      "discoverFirst": "Click Discover to show Plex sections.",
+      "saveThenDiscover": "Save the server first, then click Discover.",
+      "leavingSoonCollection": "\"Leaving Soon\" collection",
+      "leavingSoonOverlay": "Overlay \"Deleted in Xd\"",
+      "bannerDesc": "Banner on posters",
+      "collectionName": "Collection name",
+      "leavingSoonDefault": "Leaving Soon",
+      "thresholdDays": "Threshold in days",
+      "save": "Save servers",
+      "plexSettings": "Plex Settings",
+      "error": {
+        "plex": "Cannot contact Plex server"
+      },
+      "errors": {
+        "dns_failure": "Server not found: the address cannot be resolved. Check the URL.",
+        "connection_refused": "Connection refused: check the port and that the service is running.",
+        "host_unreachable": "Host unreachable: check the IP address and network connectivity.",
+        "timeout": "Connection timed out: the server is not responding.",
+        "ssl_error": "SSL/TLS error: try http:// if the server has no certificate.",
+        "network_error": "Network error: unable to reach the server.",
+        "missing_config": "URL or API key missing.",
+        "http_401": "Invalid API key (401): check the key in settings.",
+        "http_403": "Access denied (403): the key lacks required permissions.",
+        "http_404": "Endpoint not found (404): check that the URL is correct.",
+        "http_502": "Bad gateway (502): a reverse proxy is returning an error.",
+        "http_503": "Service unavailable (503): the server is starting up."
+      }
+    },
+    "arr": {
+      "instanceName": "Instance name",
+      "apiKey": "API Key",
+      "radarr": {
+        "add": "Add Radarr instance",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Add Sonarr instance",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
+    },
+    "seerr": {
+      "title": "Overseerr / Jellyseerr",
+      "urlPlaceholder": "http://seerr:5055",
+      "externalUrl": "External URL (links in notifications)",
+      "externalUrlPlaceholder": "https://seerr.mydomain.com",
+      "importRadarrSonarr": "Import Radarr & Sonarr from Seerr",
+      "importDescription": "Seerr already knows your Radarr and Sonarr instances. Click to import them automatically.",
+      "import": "Import instances",
+      "importing": "Importing…",
+      "imported": "Imported!",
+      "discordIds": {
+        "title": "Discord IDs for users",
+        "description": "Associate a Discord ID with each Seerr user for personalized notifications"
+      },
+      "loadUsers": "Load users",
+      "seerrId": "Seerr ID:",
+      "discordIdPlaceholder": "Discord ID (e.g. 123456789012345678)",
+      "howToFindDiscordId": "To find a Discord ID: enable developer mode in Discord, then right-click on the user → Copy ID.",
+      "noUsers": "No Seerr users found. Check configuration.",
+      "error": {
+        "contactFailed": "Cannot contact Seerr"
+      }
+    },
+    "qbit": {
+      "url": "qBittorrent URL",
+      "urlPlaceholder": "http://qbittorrent:8080",
+      "quiProxy": "QUI proxy URL",
+      "quiProxyOptional": "QUI proxy URL (optional)",
+      "quiProxyPlaceholder": "http://qui:3000",
+      "actions": {
+        "title": "Actions on deletion",
+        "pause": "Pause torrent",
+        "deleteNoFiles": "Delete torrent (without files)",
+        "deleteWithFiles": "Delete torrent + files",
+        "applyTag": "Apply tag to torrent"
+      },
+      "tagDefault": "hygie-deleted",
+      "orLabel": "AND/OR"
+    },
+    "discord": {
+      "title": "Discord Notifications",
+      "webhookMain": "Main webhook (deletion notifications)",
+      "webhookPlaceholder": "https://discord.com/api/webhooks/…",
+      "thresholdsLabel": "Notification thresholds (days before deletion, comma-separated)",
+      "thresholdsPlaceholder": "30,14,7,3,1",
+      "thresholdsHelp": "A Discord message will be sent D-30, D-14, D-7…",
+      "errorThreshold": "Error threshold before alert (0 = disabled)",
+      "mentionPlaceholder": "Mention ({'@'}role / {'@'}user)",
+      "messagePlaceholder": "Custom message",
+      "alerts": {
+        "title": "System alerts",
+        "webhook": "Alerts webhook (critical errors)",
+        "deletionError": "Deletion error",
+        "scanFailure": "Scan failure",
+        "seerrFailure": "Seerr failure"
+      }
+    },
+    "libraries": {
+      "description": "Configure the libraries to monitor",
+      "add": "Add",
+      "empty": "No library configured.",
+      "active": "Active",
+      "inactive": "Inactive",
+      "graceDaysBadge": "{n}d grace",
+      "scanRunning": "Scan running…",
+      "scanTrigger": "Start scan",
+      "scanLaunched": "Scan of \"{name}\" started.",
+      "noConditions": "No condition — all media will be processed",
+      "modalCreate": "New library",
+      "modalEdit": "Edit library",
+      "fieldServer": "Server",
+      "fieldLibrary": "Emby / Jellyfin / Plex library",
+      "fieldName": "Display name",
+      "fieldGraceDays": "Grace period (days)",
+      "fieldDeletionUnit": "Deletion unit",
+      "fieldEnabled": "Active library",
+      "unitEpisode": "Episode",
+      "unitSeason": "Season",
+      "unitSeries": "Series",
+      "choose": "— Choose —",
+      "libIdPlaceholder": "Library ID (e.g. 3e2c4a)",
+      "namePlaceholder": "Movies, Series…",
+      "nameRequired": "Name is required.",
+      "idRequired": "Library ID is required.",
+      "loadError": "Cannot load libraries from the media server.",
+      "deleteConfirm": "Delete library \"{name}\"? Queued media linked to it will not be deleted.",
+      "saving": "Saving…",
+      "saveError": "Error saving."
+    },
+    "database": {
+      "title": "Database",
+      "type": "Type",
+      "connection": "Connection",
+      "tables": "Tables",
+      "refresh": "Refresh",
+      "rowCount": "rows",
+      "migrate": "Migration",
+      "direction": "Direction",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "Target URL",
+      "targetPath": "Target SQLite path",
+      "testConn": "Test connection",
+      "testOk": "Connection successful",
+      "testFail": "Connection failed",
+      "dryRun": "Dry run",
+      "dryRunHint": "Test mode — no data written",
+      "startMigration": "Start migration",
+      "migrating": "Migration in progress…",
+      "success": "Migration complete",
+      "error": "Migration failed",
+      "alreadyRunning": "A migration is already running",
+      "restartHint": "Migration successful. Restart Hygie with",
+      "restartEnvHint": "in your .env to activate the new database.",
+      "noJob": "No migration has been run.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
+    }
+  },
+  "logs": {
+    "all": "All",
+    "debug": "Debug",
+    "info": "Info",
+    "warning": "Warning",
+    "error": "Error",
+    "noLogs": "No logs.",
+    "markSeen": "Mark as seen",
+    "markSeenAll": "Mark all as seen",
+    "ackAll": "Acknowledge all",
+    "reset": "Reset",
+    "entries": "entry(ies)"
+  },
+  "rules": {
+    "expert": "Expert Rules",
+    "simple": "Simple Rules",
+    "create": "Create Rule",
+    "noRules": "No rules configured.",
+    "allLibraries": "All libraries",
+    "libraries": "Libs.",
+    "title": "Rules",
+    "new": "New rule",
+    "edit": "Edit rule",
+    "type": {
+      "simpleDesc": "Custom grace period per Seerr user and library.",
+      "expertDesc": "Advanced conditions on days not watched, rating, size, media type…"
+    },
+    "nameLabel": "Rule name",
+    "namePlaceholder": "My rule…",
+    "actionLabel": "Action",
+    "allLibrariesLabel": "All",
+    "selected": "selected",
+    "conditionBlocks": "Condition blocks",
+    "noBlocks": "No blocks — click \"Add block\"",
+    "blockLabel": "Block {n}",
+    "addCondition": "+ Condition",
+    "noConditions": "No conditions",
+    "addBlock": "+ Add block",
+    "priority": "Priority",
+    "graceDays": "Grace period (days)",
+    "active": "Rule active",
+    "conditions": "condition(s)",
+    "blocks": "block(s)",
+    "confirmDelete": "Permanently delete this rule?",
+    "discordIdPlaceholder": "e.g. 123456789012345678",
+    "disable": "Disable",
+    "enable": "Enable",
+    "runScan": "Run scan",
+    "action": {
+      "queue": "Add to deletion queue",
+      "notifyOnly": "Notify only"
+    },
+    "expertSection": {
+      "title": "Expert Rules",
+      "empty": "No expert rules.",
+      "migrate": "Migrate from libraries",
+      "migrating": "Migrating...",
+      "migrateTooltip": "Convert library conditions to expert rules",
+      "migrateNone": "No new rules to create (already migrated).",
+      "migrateSuccess": "{n} rule(s) created successfully.",
+      "migrateError": "Migration error."
+    },
+    "simpleSection": {
+      "title": "Simple Rules (Seerr)",
+      "empty": "No simple rules.",
+      "namePlaceholder": "E.g. Alice — Movies only",
+      "seerrUser": "Seerr user",
+      "loadingUsers": "Loading users…",
+      "searchUsers": "Search user…",
+      "selected": "Selected:",
+      "noUsers": "No Seerr users found.",
+      "discordIdOptional": "Discord ID (optional)"
+    },
+    "recap": {
+      "libraries": "Libs.:",
+      "noneSelected": "none selected",
+      "allLibraries": "All libraries"
+    }
+  },
+  "queue": {
+    "title": "Queue",
+    "empty": "No media in queue.",
+    "deleteAt": "Deletion on",
+    "daysLeft": "days left",
+    "ignore": "Ignore",
+    "purgeDeleted": "Purge deleted",
+    "neverWatched": "Never watched",
+    "deleteNow": "Delete now",
+    "ignoreTitle": "Ignore",
+    "ignoreReason": "Reason (optional)",
+    "reasonPlaceholder": "Reason…",
+    "expiration": "Expiration (days, 0 = permanent)",
+    "confirmDelete": "Delete this media from the server now?",
+    "confirmPurge": "Purge all deleted entries from queue?",
+    "purge": "Purge",
+    "error": {
+      "loadFailed": "Cannot load queue."
+    },
+    "filters": {
+      "all": "All",
+      "pending": "Pending",
+      "deleted": "Deleted",
+      "errors": "Errors"
+    },
+    "columns": {
+      "title": "Title",
+      "library": "Library",
+      "requester": "Requester",
+      "lastPlayed": "Last played",
+      "addedAt": "Added on",
+      "status": "Status",
+      "deletion": "Deletion",
+      "server": "Server"
+    }
+  },
+  "ignored": {
+    "count": "ignored",
+    "empty": "No ignored media.",
+    "permanent": "Permanent",
+    "requeue": "Re-queue",
+    "remove": "Remove permanently",
+    "confirmRemove": "Remove this media from the ignored list?",
+    "removeBtn": "Remove",
+    "error": {
+      "loadFailed": "Cannot load ignored media."
+    },
+    "columns": {
+      "title": "Title",
+      "library": "Library",
+      "reason": "Reason",
+      "ignoredAt": "Ignored on",
+      "expires": "Expires"
+    }
+  },
+  "calendar": {
+    "more": "+{n} more",
+    "summary": "scheduled deletion(s) this month",
+    "days": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    }
+  },
+  "setup": {
+    "welcome": "Welcome to Hygie",
+    "subtitle": "Create your admin account to get started.",
+    "creating": "Creating...",
+    "createAccount": "Create account",
+    "error": "Error creating account"
+  },
+  "conditions": {
+    "daysNotWatched": "Days not watched",
+    "daysNotWatchedShort": "days not watched",
+    "playCount": "Play count",
+    "rating": "Rating",
+    "fileSize": "Size (GB)",
+    "addedDaysAgo": "Added (days ago)",
+    "addedDaysAgoShort": "added (days ago)",
+    "mediaType": "Media type",
+    "type": "type",
+    "seerrUser": "Seerr user",
+    "seerrUserShort": "Seerr user",
+    "showNames": "Show names",
+    "showIds": "Show IDs",
+    "selectedCount": "{n} selected",
+    "noUsers": "No Seerr users"
+  },
+  "operators": {
+    "in": "in",
+    "notIn": "not in"
+  },
+  "dashboard": {
+    "stats": {
+      "pending": "Pending",
+      "total": "total",
+      "totalDeleted": "Total deletions",
+      "thisMonth": "this month",
+      "ignored": "Ignored",
+      "errors": "Errors",
+      "reclaimableSpace": "Reclaimable space",
+      "moviesInLibrary": "Movies in library",
+      "seriesInLibrary": "Series in library",
+      "scansPerformed": "Scans performed"
+    },
+    "upcoming": {
+      "title": "5 upcoming deletions",
+      "viewAll": "View all",
+      "empty": "No scheduled deletion"
+    },
+    "diskUsage": {
+      "title": "Disk usage"
+    },
+    "error": {
+      "loadFailed": "Cannot load dashboard data."
+    },
+    "queue": {
+      "added": "Added"
+    },
+    "library": {
+      "inLibrary": "In library",
+      "onDisk": "On disk",
+      "missing": "Missing",
+      "monitored": "Monitored",
+      "unmonitored": "Unmonitored",
+      "episodesOnDisk": "Episodes on disk",
+      "totalEpisodes": "Total episodes",
+      "episodesAired": "Episodes aired"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# Only check critical errors — F401 is intentionally not enforced because many
+# modules expose DB_PATH as a monkeypatching target for tests, and __init__.py
+# files re-export symbols for backward compatibility.
+select = ["E"]
+ignore = [
+    "E501",   # line too long
+    "E402",   # module import not at top — needed for late imports
+    "E701",   # multiple statements on one line (colon) — intentional guards
+    "E702",   # multiple statements on one line (semicolon) — intentional
+    "E711",   # comparison to None — explicit style choice
+    "E712",   # comparison to True/False — explicit style choice
+]

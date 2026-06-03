@@ -1,0 +1,42 @@
+# Environment — never commit
+.env
+*.env
+!.env.example
+
+# Hygie data
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.secret
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Frontend build output and dependencies
+frontend/dist/
+frontend/vue/node_modules/
+data-local/
+docs/superpowers/

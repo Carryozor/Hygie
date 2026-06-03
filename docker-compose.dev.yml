@@ -1,0 +1,48 @@
+# docker-compose.dev.yml — mode développement avec hot-reload
+#
+# Usage :
+#   1. Backend seul (hot-reload) :
+#      docker compose -f docker-compose.yml -f docker-compose.dev.yml up hygie
+#
+#   2. Frontend Vite dev server (dans un autre terminal) :
+#      cd frontend/vue && npm run dev
+#      → l'UI est accessible sur http://localhost:5173
+#      → les appels /api sont proxifiés vers http://localhost:8000
+#
+# Le backend monte le dossier backend/ en volume pour que uvicorn --reload
+# détecte les changements sans rebuild d'image.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  hygie:
+    build:
+      context: .
+    image: hygie:dev
+    user: hygie
+    volumes:
+      - ./backend:/app/backend          # hot-reload backend Python
+      - ./data:/app/data
+    command:
+      - uvicorn
+      - backend.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/backend
+    environment:
+      - TZ=Europe/Paris
+      - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8000:8000"
+    # Pas de mem_limit ni cpus en dev
+    healthcheck:
+      test: ["CMD", "python3", "/app/backend/healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

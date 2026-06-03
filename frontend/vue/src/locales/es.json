@@ -1,0 +1,542 @@
+{
+  "nav": {
+    "dashboard": "Panel",
+    "queue": "Cola",
+    "calendar": "Calendario",
+    "rules": "Reglas",
+    "ignored": "Ignorados",
+    "logs": "Registros",
+    "settings": "Configuración",
+    "libraries": "Bibliotecas"
+  },
+  "common": {
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Configuración guardada.",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "test": "Probar",
+    "refresh": "Actualizar",
+    "loading": "Cargando...",
+    "none": "Ninguno",
+    "all": "Todos",
+    "enabled": "Activo",
+    "disabled": "Inactivo",
+    "add": "Añadir",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "yes": "Sí",
+    "no": "No",
+    "error": "Error",
+    "success": "Éxito",
+    "unknown": "Desconocido",
+    "name": "Nombre",
+    "actions": "Acciones",
+    "status": "Estado",
+    "type": "Tipo",
+    "url": "URL",
+    "apiKey": "Clave API",
+    "search": "Buscar…",
+    "items": "elemento(s)",
+    "ok": "✓ OK",
+    "failed": "Fallido",
+    "select": "— Seleccionar —",
+    "today": "Hoy",
+    "user": "Usuario",
+    "password": "Contraseña",
+    "inProgress": "En progreso…",
+    "noResults": "Sin resultados",
+    "discover": "Descubrir"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "loginBtn": "Entrar",
+    "loggingIn": "Entrando...",
+    "invalidCredentials": "Credenciales inválidas",
+    "setupTitle": "Configuración inicial",
+    "setupBtn": "Crear cuenta",
+    "changePassword": "Cambiar contraseña",
+    "currentPassword": "Contraseña actual",
+    "newPassword": "Nueva contraseña",
+    "support": "Apoyar"
+  },
+  "sidebar": {
+    "dryRun": "Simulación",
+    "dryRunActive": "Simulación activa",
+    "nextScan": "Próximo análisis",
+    "scanRunning": "Análisis en curso",
+    "launching": "Iniciando",
+    "nextDeletion": "Próxima eliminación",
+    "deletionRunning": "Eliminación en curso"
+  },
+  "status": {
+    "pending": "Pendiente",
+    "deleted": "Eliminado",
+    "error": "Error",
+    "active": "Activo",
+    "inactive": "Inactivo"
+  },
+  "media": {
+    "movie": "Película",
+    "series": "Serie",
+    "episode": "Episodio",
+    "season": "Temporada",
+    "movies": "Películas"
+  },
+  "days": {
+    "exceeded": "Superado",
+    "today": "Hoy",
+    "tomorrow": "Mañana",
+    "in": "En",
+    "inDays": "en {n}d",
+    "imminent": "inminente"
+  },
+  "settings": {
+    "title": "Configuración",
+    "tabs": {
+      "general": "General",
+      "servers": "Servidores",
+      "radarr": "Radarr",
+      "sonarr": "Sonarr",
+      "seerr": "Seerr",
+      "qbit": "qBittorrent",
+      "discord": "Discord",
+      "database": "Base de datos"
+    },
+    "saveError": "Error al guardar",
+    "general": {
+      "logs": {
+        "title": "Registros",
+        "level": "Nivel de registro"
+      },
+      "maxParallelScans": "Máx. análisis paralelos",
+      "scheduling": {
+        "title": "Planificación",
+        "scanInterval": "Intervalo de análisis (min)",
+        "deletionInterval": "Intervalo de eliminación (min)",
+        "deletedRetention": "Retención de medios eliminados (días)",
+        "logRetention": "Retención de registros (días)",
+        "historyRetention": "Retención de historial (días)"
+      },
+      "backup": {
+        "title": "Copia de seguridad de base de datos",
+        "auto": "Copia automática",
+        "before": "Antes de cada ciclo de eliminación",
+        "interval": "Intervalo (horas)",
+        "retention": "Número de copias a conservar",
+        "path": "Carpeta de copia de seguridad",
+        "manual": "Copia manual",
+        "existing": "Copias existentes",
+        "created": "Copia creada",
+        "failed": "Copia fallida"
+      },
+      "publicDashboard": {
+        "title": "Panel público",
+        "enable": "Activar panel público",
+        "description": "Página sin inicio de sesión con el calendario de eliminaciones",
+        "url": "URL completa:",
+        "slug": "Segmento de URL (opcional)",
+        "slugPlaceholder": "my-calendar",
+        "password": "Contraseña (opcional)",
+        "passwordHelp": "Si se establece, los visitantes deberán introducir esta contraseña para acceder al panel."
+      }
+    },
+    "servers": {
+      "description": "Administre sus servidores Emby, Jellyfin y Plex",
+      "add": "Añadir servidor",
+      "empty": "Sin servidor configurado.",
+      "unnamed": "Servidor sin nombre",
+      "unknownType": "tipo desconocido",
+      "localUrl": "URL local",
+      "externalUrl": "URL externa (opcional)",
+      "apiKey": "Clave API",
+      "plexToken": "Token Plex (X-Plex-Token)",
+      "howToGetToken": "¿Cómo obtener el token?",
+      "linux": "Linux:",
+      "windows": "Windows:",
+      "webhookSecret": "Secreto Webhook",
+      "plexPassOnly": "(solo Plex Pass)",
+      "secretOptional": "Secreto opcional…",
+      "webhookUrl": "URL webhook:",
+      "plexOverlay": "Overlay de pósters Plex",
+      "overlayDesc": "Banner «Eliminado en Xd» — requiere Plex Pass",
+      "plexSections": "Secciones Plex",
+      "added": "✓ Añadida",
+      "addSection": "+ Añadir",
+      "discoverFirst": "Haga clic en Descubrir para mostrar las secciones Plex.",
+      "saveThenDiscover": "Guarde primero el servidor, luego haga clic en Descubrir.",
+      "leavingSoonCollection": "Colección «Próximamente eliminado»",
+      "leavingSoonOverlay": "Overlay «Eliminado en Xd»",
+      "bannerDesc": "Banner en los pósters",
+      "collectionName": "Nombre de la colección",
+      "leavingSoonDefault": "Próximamente eliminado",
+      "thresholdDays": "Umbral en días",
+      "save": "Guardar servidores",
+      "plexSettings": "Configuración Plex",
+      "error": {
+        "plex": "No se puede contactar el servidor Plex"
+      },
+      "errors": {
+        "dns_failure": "Servidor no encontrado: la dirección no puede resolverse. Verifique la URL.",
+        "connection_refused": "Conexión rechazada: verifique el puerto y que el servicio esté activo.",
+        "host_unreachable": "Host inalcanzable: verifique la dirección IP y la conectividad de red.",
+        "timeout": "Tiempo de conexión agotado: el servidor no responde.",
+        "ssl_error": "Error SSL/TLS: pruebe con http:// si el servidor no tiene certificado.",
+        "network_error": "Error de red: no se puede alcanzar el servidor.",
+        "missing_config": "URL o clave API faltante.",
+        "http_401": "Clave API inválida (401): verifique la clave en la configuración.",
+        "http_403": "Acceso denegado (403): la clave no tiene los permisos necesarios.",
+        "http_404": "Endpoint no encontrado (404): verifique que la URL sea correcta.",
+        "http_502": "Puerta de enlace incorrecta (502): un proxy inverso está devolviendo un error.",
+        "http_503": "Servicio no disponible (503): el servidor está iniciándose."
+      }
+    },
+    "arr": {
+      "instanceName": "Nombre de instancia",
+      "apiKey": "Clave API",
+      "radarr": {
+        "add": "Añadir instancia Radarr",
+        "urlPlaceholder": "http://radarr:7878"
+      },
+      "sonarr": {
+        "add": "Añadir instancia Sonarr",
+        "urlPlaceholder": "http://sonarr:8989"
+      }
+    },
+    "seerr": {
+      "title": "Overseerr / Jellyseerr",
+      "urlPlaceholder": "http://seerr:5055",
+      "externalUrl": "URL externa (enlaces en notificaciones)",
+      "externalUrlPlaceholder": "https://seerr.midominio.es",
+      "importRadarrSonarr": "Importar Radarr & Sonarr desde Seerr",
+      "importDescription": "Seerr ya conoce sus instancias Radarr y Sonarr. Haga clic para importarlas automáticamente.",
+      "import": "Importar instancias",
+      "importing": "Importando…",
+      "imported": "¡Importado!",
+      "discordIds": {
+        "title": "IDs Discord de usuarios",
+        "description": "Asocie un ID de Discord a cada usuario Seerr para notificaciones personalizadas"
+      },
+      "loadUsers": "Cargar usuarios",
+      "seerrId": "ID Seerr:",
+      "discordIdPlaceholder": "ID Discord (ej. 123456789012345678)",
+      "howToFindDiscordId": "Para encontrar un ID de Discord: active el modo desarrollador en Discord, luego clic derecho en el usuario → Copiar ID.",
+      "noUsers": "No se encontraron usuarios Seerr. Verificar configuración.",
+      "error": {
+        "contactFailed": "No se puede contactar Seerr"
+      }
+    },
+    "qbit": {
+      "url": "URL qBittorrent",
+      "urlPlaceholder": "http://qbittorrent:8080",
+      "quiProxy": "URL proxy QUI",
+      "quiProxyOptional": "URL proxy QUI (opcional)",
+      "quiProxyPlaceholder": "http://qui:3000",
+      "actions": {
+        "title": "Acciones al eliminar",
+        "pause": "Pausar torrent",
+        "deleteNoFiles": "Eliminar torrent (sin archivos)",
+        "deleteWithFiles": "Eliminar torrent + archivos",
+        "applyTag": "Aplicar etiqueta al torrent"
+      },
+      "tagDefault": "hygie-deleted",
+      "orLabel": "Y/O"
+    },
+    "discord": {
+      "title": "Notificaciones Discord",
+      "webhookMain": "Webhook principal (notificaciones de eliminación)",
+      "webhookPlaceholder": "https://discord.com/api/webhooks/…",
+      "thresholdsLabel": "Umbrales de notificación (días antes de eliminación, separados por comas)",
+      "thresholdsPlaceholder": "30,14,7,3,1",
+      "thresholdsHelp": "Se enviará un mensaje Discord D-30, D-14, D-7…",
+      "errorThreshold": "Umbral de errores antes de alerta (0 = desactivado)",
+      "mentionPlaceholder": "Mención ({'@'}rol / {'@'}usuario)",
+      "messagePlaceholder": "Mensaje personalizado",
+      "alerts": {
+        "title": "Alertas del sistema",
+        "webhook": "Webhook de alertas (errores críticos)",
+        "deletionError": "Error de eliminación",
+        "scanFailure": "Fallo de análisis",
+        "seerrFailure": "Fallo de Seerr"
+      }
+    },
+    "libraries": {
+      "description": "Configure las bibliotecas a supervisar",
+      "add": "Agregar",
+      "empty": "Ninguna biblioteca configurada.",
+      "active": "Activa",
+      "inactive": "Inactiva",
+      "graceDaysBadge": "{n}d de gracia",
+      "scanRunning": "Escaneo en curso…",
+      "scanTrigger": "Iniciar escaneo",
+      "scanLaunched": "Escaneo de \"{name}\" iniciado.",
+      "noConditions": "Sin condición — todos los medios serán procesados",
+      "modalCreate": "Nueva biblioteca",
+      "modalEdit": "Editar biblioteca",
+      "fieldServer": "Servidor",
+      "fieldLibrary": "Biblioteca Emby / Jellyfin / Plex",
+      "fieldName": "Nombre mostrado",
+      "fieldGraceDays": "Período de gracia (días)",
+      "fieldDeletionUnit": "Unidad de eliminación",
+      "fieldEnabled": "Biblioteca activa",
+      "unitEpisode": "Episodio",
+      "unitSeason": "Temporada",
+      "unitSeries": "Serie",
+      "choose": "— Elegir —",
+      "libIdPlaceholder": "ID de biblioteca (ej: 3e2c4a)",
+      "namePlaceholder": "Películas, Series…",
+      "nameRequired": "El nombre es obligatorio.",
+      "idRequired": "El ID de biblioteca es obligatorio.",
+      "loadError": "No se pueden cargar las bibliotecas del servidor.",
+      "deleteConfirm": "¿Eliminar la biblioteca \"{name}\"? Los medios en cola vinculados no serán eliminados.",
+      "saving": "Guardando…",
+      "saveError": "Error al guardar."
+    },
+    "database": {
+      "title": "Base de datos",
+      "type": "Tipo",
+      "connection": "Conexión",
+      "tables": "Tablas",
+      "refresh": "Actualizar",
+      "rowCount": "filas",
+      "migrate": "Migración",
+      "direction": "Dirección",
+      "toMariadb": "SQLite → MariaDB",
+      "toSqlite": "MariaDB → SQLite",
+      "targetUrl": "URL destino",
+      "targetPath": "Ruta SQLite destino",
+      "testConn": "Probar conexión",
+      "testOk": "Conexión exitosa",
+      "testFail": "Conexión fallida",
+      "dryRun": "Dry run",
+      "dryRunHint": "Modo prueba — no se escriben datos",
+      "startMigration": "Iniciar migración",
+      "migrating": "Migración en curso…",
+      "success": "Migración completada",
+      "error": "Migración fallida",
+      "alreadyRunning": "Ya hay una migración en curso",
+      "restartHint": "Migración exitosa. Reinicie Hygie con",
+      "restartEnvHint": "en su .env para activar la nueva base de datos.",
+      "noJob": "No se ha realizado ninguna migración.",
+      "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
+      "pathPlaceholder": "/app/data/hygie_migrated.db"
+    }
+  },
+  "logs": {
+    "all": "Todos",
+    "debug": "Depuración",
+    "info": "Info",
+    "warning": "Advertencia",
+    "error": "Error",
+    "noLogs": "Sin registros.",
+    "markSeen": "Marcar como visto",
+    "markSeenAll": "Marcar todos como vistos",
+    "ackAll": "Confirmar todos",
+    "reset": "Restablecer",
+    "entries": "entrada(s)"
+  },
+  "rules": {
+    "expert": "Reglas expertas",
+    "simple": "Reglas simples",
+    "create": "Crear regla",
+    "noRules": "Sin reglas configuradas.",
+    "allLibraries": "Todas las bibliotecas",
+    "libraries": "Bibl.",
+    "title": "Reglas",
+    "new": "Nueva regla",
+    "edit": "Editar regla",
+    "type": {
+      "simpleDesc": "Período de gracia personalizado por usuario Seerr y biblioteca.",
+      "expertDesc": "Condiciones avanzadas sobre días sin ver, puntuación, tamaño, tipo de medio…"
+    },
+    "nameLabel": "Nombre de la regla",
+    "namePlaceholder": "Mi regla…",
+    "actionLabel": "Acción",
+    "allLibrariesLabel": "Todas",
+    "selected": "seleccionada(s)",
+    "conditionBlocks": "Bloques de condiciones",
+    "noBlocks": "Sin bloques — haga clic en «Añadir bloque»",
+    "blockLabel": "Bloque {n}",
+    "addCondition": "+ Condición",
+    "noConditions": "Sin condiciones",
+    "addBlock": "+ Añadir bloque",
+    "priority": "Prioridad",
+    "graceDays": "Período de gracia (días)",
+    "active": "Regla activa",
+    "conditions": "condición(es)",
+    "blocks": "bloque(s)",
+    "confirmDelete": "¿Eliminar esta regla definitivamente?",
+    "discordIdPlaceholder": "ej. 123456789012345678",
+    "disable": "Desactivar",
+    "enable": "Activar",
+    "runScan": "Iniciar análisis",
+    "action": {
+      "queue": "Añadir a cola de eliminación",
+      "notifyOnly": "Solo notificar"
+    },
+    "expertSection": {
+      "title": "Reglas expertas",
+      "empty": "Sin reglas expertas.",
+      "migrate": "Migrar desde bibliotecas",
+      "migrating": "Migrando...",
+      "migrateTooltip": "Convertir condiciones de bibliotecas en reglas expertas",
+      "migrateNone": "No hay nuevas reglas que crear (ya migradas).",
+      "migrateSuccess": "{n} regla(s) creada(s) con éxito.",
+      "migrateError": "Error de migración."
+    },
+    "simpleSection": {
+      "title": "Reglas simples (Seerr)",
+      "empty": "Sin reglas simples.",
+      "namePlaceholder": "Ej: Alice — Solo películas",
+      "seerrUser": "Usuario Seerr",
+      "loadingUsers": "Cargando usuarios…",
+      "searchUsers": "Buscar usuario…",
+      "selected": "Seleccionado:",
+      "noUsers": "Sin usuarios Seerr encontrados.",
+      "discordIdOptional": "Discord ID (opcional)"
+    },
+    "recap": {
+      "libraries": "Bibl.:",
+      "noneSelected": "ninguna seleccionada",
+      "allLibraries": "Todas las bibliotecas"
+    }
+  },
+  "queue": {
+    "title": "Cola",
+    "empty": "Sin medios en cola.",
+    "deleteAt": "Eliminación el",
+    "daysLeft": "días restantes",
+    "ignore": "Ignorar",
+    "purgeDeleted": "Purgar eliminados",
+    "neverWatched": "Nunca visto",
+    "deleteNow": "Eliminar ahora",
+    "ignoreTitle": "Ignorar",
+    "ignoreReason": "Razón (opcional)",
+    "reasonPlaceholder": "Razón…",
+    "expiration": "Expiración (días, 0 = permanente)",
+    "confirmDelete": "¿Eliminar este medio del servidor ahora?",
+    "confirmPurge": "¿Purgar todas las entradas eliminadas de la cola?",
+    "purge": "Purgar",
+    "error": {
+      "loadFailed": "No se puede cargar la cola."
+    },
+    "filters": {
+      "all": "Todos",
+      "pending": "Pendiente",
+      "deleted": "Eliminados",
+      "errors": "Errores"
+    },
+    "columns": {
+      "title": "Título",
+      "library": "Biblioteca",
+      "requester": "Solicitante",
+      "lastPlayed": "Última reproducción",
+      "addedAt": "Añadido el",
+      "status": "Estado",
+      "deletion": "Eliminación",
+      "server": "Servidor"
+    }
+  },
+  "ignored": {
+    "count": "ignorado(s)",
+    "empty": "Sin medios ignorados.",
+    "permanent": "Permanente",
+    "requeue": "Volver a la cola",
+    "remove": "Eliminar definitivamente",
+    "confirmRemove": "¿Retirar este medio de la lista de ignorados?",
+    "removeBtn": "Retirar",
+    "error": {
+      "loadFailed": "No se pueden cargar los medios ignorados."
+    },
+    "columns": {
+      "title": "Título",
+      "library": "Biblioteca",
+      "reason": "Razón",
+      "ignoredAt": "Ignorado el",
+      "expires": "Expira"
+    }
+  },
+  "calendar": {
+    "more": "+{n} más",
+    "summary": "eliminación(es) programada(s) este mes",
+    "days": {
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mié",
+      "thu": "Jue",
+      "fri": "Vie",
+      "sat": "Sáb",
+      "sun": "Dom"
+    }
+  },
+  "setup": {
+    "welcome": "Bienvenido a Hygie",
+    "subtitle": "Cree su cuenta de administrador para comenzar.",
+    "creating": "Creando...",
+    "createAccount": "Crear cuenta",
+    "error": "Error al crear la cuenta"
+  },
+  "conditions": {
+    "daysNotWatched": "Días sin ver",
+    "daysNotWatchedShort": "días sin ver",
+    "playCount": "Reproducciones",
+    "rating": "Puntuación",
+    "fileSize": "Tamaño (GB)",
+    "addedDaysAgo": "Añadido hace (días)",
+    "addedDaysAgoShort": "añadido hace (d)",
+    "mediaType": "Tipo de medio",
+    "type": "tipo",
+    "seerrUser": "Usuario Seerr",
+    "seerrUserShort": "usuario Seerr",
+    "showNames": "Mostrar nombres",
+    "showIds": "Mostrar IDs",
+    "selectedCount": "{n} seleccionado(s)",
+    "noUsers": "Sin usuarios Seerr"
+  },
+  "operators": {
+    "in": "en",
+    "notIn": "no en"
+  },
+  "dashboard": {
+    "stats": {
+      "pending": "Pendiente",
+      "total": "total",
+      "totalDeleted": "Eliminaciones totales",
+      "thisMonth": "este mes",
+      "ignored": "Ignorados",
+      "errors": "Errores",
+      "reclaimableSpace": "Espacio recuperable",
+      "moviesInLibrary": "Películas en biblioteca",
+      "seriesInLibrary": "Series en biblioteca",
+      "scansPerformed": "Análisis realizados"
+    },
+    "upcoming": {
+      "title": "5 próximas eliminaciones",
+      "viewAll": "Ver todo",
+      "empty": "Sin eliminación programada"
+    },
+    "diskUsage": {
+      "title": "Espacio en disco"
+    },
+    "error": {
+      "loadFailed": "No se pueden cargar los datos del panel."
+    },
+    "queue": {
+      "added": "Añadido"
+    },
+    "library": {
+      "inLibrary": "En biblioteca",
+      "onDisk": "En disco",
+      "missing": "Faltantes",
+      "monitored": "Monitoreado",
+      "unmonitored": "No monitoreado",
+      "episodesOnDisk": "Episodios en disco",
+      "totalEpisodes": "Episodios totales",
+      "episodesAired": "Episodios emitidos"
+    }
+  }
+}

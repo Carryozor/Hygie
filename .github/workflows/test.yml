@@ -1,0 +1,68 @@
+# .github/workflows/test.yml
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    name: Backend (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check schema consistency
+        run: python3 scripts/check-schema.py
+
+      - name: Run tests with coverage
+        run: |
+          python3 -m pytest -q --tb=short \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-fail-under=50
+
+      - name: Lint (ruff)
+        run: python3 -m ruff check backend/ tests/
+
+  frontend:
+    name: Frontend (Node 22)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/vue/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/vue
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: frontend/vue
+        run: npm run test:unit
+
+      - name: Lint
+        working-directory: frontend/vue
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend/vue
+        run: npm run build

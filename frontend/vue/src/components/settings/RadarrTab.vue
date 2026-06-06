@@ -51,7 +51,7 @@
           <button
             type="button"
             class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white"
-            @click="srv._showKey = !srv._showKey"
+            @click="toggleServerKey(srv, 'radarr_servers')"
           >
             <i :class="['fas', srv._showKey ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
@@ -91,6 +91,16 @@ import { ref, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
+import { isMasked, revealSetting } from '@/composables/useRevealSetting'
+
+async function toggleServerKey(srv, settingsKey) {
+  if (!srv._showKey && isMasked(srv.api_key)) {
+    const all = await revealSetting(settingsKey)
+    const found = Array.isArray(all) ? all.find(s => String(s.id) === String(srv.id)) : null
+    if (found) srv.api_key = found.api_key
+  }
+  srv._showKey = !srv._showKey
+}
 
 const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })

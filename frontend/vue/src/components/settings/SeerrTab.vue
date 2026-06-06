@@ -17,7 +17,7 @@
       <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.apiKey') }}</label>
       <div class="flex gap-2">
         <input v-model="form.seerr_api_key" :type="showKey ? 'text' : 'password'" placeholder="••••••••" class="flex-1 field font-mono" />
-        <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showKey = !showKey">
+        <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="toggleKey">
           <i :class="['fas', showKey ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
         </button>
       </div>
@@ -111,11 +111,19 @@ import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import api from '@/api/client'
+import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 
 const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
 const showKey      = ref(false)
+
+async function toggleKey() {
+  if (!showKey.value && isMasked(props.form.seerr_api_key)) {
+    props.form.seerr_api_key = await revealSetting('seerr_api_key')
+  }
+  showKey.value = !showKey.value
+}
 const users        = ref([])
 const loadingUsers = ref(false)
 const usersError   = ref('')

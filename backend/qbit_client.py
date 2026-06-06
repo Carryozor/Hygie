@@ -28,6 +28,14 @@ _proxy_alert_ts: float = 0.0
 _PROXY_ALERT_COOLDOWN = 3600.0
 
 
+def _extract_sid(cookies) -> Optional[str]:
+    """Return the session cookie regardless of name (SID or QBT_SID_<PORT> in v5+)."""
+    sid = cookies.get("SID")
+    if sid:
+        return sid
+    return next((v for k, v in cookies.items() if k.startswith("QBT_SID")), None)
+
+
 async def _login(client: httpx.AsyncClient, url: str, user: str, password: str) -> bool:
     """Authenticate to qBittorrent and store the SID cookie."""
     global _sid_cookie
@@ -37,10 +45,15 @@ async def _login(client: httpx.AsyncClient, url: str, user: str, password: str) 
             data={"username": user, "password": password},
             headers={"Referer": url},
         )
-        if r.status_code == 200 and r.text.strip() == "Ok.":
-            cookie = r.cookies.get("SID")
+        # qBit v5+ with bypass-auth returns 204 (empty body); older returns 200 "Ok."
+        auth_ok = r.status_code == 204 or (r.status_code == 200 and r.text.strip() == "Ok.")
+        if auth_ok:
+            cookie = _extract_sid(r.cookies)
             if cookie:
                 _sid_cookie = cookie
+                return True
+            # Bypass-auth may return no cookie — treat as authenticated
+            if r.status_code == 204:
                 return True
     except Exception as e:
         logger.warning(f"qbit login: {e}")
@@ -64,7 +77,7 @@ async def _try_url(
         if r.status_code == 403:
             async with _sid_lock:
                 if user and password and await _login(client, url, user, password):
-                    cookies = {"SID": _sid_cookie}
+                    cookies = {"SID": _sid_cookie} if _sid_cookie else {}
                     r = await client.request(method, f"{url}{path}", cookies=cookies, **kwargs)
         return r
     except Exception as e:
@@ -132,14 +145,16 @@ async def _test_url_fresh(client: httpx.AsyncClient, url: str, user: str, passwo
             data={"username": user, "password": password},
             headers={"Referer": url},
         )
-        if r.status_code != 200 or r.text.strip() != "Ok.":
+        # qBit v5+ with bypass-auth returns 204 (empty body); older returns 200 "Ok."
+        auth_ok = r.status_code == 204 or (r.status_code == 200 and r.text.strip() == "Ok.")
+        if not auth_ok:
             return False, "authentification échouée"
-        cookie = r.cookies.get("SID")
-        if not cookie:
-            return False, "session invalide"
-        rv = await client.get(f"{url}/api/v2/app/version", cookies={"SID": cookie})
+        sid = _extract_sid(r.cookies)
+        cookies = {"SID": sid} if sid else {}
+        rv = await client.get(f"{url}/api/v2/app/version", cookies=cookies)
         if rv.status_code == 200:
-            return True, f"v{rv.text.strip()}"
+            version = rv.text.strip().lstrip("v")
+            return True, f"v{version}"
         return False, f"HTTP {rv.status_code}"
     except Exception as e:
         return False, str(e)
@@ -154,9 +169,9 @@ async def test_qui() -> tuple[bool, str]:
     password = await get_setting("qbit_password") or ""
     async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
         ok, detail = await _test_url_fresh(client, proxy_url, user, password)
-        if ok:
-            return True, f"Proxy QUI ✅ {detail}"
-        return False, f"Proxy QUI ❌ ({detail})"
+        if not ok:
+            return False, f"Proxy QUI ❌ ({detail})"
+        return True, f"Proxy QUI ✅ (qBit {detail})"
 
 
 async def test_qbit() -> tuple[bool, str]:

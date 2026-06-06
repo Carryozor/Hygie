@@ -24,7 +24,7 @@
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('common.password') }}</label>
         <div class="flex gap-2">
           <input v-model="form.qbit_password" :type="showPwd ? 'text' : 'password'" class="flex-1 field" />
-          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showPwd = !showPwd">
+          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="togglePwd">
             <i :class="['fas', showPwd ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
         </div>
@@ -85,11 +85,19 @@ import { useI18n } from 'vue-i18n'
 import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
+import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 
 const { t } = useI18n()
 const props   = defineProps({ form: { type: Object, required: true } })
 const showPwd  = ref(false)
 const tagInput = ref(null)
+
+async function togglePwd() {
+  if (!showPwd.value && isMasked(props.form.qbit_password)) {
+    props.form.qbit_password = await revealSetting('qbit_password')
+  }
+  showPwd.value = !showPwd.value
+}
 
 const tagEnabled = computed(() => !!props.form.qbit_tag)
 

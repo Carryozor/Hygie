@@ -361,6 +361,22 @@ async def test_media_server(server_id: str, user: str = Depends(require_auth)):
     return {"ok": ok, "message": message, "server_type": server_type, "error_code": error_code}
 
 
+@router.get("/reveal/{key}")
+async def reveal_setting(key: str, user: str = Depends(require_auth)):
+    """Return the plaintext value of a sensitive setting for display in the UI."""
+    if key not in SENSITIVE_KEYS:
+        raise HTTPException(status_code=403, detail="Clé non révélable")
+    value = await get_setting(key)
+    if not value:
+        return {"value": ""}
+    if key in ("media_servers", "radarr_servers", "sonarr_servers"):
+        try:
+            return {"value": json.loads(value)}
+        except Exception:
+            return {"value": value}
+    return {"value": value}
+
+
 @router.post("/test/{service}")
 async def test_service(service: str, user: str = Depends(require_auth)):
     """Test a service connection."""

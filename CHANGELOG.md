@@ -4,6 +4,51 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.4.3] — 2026-06-09
+
+### Security
+
+- **API keys in query parameters** (`unmonitored.py`, `storage.py`) — Radarr and Sonarr API keys were appended to URLs as `?apikey=…`, making them visible in proxy and server access logs. Replaced with `X-Api-Key` header via the existing `_arr_auth()` helper.
+- **MySQL password exposed in process list** (`backup.py`) — `mysqldump` was called with `--password=<value>`, making the password visible in `ps aux` and `/proc`. Now writes credentials to a `0600` temp file passed via `--defaults-extra-file`, deleted in a `finally` block.
+- **Unauthenticated Prometheus `/metrics` endpoint** (`metrics.py`) — Protected by an optional Bearer token. If `prometheus_bearer_token` is configured in settings the header is required; otherwise the endpoint stays open (backward-compatible).
+- **Dashboard password in query parameter** (`public.py`) — The public dashboard password can now also be supplied via the `X-Dashboard-Password` HTTP header as an alternative to the query param.
+- **Missing `public_dashboard_enabled` default** (`settings_store.py`) — The key was absent from `DEFAULT_SETTINGS`, causing a `KeyError` on fresh installs before the setting was explicitly saved.
+
+### Fixed
+
+- **Emby collection image not refreshing after overlay sync** (`collection.py`) — The collection mosaic was being overwritten by an internet-fetched poster because `ReplaceAllImages=true` was passed to the Refresh endpoint. Fixed by setting `ReplaceAllImages=false` so Emby regenerates the mosaic from the freshly-uploaded overlaid item posters. Added a 1-second pause before the refresh to let Emby commit uploaded images, changed `MetadataRefreshMode` from `None` to `Default`, and added warning-level logging on unexpected HTTP status codes.
+- **Emby item poster upload sending base64 string instead of bytes** (`_emby_scanner.py`) — Poster content was encoded to a base64 ASCII string before uploading. The Emby Images API expects raw binary; fixed by passing `pr.content` (bytes) directly.
+- **qBittorrent `delete_files` action not recognized** (`deletion.py`) — The value `delete_files` was not handled alongside `delete_torrent`, causing the deletion logic to silently do nothing. Both values now trigger the delete path.
+- **Double-delete race condition in `DELETE /media/{id}/delete-now`** (`media.py`) — Two concurrent requests could both pass the `SELECT … WHERE status=pending` check and trigger deletion twice. Fixed with an atomic `UPDATE … SET status='deleting' WHERE status='pending'` using `execute_write()` rowcount check.
+
+### Performance
+
+- **Sequential per-user notification fetches in `seerr_get_users`** — Replaced with `asyncio.gather` + `Semaphore(10)`.
+- **Sequential episode-file fetches in `build_sonarr_path_cache`** — Replaced with `asyncio.gather` + `Semaphore(8)`.
+- **N+1 DB writes in `enrich_seerr` and `regenerate_posters`** — All updates batched into a single `get_db()` context after the loop.
+
+---
+
+## [3.4.2] — 2026-06-06
+
+### Fixed
+
+- **qBittorrent v5+ authentication** (`qbit_client.py`) — qBit v5 with bypass-auth returns HTTP 204 (empty body) instead of `200 "Ok."`. Auth now accepts both; cookie detection extended to `QBT_SID_<PORT>` naming used by v5+.
+- **Double "v" prefix in qBit version string** — Version was displayed as `vv5.2.1`; fixed to `v5.2.1`.
+- **Missing version label on proxy UI test result** — qBit version is now shown in the proxy test feedback.
+- **`_sid_cookie` could be `None` when bypass-auth returns no cookie** — Request was built with `{"SID": None}`; fixed to send an empty cookie dict when no SID is present.
+
+### Added
+
+- **Credential reveal endpoint** (`GET /api/settings/reveal/{key}`) — Returns the decrypted plaintext value of a stored credential for display in the UI.
+- **Eye button in settings tabs** — Radarr, Sonarr, Seerr, and qBittorrent tabs now have a reveal button to display stored credentials (uses `useRevealSetting` composable).
+
+### Refactored
+
+- Extracted `_extract_sid()` helper in `qbit_client.py` for SID / `QBT_SID_*` cookie detection.
+
+---
+
 ## [3.4.1] — 2026-06-03
 
 Fixes for issues identified during the Grok audit (senior engineer + senior architect review).

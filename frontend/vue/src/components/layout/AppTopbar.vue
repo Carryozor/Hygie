@@ -31,17 +31,6 @@
         <option value="pl">🇵🇱 PL</option>
       </select>
 
-      <!-- Soutenir Hygie (beating heart) -->
-      <a
-        href="https://github.com/sponsors/carryozor"
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Soutenir Hygie"
-        class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-pink-500/10 border border-pink-500/30 text-pink-400 hover:bg-pink-500/20 transition-colors"
-      >
-        <i class="fas fa-heart text-[10px] heart-beat" />
-        <span class="hidden sm:inline">{{ t('auth.support') }}</span>
-      </a>
     </div>
   </header>
 </template>

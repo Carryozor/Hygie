@@ -61,8 +61,7 @@
     "setupBtn": "Créer le compte",
     "changePassword": "Changer le mot de passe",
     "currentPassword": "Mot de passe actuel",
-    "newPassword": "Nouveau mot de passe",
-    "support": "Soutenir"
+    "newPassword": "Nouveau mot de passe"
   },
   "sidebar": {
     "dryRun": "Dry Run",

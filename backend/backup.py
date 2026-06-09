@@ -59,7 +59,8 @@ async def _sqlite_backup(backup_dir: str, ts: str) -> str:
 
 def _do_mariadb_backup(host: str, port: int, user: str, password: str, db: str, dst_path: str) -> None:
     """Blocking mysqldump backup (runs in thread pool)."""
-    import tempfile, stat
+    import stat
+    import tempfile
     # Write credentials to a temp file (0600) to avoid password appearing in ps aux / /proc
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cnf", delete=False) as tmp:
         tmp.write(f"[client]\npassword={password}\n")

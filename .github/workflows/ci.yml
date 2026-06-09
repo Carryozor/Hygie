@@ -25,7 +25,8 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        timeout-minutes: 10
+        run: pytest tests/ -v --tb=short --timeout=60
 
   docker:
     name: Build & Push Docker

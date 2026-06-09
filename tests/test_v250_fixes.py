@@ -256,7 +256,7 @@ def test_get_poster_url_fallback_has_no_api_key():
                 )
         return url
 
-    url = asyncio.get_event_loop().run_until_complete(_run())
+    url = asyncio.run(_run())
     assert "SECRETKEY" not in url, f"api_key must not appear in poster URL: {url}"
     assert "api_key" not in url.lower(), f"api_key param must not be in URL: {url}"
     assert url.startswith("/api/proxy/poster/"), f"Expected internal proxy path, got: {url}"

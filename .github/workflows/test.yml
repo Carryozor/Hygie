@@ -28,8 +28,9 @@ jobs:
         run: python3 scripts/check-schema.py
 
       - name: Run tests with coverage
+        timeout-minutes: 10
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -q --tb=short --timeout=60 \
             --cov=backend \
             --cov-report=term-missing \
             --cov-fail-under=50

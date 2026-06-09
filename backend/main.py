@@ -201,10 +201,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"backup job setup: {e}")
 
-    # Pre-warm storage cache in background so first navigation is instant
+    # Pre-warm storage cache in background so first navigation is instant.
+    # Keep a reference so we can cancel it cleanly on shutdown (avoids pending-task
+    # warnings and event-loop teardown hangs in Python 3.12 asyncio).
+    _prewarm_task: asyncio.Task | None = None
     try:
         from .routers.storage import _fetch_storage_data
-        asyncio.create_task(_fetch_storage_data())
+        _prewarm_task = asyncio.create_task(_fetch_storage_data())
     except Exception:
         pass
 
@@ -220,6 +223,12 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if _prewarm_task is not None and not _prewarm_task.done():
+        _prewarm_task.cancel()
+        try:
+            await _prewarm_task
+        except (asyncio.CancelledError, Exception):
+            pass
     try:
         scheduler.shutdown(wait=True)
     except Exception:

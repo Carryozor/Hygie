@@ -8,7 +8,7 @@ from backend.tools.migrate_to_mariadb import read_sqlite_table, validate_sqlite_
 @pytest.fixture
 def sqlite_db(tmp_path):
     db_path = str(tmp_path / "source.db")
-    asyncio.get_event_loop().run_until_complete(_bootstrap_sqlite(db_path))
+    asyncio.run(_bootstrap_sqlite(db_path))
     return db_path
 
 

@@ -61,7 +61,8 @@
     "setupBtn": "Utwórz konto",
     "changePassword": "Zmień hasło",
     "currentPassword": "Aktualne hasło",
-    "newPassword": "Nowe hasło"
+    "newPassword": "Nowe hasło",
+    "support": "Wesprzyj"
   },
   "sidebar": {
     "dryRun": "Próba",

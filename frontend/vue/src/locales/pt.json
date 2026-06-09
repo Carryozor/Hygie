@@ -61,7 +61,8 @@
     "setupBtn": "Criar conta",
     "changePassword": "Alterar palavra-passe",
     "currentPassword": "Palavra-passe atual",
-    "newPassword": "Nova palavra-passe"
+    "newPassword": "Nova palavra-passe",
+    "support": "Apoiar"
   },
   "sidebar": {
     "dryRun": "Simulação",

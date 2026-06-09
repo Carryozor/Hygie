@@ -61,7 +61,8 @@
     "setupBtn": "Account aanmaken",
     "changePassword": "Wachtwoord wijzigen",
     "currentPassword": "Huidig wachtwoord",
-    "newPassword": "Nieuw wachtwoord"
+    "newPassword": "Nieuw wachtwoord",
+    "support": "Steunen"
   },
   "sidebar": {
     "dryRun": "Proefrun",

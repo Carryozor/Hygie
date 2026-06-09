@@ -1,10 +1,13 @@
 """Settings — read/write configuration, test connections."""
 import json
+import logging
 from typing import Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..auth import require_auth
+
+logger = logging.getLogger(__name__)
 from ..db.settings_store import get_all_settings, set_setting, get_setting
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
@@ -53,8 +56,6 @@ class SettingsUpdate(BaseModel):
     discord_alert_error_threshold: Optional[str] = None
     max_parallel_library_scans: Optional[str] = None
     dry_run: Optional[str] = None
-    scan_interval_hours: Optional[str] = None
-    deletion_check_interval_hours: Optional[str] = None
     log_level: Optional[str] = None
     deleted_retention_days: Optional[str] = None
     log_retention_days: Optional[str] = None

@@ -1,27 +1,25 @@
 """Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
+import hmac
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header
-from typing import Optional
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.settings_store import get_setting
 
 router = APIRouter(tags=["metrics"])
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics(authorization: Optional[str] = Header(default=None)):
-    from ..db.settings_store import get_setting
     token = (await get_setting("prometheus_bearer_token") or "").strip()
     if token:
         if not authorization or not authorization.startswith("Bearer "):
-            from fastapi.responses import Response
             return Response(status_code=401)
-        import hmac
         if not hmac.compare_digest(authorization[7:].encode(), token.encode()):
-            from fastapi.responses import Response
             return Response(status_code=403)
     async with get_db() as db:
         row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='pending'")
@@ -50,8 +48,8 @@ async def prometheus_metrics(authorization: Optional[str] = Header(default=None)
         "# HELP hygie_media_pending Media items pending deletion decision",
         "# TYPE hygie_media_pending gauge",
         f"hygie_media_pending {pending}",
-        "# HELP hygie_media_deleted_total Media items deleted (lifetime)",
-        "# TYPE hygie_media_deleted_total counter",
+        "# HELP hygie_media_deleted_total Media items currently in deleted status",
+        "# TYPE hygie_media_deleted_total gauge",
         f"hygie_media_deleted_total {deleted}",
         "# HELP hygie_media_ignored_total Media items in ignore list",
         "# TYPE hygie_media_ignored_total gauge",
@@ -95,4 +93,4 @@ async def api_metrics(user: str = Depends(require_auth)):
 
     return {"by_library": by_library}
 
-from ..db.utils import DB_PATH  # noqa: F401 — test monkeypatching target
+from ..db.utils import DB_PATH  # noqa: F401 — monkeypatching target for tests

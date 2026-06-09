@@ -338,43 +338,47 @@ async def enrich_seerr(
     return {"status": "started"}
 
 
+_REGEN_BATCH = 100  # max items processed per DB write to bound memory usage
+
+
 @router.post("/regenerate-posters")
 async def regenerate_posters(
     background_tasks: BackgroundTasks, user: str = Depends(require_auth)
 ):
-    """Regenerate poster URLs for all queue items (using Radarr/Sonarr TMDB)."""
+    """Regenerate poster URLs for pending queue items (Radarr/Sonarr TMDB), in batches."""
     async def _regen():
         async with get_db() as db:
             rows = await db.fetch_all(
-                "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id FROM media_queue"
+                "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id "
+                "FROM media_queue WHERE status='pending'"
             )
 
+        total = len(rows)
         updated = 0
-        poster_updates: list = []
-        for row in rows:
-            new_url = await _get_poster_url(
-                row["emby_id"],
-                tmdb_id=row.get("tmdb_id") or "",
-                media_type=row.get("media_type") or "Movie",
-                radarr_id=row.get("radarr_id"),
-                sonarr_id=row.get("sonarr_id"),
-            )
-            if new_url:
-                poster_updates.append((new_url, row["id"]))
-                updated += 1
+        for batch_start in range(0, total, _REGEN_BATCH):
+            batch = rows[batch_start : batch_start + _REGEN_BATCH]
+            poster_updates: list = []
+            for row in batch:
+                new_url = await _get_poster_url(
+                    row["emby_id"],
+                    tmdb_id=row.get("tmdb_id") or "",
+                    media_type=row.get("media_type") or "Movie",
+                    radarr_id=row.get("radarr_id"),
+                    sonarr_id=row.get("sonarr_id"),
+                )
+                if new_url:
+                    poster_updates.append((new_url, row["id"]))
+                    updated += 1
+            if poster_updates:
+                async with get_db() as db:
+                    for new_url, row_id in poster_updates:
+                        await db.execute(
+                            "UPDATE media_queue SET poster_url=? WHERE id=?",
+                            (new_url, row_id),
+                        )
+                    await db.commit()
 
-        if poster_updates:
-            async with get_db() as db:
-                for new_url, row_id in poster_updates:
-                    await db.execute(
-                        "UPDATE media_queue SET poster_url=? WHERE id=?",
-                        (new_url, row_id),
-                    )
-                await db.commit()
-
-        await add_log(
-            "INFO", f"Affiches régénérées : {updated}/{len(rows)}", "system"
-        )
+        await add_log("INFO", f"Affiches régénérées : {updated}/{total}", "system")
 
     background_tasks.add_task(_regen)
     return {"status": "started"}

@@ -2,6 +2,7 @@
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi.responses import JSONResponse
 
 from ..auth import require_auth
 from .._scheduler_instance import scheduler
@@ -43,8 +44,7 @@ async def scheduler_run(
     background_tasks: BackgroundTasks,
     user: str = Depends(require_auth),
 ):
-    """Trigger a job manually."""
-    from fastapi.responses import JSONResponse
+    """Trigger a job manually. Returns 409 if the job is already running."""
     job_map = {
         "scan": run_scan,
         "deletion": run_deletion,
@@ -54,6 +54,10 @@ async def scheduler_run(
     fn = job_map.get(job_id)
     if not fn:
         return JSONResponse({"error": "Unknown job"}, status_code=404)
+    if job_id == "scan" and is_scan_running():
+        return JSONResponse({"error": "Scan already running"}, status_code=409)
+    if job_id == "deletion" and is_deletion_running():
+        return JSONResponse({"error": "Deletion already running"}, status_code=409)
     background_tasks.add_task(fn)
     return {"status": "started"}
 
@@ -63,6 +67,8 @@ async def scan_trigger(
     background_tasks: BackgroundTasks,
     user: str = Depends(require_auth),
 ):
+    if is_scan_running():
+        return JSONResponse({"error": "Scan already running"}, status_code=409)
     background_tasks.add_task(run_scan)
     return {"status": "started"}
 
@@ -72,6 +78,8 @@ async def deletion_trigger(
     background_tasks: BackgroundTasks,
     user: str = Depends(require_auth),
 ):
+    if is_deletion_running():
+        return JSONResponse({"error": "Deletion already running"}, status_code=409)
     background_tasks.add_task(run_deletion)
     return {"status": "started"}
 
@@ -82,6 +90,8 @@ async def scan_library_trigger(
     background_tasks: BackgroundTasks,
     user: str = Depends(require_auth),
 ):
+    if is_scan_running():
+        return JSONResponse({"error": "Scan already running"}, status_code=409)
     background_tasks.add_task(run_scan_library, library_id)
     return {"status": "started"}
 

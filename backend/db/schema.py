@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import aiosqlite
 
 from .utils import DB_PATH
-from .encryption import _migrate_encrypt_settings, _decrypt_value, _encrypt_value
+from .encryption import _migrate_encrypt_settings
 from .settings_store import DEFAULT_SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -469,90 +469,9 @@ async def _init_db_sqlite():
         # 6. Encrypt any plaintext sensitive settings (no-op if key not configured)
         from .engine import DbConn as _DbConn
         await _migrate_encrypt_settings(_DbConn(db, "sqlite"))
-        db.row_factory = None  # DbConn.fetch_all() sets row_factory on the raw connection; reset it
-        # so subsequent raw aiosqlite queries in this function get tuples as expected.
+        db.row_factory = None
 
-        # 7. Migrate legacy emby_url/key to media_servers[0] (idempotent)
-        async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
-            ms_row = await cur.fetchone()
-        current_ms_raw = ms_row[0] if ms_row else "[]"
-        current_ms = _decrypt_value(current_ms_raw) if current_ms_raw else "[]"
-        if current_ms in ("[]", "", None, "null"):
-            async with db.execute("SELECT value FROM settings WHERE key='emby_url'") as cur:
-                url_row = await cur.fetchone()
-            emby_url = url_row[0] if url_row else ""
-            if emby_url and not emby_url.startswith("enc:"):
-                # Use _decrypt_value so encrypted keys are read as plaintext
-                async with db.execute("SELECT value FROM settings WHERE key='emby_api_key'") as cur:
-                    key_row = await cur.fetchone()
-                async with db.execute("SELECT value FROM settings WHERE key='emby_external_url'") as cur:
-                    ext_row = await cur.fetchone()
-                async with db.execute("SELECT value FROM settings WHERE key='media_server_type'") as cur:
-                    type_row = await cur.fetchone()
-                raw_key = (key_row[0] if key_row else "") or ""
-                raw_ext = (ext_row[0] if ext_row else "") or ""
-                server0 = {
-                    "id": "0", "name": "Serveur Principal",
-                    "url": emby_url,
-                    "api_key": _decrypt_value(raw_key),   # decrypt if stored encrypted
-                    "ext_url": _decrypt_value(raw_ext),
-                    "type": (type_row[0] if type_row else "") or "",
-                    "enabled": True,
-                }
-                # Encrypt immediately so API keys never rest in plaintext in DB
-                await db.execute(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                    ("media_servers", _encrypt_value(json.dumps([server0])))
-                )
-                await db.commit()
-
-        # 7b. v2 → v3 data migration (idempotent, runs once)
-        await _migrate_v2_to_v3(db)
-
-        # 7c. Libraries → expert rules migration (idempotent)
-        n = await _migrate_libraries_to_expert_rules(db)
-        if n:
-            logger.info(f"Migration automatique : {n} règle(s) experte(s) créée(s) depuis les bibliothèques")
-
-        # 8. Migrate interval settings: hours → minutes — runs once, then deletes the old key.
-        # The old condition `existing[0] == "60"` was a bug: it matched the default value and
-        # overwrote a user-set "60" (1h) with hours*60 on every restart.
-        async with db.execute("SELECT value FROM settings WHERE key='scan_interval_hours'") as cur:
-            row = await cur.fetchone()
-        if row and row[0] and row[0].strip().isdigit():
-            async with db.execute("SELECT value FROM settings WHERE key='scan_interval_minutes'") as cur2:
-                existing = await cur2.fetchone()
-            if not existing:
-                await db.execute(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                    ("scan_interval_minutes", str(int(row[0]) * 60))
-                )
-            await db.execute("DELETE FROM settings WHERE key='scan_interval_hours'")
-        async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_hours'") as cur:
-            row = await cur.fetchone()
-        if row and row[0] and row[0].strip().isdigit():
-            async with db.execute("SELECT value FROM settings WHERE key='deletion_check_interval_minutes'") as cur2:
-                existing = await cur2.fetchone()
-            if not existing:
-                await db.execute(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                    ("deletion_check_interval_minutes", str(int(row[0]) * 60))
-                )
-            await db.execute("DELETE FROM settings WHERE key='deletion_check_interval_hours'")
-        await db.commit()
-
-        # 9a. One-time: purge per-item "Ignoré (non demandé sur Seerr)" log spam
-        #     These were logged at INFO before being moved to DEBUG.
-        async with db.execute(
-            "DELETE FROM logs WHERE message LIKE 'Ignoré (non demandé sur Seerr)%'"
-            " OR message LIKE 'Ignoré (utilisateur Seerr%'"
-        ) as cur:
-            purged = cur.rowcount
-        if purged:
-            logger.info(f"Purged {purged} verbose per-item scan log entries")
-            await db.commit()
-
-        # 9. Mark orphaned job_history entries (process killed mid-job) as interrupted
+        # 7. Mark orphaned job_history entries (process killed mid-job) as interrupted
         ts_now = datetime.now(timezone.utc).isoformat()
         async with db.execute(
             "UPDATE job_history SET finished_at=?, status='interrupted', message='Interrompu (redémarrage)' "
@@ -600,133 +519,6 @@ def _build_expert_conditions(old_conds: list, seerr_conds: list) -> list:
     return new_conds
 
 
-async def _migrate_libraries_to_expert_rules(db) -> int:
-    """Convert library conditions → expert_rules rows (raw aiosqlite connection).
-
-    Idempotent: skips rules where (name, library_id) already exists.
-    Field mapping:
-      days_since_added  → added_days_ago
-      days_not_watched  → days_not_watched
-      play_count        → play_count
-      never_watched=1   → play_count eq 0
-      never_watched=0   → play_count gte 1
-    seerr_conditions:
-      user_include ids  → seerr_user_id in [ids]
-      user_exclude ids  → seerr_user_id not_in [ids]
-    """
-    if not await _table_exists(db, "libraries") or not await _table_exists(db, "expert_rules"):
-        return 0
-
-    # Guard: skip if v3 migration already done
-    async with db.execute("SELECT value FROM settings WHERE key='v3_migration_done'") as cur:
-        if await cur.fetchone():
-            return 0
-
-    _orig_factory = db.row_factory
-    db.row_factory = lambda cur, row: {col[0]: row[i] for i, col in enumerate(cur.description)}
-    try:
-        async with db.execute("SELECT id, name, conditions, logic, seerr_conditions, enabled FROM libraries") as cur:
-            rows = await cur.fetchall()
-    finally:
-        db.row_factory = _orig_factory  # restore BEFORE any further queries
-
-    if not rows:
-        return 0
-
-    created = 0
-    ts = datetime.now(timezone.utc).isoformat()
-    for row in rows:
-        lib_id    = row["id"]
-        name      = row["name"]
-        conds_raw = row["conditions"] or "[]"
-        logic     = row["logic"] or "AND"
-        seerr_raw = row["seerr_conditions"] or "[]"
-        enabled   = row["enabled"]
-
-        try:
-            old_conds   = json.loads(conds_raw)
-            seerr_conds = json.loads(seerr_raw)
-        except Exception:
-            continue
-
-        if not old_conds:
-            continue
-
-        new_conds = _build_expert_conditions(old_conds, seerr_conds)
-        if not new_conds:
-            continue
-
-        rule_name = f"{name} (migré)"
-        async with db.execute(
-            "SELECT id FROM expert_rules WHERE name=? AND CAST(library_id AS TEXT)=CAST(? AS TEXT)",
-            (rule_name, lib_id),
-        ) as cur2:
-            if await cur2.fetchone():
-                continue
-
-        await db.execute(
-            "INSERT INTO expert_rules (name, library_id, conditions, operator, action, enabled, priority, created_at) "
-            "VALUES (?, ?, ?, ?, 'queue', ?, 0, ?)",
-            (rule_name, lib_id, json.dumps(new_conds), logic, int(enabled), ts),
-        )
-        created += 1
-        logger.info(f"Migration: bibliothèque → règle experte : {rule_name} ({len(new_conds)} conditions)")
-
-    if created:
-        await db.commit()
-    return created
-
-
-async def _migrate_v2_to_v3(db) -> None:
-    """One-time data migrations when upgrading from v2.x to v3.x.
-
-    Idempotent — safe to call on every startup; each step is guarded.
-    """
-    # Guard: skip if already migrated
-    async with db.execute("SELECT value FROM settings WHERE key='v3_migration_done'") as cur:
-        if await cur.fetchone():
-            return
-
-    logger.info("Running v2 → v3 data migration…")
-
-    # 1. Backfill server_id='0' on libraries that predate multi-server support.
-    if await _table_exists(db, "libraries"):
-        cols = await _table_columns(db, "libraries")
-        if "server_id" in cols:
-            async with db.execute(
-                "UPDATE libraries SET server_id='0' WHERE server_id IS NULL OR server_id=''"
-            ) as cur:
-                if cur.rowcount:
-                    logger.info(f"v2→v3: backfilled server_id='0' on {cur.rowcount} library row(s)")
-
-    # 2. Backfill deletion_unit='episode' on libraries missing it.
-    if await _table_exists(db, "libraries"):
-        cols = await _table_columns(db, "libraries")
-        if "deletion_unit" in cols:
-            async with db.execute(
-                "UPDATE libraries SET deletion_unit='episode' WHERE deletion_unit IS NULL OR deletion_unit=''"
-            ) as cur:
-                if cur.rowcount:
-                    logger.info(f"v2→v3: backfilled deletion_unit on {cur.rowcount} library row(s)")
-
-    # 3. Remove standalone emby_url / emby_api_key / emby_external_url settings once
-    #    media_servers has been populated (step 7 above does the conversion).
-    async with db.execute("SELECT value FROM settings WHERE key='media_servers'") as cur:
-        ms_row = await cur.fetchone()
-    if ms_row and ms_row[0] not in (None, "", "[]", "null"):
-        for old_key in ("emby_url", "emby_api_key", "emby_external_url", "media_server_type"):
-            async with db.execute("DELETE FROM settings WHERE key=?", (old_key,)) as cur:
-                if cur.rowcount:
-                    logger.info(f"v2→v3: removed legacy setting '{old_key}'")
-
-    # Mark migration complete
-    await db.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('v3_migration_done', '1')"
-    )
-    await db.commit()
-    logger.info("v2 → v3 migration complete")
-
-
 async def _init_db_mariadb() -> None:
     """MariaDB schema init: create tables + indexes + seed defaults."""
     from .engine import get_db
@@ -742,17 +534,15 @@ async def _init_db_mariadb() -> None:
                 await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", (k, v))
         await db.commit()
 
-    n = await _migrate_libraries_to_expert_rules_dbconn()
-    if n:
-        logger.info(f"Migration MariaDB : {n} règle(s) experte(s) créée(s) depuis les bibliothèques")
     logger.info("MariaDB schema initialized")
 
 
 async def _migrate_libraries_to_expert_rules_dbconn() -> int:
-    """DbConn-compatible variant of the libraries → expert_rules migration.
+    """On-demand library → expert_rules migration via the DbConn API.
 
-    Used by the MariaDB path. The SQLite path uses the raw-connection variant
-    above since it runs before the DbConn pool is available.
+    Callable from the /api/expert-rules/migrate-from-libraries endpoint.
+    The startup migration is handled by m011 in migrations.py.
+    Idempotent: guarded by the v3_migration_done settings key.
     """
     from .engine import get_db
     try:

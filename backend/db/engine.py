@@ -4,9 +4,18 @@ Set DATABASE_URL=mysql+aiomysql://user:pass@host:3306/hygie to use MariaDB.
 Leave unset (or empty) to use SQLite at DB_PATH.
 """
 import os
+import re
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
+
+# Matches SQL string literals (single or double-quoted) OR a bare ? placeholder.
+# Group 1 captures the ? only when it is a real parameter (outside any literal).
+_Q_RE = re.compile(
+    r"'(?:[^'\\]|\\.)*'"   # single-quoted literal — consume whole string
+    r'|"(?:[^"\\]|\\.)*"'  # double-quoted literal — consume whole string
+    r"|(\?)"               # group 1: bare ? parameter placeholder
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,13 +100,13 @@ class DbConn:
     def _q(self, sql: str) -> str:
         """Translate ? placeholders to %s for MariaDB.
 
-        Limitation: replaces ALL occurrences of '?' in the SQL string, including
-        any that appear inside string literals. Avoid embedding literal '?' characters
-        in SQL values — always bind them as parameters instead.
+        Uses a regex that skips single- and double-quoted string literals so that
+        a literal '?' inside a LIKE pattern or JSON value is left untouched.
+        Only bare ? tokens that are actual parameter placeholders are replaced.
         """
-        if self._dialect == "mariadb":
-            return sql.replace("?", "%s")
-        return sql
+        if self._dialect != "mariadb":
+            return sql
+        return _Q_RE.sub(lambda m: "%s" if m.group(1) else m.group(0), sql)
 
     async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:
         if self._dialect == "sqlite":
@@ -151,9 +160,8 @@ class DbConn:
     async def table_columns(self, table: str) -> set[str]:
         """Return column names for a table (dialect-aware)."""
         if self._dialect == "sqlite":
-            async with self._raw.execute(f"PRAGMA table_info({table})") as cur:
-                rows = await cur.fetchall()
-            return {r[1] for r in rows}
+            rows = await self.fetch_all(f"PRAGMA table_info({table})")
+            return {r["name"] for r in rows}
         else:
             rows = await self.fetch_all(
                 "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "

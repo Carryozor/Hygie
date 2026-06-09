@@ -1,6 +1,7 @@
 """Image proxy endpoint with SSRF-protection whitelist."""
 import asyncio
 import logging
+import re
 import time
 from urllib.parse import urlparse
 
@@ -15,6 +16,9 @@ from .db.utils import sanitize_url
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Emby/Jellyfin item IDs are hex strings (32 chars) or short alphanumeric IDs
+_ITEM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 # ─── Image proxy whitelist cache (TTL: 5 min) ────────────────────────────────
@@ -127,4 +131,59 @@ async def proxy_image(request: Request):
                     )
     except Exception as e:
         logger.error(f"Proxy error: {e}")
+    return Response(status_code=404)
+
+
+# ─── Poster proxy — serves Emby item images without exposing the API key ──────
+@router.get("/api/proxy/poster/{server_id}/{item_id}")
+async def proxy_poster(server_id: str, item_id: str):
+    """Serve an Emby/Jellyfin item poster image.
+
+    The API key never appears in the client-facing URL: it is retrieved server-side
+    from the encrypted settings store and injected into the upstream request.
+    No auth required — img src elements cannot send Bearer tokens.
+    """
+    if not _ITEM_ID_RE.match(item_id):
+        return Response(status_code=400)
+
+    from .db.media_servers import get_media_servers
+    servers = await get_media_servers()
+    srv = next((s for s in servers if str(s.get("id")) == server_id), None)
+    if not srv:
+        return Response(status_code=404)
+
+    url = (srv.get("url") or "").rstrip("/")
+    key = srv.get("api_key") or ""
+    if not url or not key:
+        return Response(status_code=404)
+
+    target = f"{url}/Items/{item_id}/Images/Primary?maxHeight=300"
+    headers: dict = {}
+    if key:
+        headers["X-Emby-Authorization"] = (
+            f'MediaBrowser Token="{key}", Client="Hygie", Device="Proxy"'
+        )
+
+    _PROXY_MAX_BYTES = 10 * 1024 * 1024
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            async with client.stream("GET", target, headers=headers) as r:
+                if r.status_code == 200:
+                    ct = r.headers.get("content-type", "image/jpeg")
+                    if not ct.startswith("image/"):
+                        return Response(status_code=415)
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in r.aiter_bytes(65536):
+                        total += len(chunk)
+                        if total > _PROXY_MAX_BYTES:
+                            return Response(status_code=413)
+                        chunks.append(chunk)
+                    return Response(
+                        content=b"".join(chunks),
+                        media_type=ct,
+                        headers={"Cache-Control": "public, max-age=3600"},
+                    )
+    except Exception as e:
+        logger.error("proxy_poster error: %s", e)
     return Response(status_code=404)

@@ -169,7 +169,7 @@ async def get_libraries(server_id: str = "0") -> List[dict]:
         return []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
-            r = await client.get(f"{url}/Library/MediaFolders", headers=_auth(key))
+            r = await http_retry(lambda: client.get(f"{url}/Library/MediaFolders", headers=_auth(key)))
             if r.status_code == 200:
                 return r.json().get("Items", [])
     except Exception as e:
@@ -184,7 +184,9 @@ async def get_users(server_id: str = "0") -> List[dict]:
     breaker = _emby_breaker(server_id)
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
-            r = await breaker.call(lambda: client.get(f"{url}/Users", headers=_auth(key)))
+            r = await breaker.call(
+                lambda: http_retry(lambda: client.get(f"{url}/Users", headers=_auth(key)))
+            )
             if r.status_code == 200:
                 return r.json()
     except CircuitOpenError:

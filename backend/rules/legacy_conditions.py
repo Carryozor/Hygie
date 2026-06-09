@@ -219,10 +219,11 @@ async def _get_poster_url(
         logger.debug(f"_get_poster_url arr lookup: {e}")
 
     try:
-        emby_url, emby_key = await get_client(server_id)
-        if emby_url and emby_key and emby_id:
-            target = f"{emby_url}/Items/{emby_id}/Images/Primary?api_key={emby_key}&maxHeight=300"
-            return f"/api/proxy/image?url={urllib.parse.quote(target, safe='')}"
+        emby_url, _ = await get_client(server_id)
+        if emby_url and emby_id:
+            # Use the poster proxy endpoint: API key stays server-side,
+            # never appears in client-facing URLs or browser history.
+            return f"/api/proxy/poster/{server_id}/{emby_id}"
     except Exception:
         pass
 

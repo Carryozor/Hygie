@@ -242,6 +242,31 @@ async def _scan_single_server(
     return added
 
 
+async def _build_shared_caches() -> tuple[dict, dict, dict]:
+    """Build Seerr/Radarr/Sonarr caches once for a full scan run.
+
+    Returns (seerr_cache, radarr_cache, sonarr_cache). On Seerr failure the
+    seerr_cache is empty and a WARN log + optional Discord alert is sent.
+    Radarr/Sonarr failures propagate as exceptions to the caller.
+    """
+    seerr_cache: dict = {}
+    try:
+        seerr_cache = await build_seerr_request_cache()
+    except ArrClientError as _seerr_err:
+        await add_log("WARN", lm("scan.seerr_unreachable", detail=_seerr_err), "scan")
+        if await get_bool_setting("discord_alert_seerr_failure"):
+            _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
+            _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
+            await send_alert(
+                "🔌 Seerr inaccessible", str(_seerr_err), "warning",
+                mention=_mention, custom_msg=_msg,
+                template_vars={"detail": str(_seerr_err)},
+            )
+    radarr_cache = await build_radarr_path_cache()
+    sonarr_cache = await build_sonarr_path_cache()
+    return seerr_cache, radarr_cache, sonarr_cache
+
+
 async def _run_scan_body(run_id: int) -> tuple[str, str]:
     """Inner scan logic — separated so run_scan() can wrap it with a timeout."""
     await add_log("INFO", lm("scan.started"), "job")
@@ -252,23 +277,7 @@ async def _run_scan_body(run_id: int) -> tuple[str, str]:
         if not enabled_servers:
             enabled_servers = [{"id": "0", "type": await get_setting("media_server_type") or "emby"}]
 
-        # Build global caches once — Seerr, Radarr, Sonarr are not per-server
-        seerr_cache: dict = {}
-        try:
-            seerr_cache = await build_seerr_request_cache()
-        except ArrClientError as _seerr_err:
-            await add_log("WARN", lm("scan.seerr_unreachable", detail=_seerr_err), "scan")
-            if await get_bool_setting("discord_alert_seerr_failure"):
-                _mention = await get_setting("discord_alert_seerr_failure_mention") or ""
-                _msg     = await get_setting("discord_alert_seerr_failure_msg") or ""
-                await send_alert(
-                    "🔌 Seerr inaccessible", str(_seerr_err), "warning",
-                    mention=_mention, custom_msg=_msg,
-                    template_vars={"detail": str(_seerr_err)},
-                )
-
-        radarr_cache = await build_radarr_path_cache()
-        sonarr_cache = await build_sonarr_path_cache()
+        seerr_cache, radarr_cache, sonarr_cache = await _build_shared_caches()
 
         for server in enabled_servers:
             added += await _scan_single_server(
@@ -362,17 +371,8 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
         return
 
     async with _scan_lock:
-        # Build shared caches once — valid for the entire multi-library scan
-        seerr_cache: dict = {}
         try:
-            seerr_cache = await build_seerr_request_cache()
-        except ArrClientError as _seerr_err:
-            await add_log("WARN", f"Seerr inaccessible : {_seerr_err}", "scan")
-
-        radarr_cache = await build_radarr_path_cache()
-        sonarr_cache = await build_sonarr_path_cache()
-
-        try:
+            seerr_cache, radarr_cache, sonarr_cache = await _build_shared_caches()
             for library_id in library_ids:
                 run_id    = await add_job_run("scan_library")
                 ctx_token = set_job_context(run_id)
@@ -391,7 +391,10 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
                 finally:
                     _current_job_id.reset(ctx_token)
                     await finish_job_run(run_id, status, msg)
+        except Exception as e:
+            logger.exception("run_scan_libraries: cache build failed")
+            await add_log("ERROR", lm("scan.error", detail=e), "scan")
         finally:
-            # Always run post-scan operations, even if the loop fails mid-way
+            # Always run post-scan operations, even if caches or a library fail
             await sync_emby_collection()
             await _send_pending_notifications()

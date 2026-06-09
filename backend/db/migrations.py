@@ -266,6 +266,250 @@ async def _m008_add_job_id_to_logs():
             await db.commit()
 
 
+async def _m009_migrate_legacy_emby_to_media_servers():
+    """Promote standalone emby_url/emby_api_key settings to media_servers[0].
+
+    Pre-v3 databases stored a single Emby connection as flat settings keys.
+    This migration packs them into the media_servers JSON array so the multi-
+    server code path can handle them uniformly.
+
+    Idempotent: no-op when media_servers is already populated or emby_url is absent.
+    """
+    import json
+    from .encryption import _decrypt_value, _encrypt_value
+
+    async with get_db() as db:
+        ms_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+    raw = (ms_row or {}).get("value", "[]") or "[]"
+    current_ms = _decrypt_value(raw) if raw else "[]"
+    if current_ms not in ("[]", "", None, "null"):
+        return  # already populated
+
+    async with get_db() as db:
+        url_row = await db.fetch_one("SELECT value FROM settings WHERE key='emby_url'")
+    if not url_row or not url_row.get("value"):
+        return  # nothing to migrate
+
+    emby_url = url_row["value"]
+    if emby_url.startswith("enc:"):
+        return  # url stored encrypted — skip (media_servers already populated earlier)
+
+    async with get_db() as db:
+        key_row  = await db.fetch_one("SELECT value FROM settings WHERE key='emby_api_key'")
+        ext_row  = await db.fetch_one("SELECT value FROM settings WHERE key='emby_external_url'")
+        type_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_server_type'")
+
+    raw_key = (key_row or {}).get("value", "") or ""
+    raw_ext = (ext_row or {}).get("value", "") or ""
+    server0 = {
+        "id": "0", "name": "Serveur Principal",
+        "url": emby_url,
+        "api_key": _decrypt_value(raw_key),
+        "ext_url": _decrypt_value(raw_ext),
+        "type": (type_row or {}).get("value", "") or "",
+        "enabled": True,
+    }
+    async with get_db() as db:
+        if DIALECT == "mariadb":
+            await db.execute(
+                "REPLACE INTO settings (`key`, value) VALUES (?, ?)",
+                ("media_servers", _encrypt_value(json.dumps([server0])))
+            )
+        else:
+            await db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                ("media_servers", _encrypt_value(json.dumps([server0])))
+            )
+        await db.commit()
+    logger.info("m009: migrated legacy emby settings to media_servers[0]")
+
+
+async def _m010_v2_to_v3_data():
+    """Backfill server_id and deletion_unit on libraries from pre-v3 databases.
+
+    Also removes the standalone emby_url/emby_api_key/emby_external_url keys once
+    media_servers has been populated.
+
+    Idempotent: the schema_migrations table ensures this runs only once.
+    NOTE: does NOT write v3_migration_done — that is m011's responsibility so
+    that m011 can still run on a fresh v2 database after m010 completes.
+    """
+    async with get_db() as db:
+        if await db.table_exists("libraries"):
+            cols = await db.table_columns("libraries")
+            if "server_id" in cols:
+                n = await db.execute_write(
+                    "UPDATE libraries SET server_id='0' WHERE server_id IS NULL OR server_id=''"
+                )
+                if n:
+                    logger.info("m010: backfilled server_id='0' on %d library row(s)", n)
+            if "deletion_unit" in cols:
+                n = await db.execute_write(
+                    "UPDATE libraries SET deletion_unit='episode' WHERE deletion_unit IS NULL OR deletion_unit=''"
+                )
+                if n:
+                    logger.info("m010: backfilled deletion_unit on %d library row(s)", n)
+
+        ms_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+        if ms_row and ms_row.get("value") not in (None, "", "[]", "null"):
+            for old_key in ("emby_url", "emby_api_key", "emby_external_url", "media_server_type"):
+                n = await db.execute_write("DELETE FROM settings WHERE key=?", (old_key,))
+                if n:
+                    logger.info("m010: removed legacy setting '%s'", old_key)
+
+        await db.commit()
+    logger.info("m010: v2→v3 data migration complete")
+
+
+async def _m011_libraries_to_expert_rules():
+    """Convert library conditions into expert_rules rows for fresh v2→v3 upgrades.
+
+    Skipped on databases that already went through the v3 migration (guarded by
+    v3_migration_done).  This covers all existing v3.x databases where library
+    conditions were never converted — users manage their rules directly in v3.
+
+    For a true v2 database being upgraded for the first time, m010 runs first
+    (backfills structural fields) WITHOUT setting v3_migration_done, so this
+    migration can still run and promote the legacy conditions to expert_rules.
+    This migration then sets v3_migration_done to mark the database as fully v3.
+    """
+    import json as _json
+
+    async with get_db() as db:
+        # Existing v3 databases already have v3_migration_done — skip to avoid
+        # creating unwanted "(migré)" rules that the user never configured.
+        done = await db.fetch_one("SELECT value FROM settings WHERE key='v3_migration_done'")
+        if done:
+            return
+
+        if not await db.table_exists("libraries") or not await db.table_exists("expert_rules"):
+            # Still mark as done so we don't retry on every fresh-install startup
+            if DIALECT == "mariadb":
+                await db.execute(
+                    "INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)", ("v3_migration_done", "1")
+                )
+            else:
+                await db.execute(
+                    "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("v3_migration_done", "1")
+                )
+            await db.commit()
+            return
+
+        rows = await db.fetch_all(
+            "SELECT id, name, conditions, logic, seerr_conditions, enabled FROM libraries"
+        )
+
+    if not rows:
+        return
+
+    from .schema import _build_expert_conditions
+    from datetime import datetime, timezone
+    _cast = "CHAR" if DIALECT == "mariadb" else "TEXT"
+    ts = datetime.now(timezone.utc).isoformat()
+    created = 0
+
+    for row in rows:
+        lib_id    = row["id"]
+        name      = row["name"]
+        old_conds = []
+        seerr_conds = []
+        try:
+            old_conds   = _json.loads(row.get("conditions") or "[]")
+            seerr_conds = _json.loads(row.get("seerr_conditions") or "[]")
+        except Exception:
+            continue
+
+        if not old_conds:
+            continue
+
+        new_conds = _build_expert_conditions(old_conds, seerr_conds)
+        if not new_conds:
+            continue
+
+        rule_name = f"{name} (migré)"
+        async with get_db() as db:
+            existing = await db.fetch_one(
+                f"SELECT id FROM expert_rules WHERE name=?"
+                f" AND CAST(library_id AS {_cast})=CAST(? AS {_cast})",
+                (rule_name, lib_id),
+            )
+            if existing:
+                continue
+            await db.execute(
+                "INSERT INTO expert_rules "
+                "(name, library_id, conditions, operator, action, enabled, priority, created_at) "
+                "VALUES (?, ?, ?, ?, 'queue', ?, 0, ?)",
+                (rule_name, lib_id, _json.dumps(new_conds), row.get("logic") or "AND",
+                 int(row.get("enabled", 1)), ts),
+            )
+            await db.commit()
+        created += 1
+        logger.info("m011: bibliothèque → règle experte : %s (%d conditions)", rule_name, len(new_conds))
+
+    if created:
+        logger.info("m011: %d expert rule(s) created from libraries", created)
+
+    # Mark v3 migration complete — prevents re-running on subsequent startups
+    async with get_db() as db:
+        if DIALECT == "mariadb":
+            await db.execute(
+                "INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)", ("v3_migration_done", "1")
+            )
+        else:
+            await db.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("v3_migration_done", "1")
+            )
+        await db.commit()
+
+
+async def _m012_interval_hours_to_minutes():
+    """Convert legacy scan_interval_hours / deletion_check_interval_hours to minutes.
+
+    Pre-v3.4 stored intervals in hours.  The scheduler now uses minutes.
+    Idempotent: each key is deleted after conversion so re-running is safe.
+    """
+    async with get_db() as db:
+        for hours_key, minutes_key in [
+            ("scan_interval_hours", "scan_interval_minutes"),
+            ("deletion_check_interval_hours", "deletion_check_interval_minutes"),
+        ]:
+            row = await db.fetch_one("SELECT value FROM settings WHERE key=?", (hours_key,))
+            if not row or not (row.get("value") or "").strip().isdigit():
+                continue
+            existing = await db.fetch_one("SELECT value FROM settings WHERE key=?", (minutes_key,))
+            if not existing:
+                if DIALECT == "mariadb":
+                    await db.execute(
+                        "REPLACE INTO settings (`key`, value) VALUES (?, ?)",
+                        (minutes_key, str(int(row["value"]) * 60))
+                    )
+                else:
+                    await db.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        (minutes_key, str(int(row["value"]) * 60))
+                    )
+                logger.info("m012: converted %s → %s (%s→%s min)",
+                            hours_key, minutes_key, row["value"], int(row["value"]) * 60)
+            await db.execute("DELETE FROM settings WHERE key=?", (hours_key,))
+        await db.commit()
+
+
+async def _m013_purge_verbose_scan_logs():
+    """Remove per-item 'Ignoré (non demandé sur Seerr)' log entries.
+
+    These were logged at INFO before being moved to DEBUG in v3.4.x,
+    causing log table bloat on busy instances.  One-time cleanup.
+    """
+    async with get_db() as db:
+        n = await db.execute_write(
+            "DELETE FROM logs WHERE message LIKE 'Ignoré (non demandé sur Seerr)%'"
+            " OR message LIKE 'Ignoré (utilisateur Seerr%'"
+        )
+        if n:
+            await db.commit()
+            logger.info("m013: purged %d verbose per-item scan log entries", n)
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -275,4 +519,9 @@ _MIGRATIONS = [
     ("m006", "Fix MariaDB expert_rules: add library_ids, grace_days",    _m006_fix_mariadb_expert_rules_schema),
     ("m007", "Migrate legacy notified_* columns to notifications table", _m007_migrate_notification_columns),
     ("m008", "Add job_id column to logs for job-run correlation",        _m008_add_job_id_to_logs),
+    ("m009", "Promote legacy emby_url settings to media_servers[0]",    _m009_migrate_legacy_emby_to_media_servers),
+    ("m010", "v2→v3: backfill server_id, deletion_unit, remove legacy settings keys", _m010_v2_to_v3_data),
+    ("m011", "Convert library conditions to expert_rules rows",          _m011_libraries_to_expert_rules),
+    ("m012", "Convert interval settings from hours to minutes",          _m012_interval_hours_to_minutes),
+    ("m013", "Purge verbose per-item scan log entries",                  _m013_purge_verbose_scan_logs),
 ]

@@ -1,7 +1,6 @@
 # backend/scanner/_emby_scanner.py
 """Emby/Jellyfin library scanner and queue reevaluation."""
 import asyncio
-import base64
 import json
 import logging
 from datetime import timedelta
@@ -304,11 +303,10 @@ async def reevaluate_library_queue(library_id: str) -> int:
                         async with httpx.AsyncClient(timeout=10) as hc:
                             pr = await hc.get(poster_url, follow_redirects=True)
                             if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
-                                b64 = base64.b64encode(pr.content).decode("ascii")
                                 await hc.post(
                                     f"{emby_url_val}/Items/{emby_id}/Images/Primary",
                                     headers={"X-Emby-Token": emby_key_val, "Content-Type": "image/jpeg"},
-                                    content=b64,
+                                    content=pr.content,
                                 )
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")

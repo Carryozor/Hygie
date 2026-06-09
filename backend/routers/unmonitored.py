@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..auth import require_auth
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
+from ..arr_clients.shared import _arr_auth
 from ..db.logs import add_log
 
 router = APIRouter(prefix="/api/unmonitored", tags=["unmonitored"])
@@ -52,7 +53,7 @@ async def list_unmonitored(
         if radarr_url and radarr_key:
             try:
                 r = await c.get(
-                    f"{radarr_url}/api/v3/movie", params={"apikey": radarr_key}
+                    f"{radarr_url}/api/v3/movie", headers=_arr_auth(radarr_key)
                 )
                 if r.status_code == 200:
                     for m in r.json():
@@ -86,7 +87,7 @@ async def list_unmonitored(
         if sonarr_url and sonarr_key:
             try:
                 r = await c.get(
-                    f"{sonarr_url}/api/v3/series", params={"apikey": sonarr_key}
+                    f"{sonarr_url}/api/v3/series", headers=_arr_auth(sonarr_key)
                 )
                 if r.status_code == 200:
                     for s in r.json():
@@ -131,7 +132,7 @@ async def monitor_movie(movie_id: int, user: str = Depends(require_auth)):
         raise HTTPException(400, "Radarr non configuré")
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.get(
-            f"{radarr_url}/api/v3/movie/{movie_id}", params={"apikey": radarr_key}
+            f"{radarr_url}/api/v3/movie/{movie_id}", headers=_arr_auth(radarr_key)
         )
         if r.status_code != 200:
             raise HTTPException(404, "Film introuvable")
@@ -139,7 +140,7 @@ async def monitor_movie(movie_id: int, user: str = Depends(require_auth)):
         movie["monitored"] = True
         ru = await c.put(
             f"{radarr_url}/api/v3/movie/{movie_id}",
-            params={"apikey": radarr_key},
+            headers=_arr_auth(radarr_key),
             json=movie,
         )
         if ru.status_code not in (200, 202):
@@ -157,7 +158,7 @@ async def monitor_series(series_id: int, user: str = Depends(require_auth)):
         raise HTTPException(400, "Sonarr non configuré")
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.get(
-            f"{sonarr_url}/api/v3/series/{series_id}", params={"apikey": sonarr_key}
+            f"{sonarr_url}/api/v3/series/{series_id}", headers=_arr_auth(sonarr_key)
         )
         if r.status_code != 200:
             raise HTTPException(404, "Série introuvable")
@@ -165,7 +166,7 @@ async def monitor_series(series_id: int, user: str = Depends(require_auth)):
         series["monitored"] = True
         ru = await c.put(
             f"{sonarr_url}/api/v3/series/{series_id}",
-            params={"apikey": sonarr_key},
+            headers=_arr_auth(sonarr_key),
             json=series,
         )
         if ru.status_code not in (200, 202):
@@ -207,8 +208,8 @@ async def delete_series(
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.delete(
             f"{sonarr_url}/api/v3/series/{series_id}",
+            headers=_arr_auth(sonarr_key),
             params={
-                "apikey": sonarr_key,
                 "deleteFiles": str(delete_files).lower(),
                 "addImportListExclusion": "false",
             },

@@ -206,7 +206,7 @@ async def _delete_from_seerr(row: dict) -> None:
 async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag: str) -> None:
     """Tag or delete the torrent in qBittorrent based on configured action."""
     try:
-        if qbit_action == "delete_torrent":
+        if qbit_action in ("delete_torrent", "delete_files"):
             ok = await qbit_delete_torrent(torrent_hash, delete_files=True)
             msg = (lm("qbit.torrent_deleted", title=title)
                    if ok else lm("qbit.torrent_fail", title=title))

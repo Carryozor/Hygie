@@ -59,20 +59,32 @@ async def _sqlite_backup(backup_dir: str, ts: str) -> str:
 
 def _do_mariadb_backup(host: str, port: int, user: str, password: str, db: str, dst_path: str) -> None:
     """Blocking mysqldump backup (runs in thread pool)."""
-    cmd = [
-        "mysqldump",
-        f"--host={host}",
-        f"--port={port}",
-        f"--user={user}",
-        f"--password={password}",
-        "--single-transaction",
-        "--routines",
-        "--triggers",
-        "--set-gtid-purged=OFF",
-        db,
-    ]
-    with open(dst_path, "wb") as f:
-        result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=300)
+    import tempfile, stat
+    # Write credentials to a temp file (0600) to avoid password appearing in ps aux / /proc
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cnf", delete=False) as tmp:
+        tmp.write(f"[client]\npassword={password}\n")
+        tmp_path = tmp.name
+    os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
+    try:
+        cmd = [
+            "mysqldump",
+            f"--defaults-extra-file={tmp_path}",
+            f"--host={host}",
+            f"--port={port}",
+            f"--user={user}",
+            "--single-transaction",
+            "--routines",
+            "--triggers",
+            "--set-gtid-purged=OFF",
+            db,
+        ]
+        with open(dst_path, "wb") as f:
+            result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=300)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
     if result.returncode != 0:
         err = result.stderr.decode(errors="replace")[:500]
         raise RuntimeError(f"mysqldump failed (rc={result.returncode}): {err}")

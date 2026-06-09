@@ -59,6 +59,7 @@ DEFAULT_SETTINGS = {
     "plex_overlay_enabled": "false",
     "public_dashboard_slug": "",        # Custom URL segment, e.g. "mon-dashboard"
     "public_dashboard_password": "",    # Optional password (empty = no auth)
+    "public_dashboard_enabled": "false",
 }
 
 # ─── Settings cache ───────────────────────────────────────────────────────────

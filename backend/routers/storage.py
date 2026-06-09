@@ -10,6 +10,7 @@ from ..auth import require_auth
 from ..db.utils import TIMEOUT_MEDIUM
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
+from ..arr_clients.shared import _arr_auth
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
@@ -41,10 +42,10 @@ async def _fetch_storage_data() -> dict:
 
     async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
 
-        async def _get(url: str, params: dict):
+        async def _get(url: str, headers: dict):
             """Safe GET — returns None on any error."""
             try:
-                r = await c.get(url, params=params)
+                r = await c.get(url, headers=headers)
                 return r if r.status_code == 200 else None
             except Exception:
                 return None
@@ -53,10 +54,10 @@ async def _fetch_storage_data() -> dict:
             return None
 
         # ── All 4 requests in parallel ────────────────────────────────────
-        r_disk_task   = _get(f"{radarr_url}/api/v3/diskspace", {"apikey": radarr_key}) if radarr_url and radarr_key else _noop()
-        r_movie_task  = _get(f"{radarr_url}/api/v3/movie",     {"apikey": radarr_key}) if radarr_url and radarr_key else _noop()
-        s_disk_task   = _get(f"{sonarr_url}/api/v3/diskspace", {"apikey": sonarr_key}) if sonarr_url and sonarr_key else _noop()
-        s_series_task = _get(f"{sonarr_url}/api/v3/series",    {"apikey": sonarr_key}) if sonarr_url and sonarr_key else _noop()
+        r_disk_task   = _get(f"{radarr_url}/api/v3/diskspace", _arr_auth(radarr_key)) if radarr_url and radarr_key else _noop()
+        r_movie_task  = _get(f"{radarr_url}/api/v3/movie",     _arr_auth(radarr_key)) if radarr_url and radarr_key else _noop()
+        s_disk_task   = _get(f"{sonarr_url}/api/v3/diskspace", _arr_auth(sonarr_key)) if sonarr_url and sonarr_key else _noop()
+        s_series_task = _get(f"{sonarr_url}/api/v3/series",    _arr_auth(sonarr_key)) if sonarr_url and sonarr_key else _noop()
 
         rd, rm, sd, rs = await asyncio.gather(r_disk_task, r_movie_task, s_disk_task, s_series_task)
 

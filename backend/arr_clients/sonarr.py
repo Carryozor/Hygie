@@ -1,4 +1,5 @@
 """Sonarr API client."""
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -69,10 +70,13 @@ async def build_sonarr_path_cache() -> dict:
                     return rs.json()
 
             all_series = await with_retry(_fetch_series, label=f"sonarr.build_cache.series[{url}]")
-            for series in all_series:
+
+            sem = asyncio.Semaphore(8)
+
+            async def _process_series(series: dict) -> list:
                 folder = (series.get("path") or "").rstrip("/")
                 if not folder:
-                    continue
+                    return []
                 sid = series.get("id")
                 stitle = series.get("title", "")
                 poster_url = ""
@@ -83,7 +87,7 @@ async def build_sonarr_path_cache() -> dict:
                             poster_url = remote
                             break
 
-                async def _fetch_episodes(u=url, k=key, s=sid):
+                async def _fetch_eps(u=url, k=key, s=sid):
                     async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
                         rf = await c.get(
                             f"{u}/api/v3/episodefile",
@@ -94,11 +98,14 @@ async def build_sonarr_path_cache() -> dict:
                             return rf.json()
                         return []
 
-                episode_files = await with_retry(_fetch_episodes, label=f"sonarr.build_cache.episodes[{url}:{sid}]")
+                async with sem:
+                    episode_files = await with_retry(_fetch_eps, label=f"sonarr.build_cache.episodes[{url}:{sid}]")
+
+                entries = []
                 for ef in episode_files:
                     ep_path = ef.get("path") or ""
                     if ep_path:
-                        cache[ep_path] = {
+                        entries.append((ep_path, {
                             "ef_id": ef.get("id"),
                             "series_id": sid,
                             "season_number": ef.get("seasonNumber"),
@@ -106,7 +113,13 @@ async def build_sonarr_path_cache() -> dict:
                             "poster_url": poster_url,
                             "srv_url": url,
                             "srv_key": key,
-                        }
+                        }))
+                return entries
+
+            all_entries = await asyncio.gather(*[_process_series(s) for s in all_series])
+            for entries in all_entries:
+                for ep_path, entry in entries:
+                    cache[ep_path] = entry
         except Exception as e:
             logger.debug(f"build_sonarr_path_cache [{url}]: {e}")
     return cache

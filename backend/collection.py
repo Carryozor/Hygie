@@ -287,26 +287,37 @@ async def sync_emby_collection():
                     await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
                 # Delete the collection's cached primary image so Emby rebuilds the
                 # mosaic from the freshly-overlaid item posters (fixes stale day counts).
-                try:
-                    await client.delete(
-                        f"{emby_url}/Items/{collection_id}/Images/Primary",
-                        headers={"X-Emby-Token": emby_key},
+                # Brief pause so Emby finishes writing uploaded item posters before
+                # the mosaic is regenerated (Emby processes images asynchronously).
+                await asyncio.sleep(1)
+                del_resp = await client.delete(
+                    f"{emby_url}/Items/{collection_id}/Images/Primary",
+                    headers={"X-Emby-Token": emby_key},
+                )
+                if del_resp.status_code not in (200, 204, 404):
+                    logger.warning(
+                        f"Collection image delete returned HTTP {del_resp.status_code}"
                     )
-                except Exception:
-                    pass
                 try:
-                    await client.post(
+                    ref_resp = await client.post(
                         f"{emby_url}/Items/{collection_id}/Refresh",
                         headers={"X-Emby-Token": emby_key},
                         params={
                             "Recursive": "false",
-                            "MetadataRefreshMode": "None",
+                            "MetadataRefreshMode": "Default",
                             "ImageRefreshMode": "FullRefresh",
-                            "ReplaceAllImages": "true",
+                            # Do NOT replace images — Emby must regenerate the mosaic
+                            # from the already-uploaded overlaid item posters, not
+                            # download a new poster from the internet.
+                            "ReplaceAllImages": "false",
                         },
                     )
+                    if ref_resp.status_code not in (200, 204):
+                        logger.warning(
+                            f"Collection refresh returned HTTP {ref_resp.status_code}"
+                        )
                 except Exception as e:
-                    logger.debug(f"Collection refresh error: {e}")
+                    logger.warning(f"Collection refresh error: {e}")
 
             if to_add or to_remove:
                 await add_log(

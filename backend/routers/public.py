@@ -26,6 +26,7 @@ async def public_upcoming(
     slug: str = "",
     password: str = "",
     authorization: Optional[str] = Header(default=None),
+    x_dashboard_password: Optional[str] = Header(default=None),
 ):
     """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true.
 
@@ -47,9 +48,10 @@ async def public_upcoming(
 
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
     if cfg_pwd and not is_admin:
-        if not password:
+        provided = password or x_dashboard_password or ""
+        if not provided:
             return JSONResponse({"error": "password_required"}, status_code=401)
-        if not hmac.compare_digest(password.encode(), cfg_pwd.encode()):
+        if not hmac.compare_digest(provided.encode(), cfg_pwd.encode()):
             return JSONResponse({"error": "wrong_password"}, status_code=403)
 
     async with get_db() as db:

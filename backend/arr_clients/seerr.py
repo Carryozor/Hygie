@@ -1,4 +1,5 @@
 """Seerr / Overseerr / Jellyseerr API client."""
+import asyncio
 import logging
 from typing import Optional, List
 
@@ -85,16 +86,22 @@ async def seerr_get_users() -> List[dict]:
             pass
 
         async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            all_users = []
             async for users_page in _seerr_pages(c, f"{url}/api/v1/user", {"X-Api-Key": key}):
-                for u in users_page:
-                    uid = u.get("id")
-                    name = (
-                        u.get("displayName")
-                        or u.get("username")
-                        or u.get("email")
-                        or f"User #{uid}"
-                    )
-                    seerr_discord = ""
+                all_users.extend(users_page)
+
+            sem = asyncio.Semaphore(10)
+
+            async def _fetch_discord(u: dict) -> dict:
+                uid = u.get("id")
+                name = (
+                    u.get("displayName")
+                    or u.get("username")
+                    or u.get("email")
+                    or f"User #{uid}"
+                )
+                seerr_discord = ""
+                async with sem:
                     try:
                         rn = await c.get(
                             f"{url}/api/v1/user/{uid}/settings/notifications",
@@ -104,15 +111,17 @@ async def seerr_get_users() -> List[dict]:
                             seerr_discord = str(rn.json().get("discordId") or "").strip()
                     except Exception:
                         pass
-                    hygie_discord = hygie_mappings.get(str(uid), "")
-                    discord_id = hygie_discord or seerr_discord
-                    out.append({
-                        "id": uid,
-                        "username": name,
-                        "discord_id": discord_id,
-                        "discord_id_seerr": seerr_discord,
-                        "discord_id_hygie": hygie_discord,
-                    })
+                hygie_discord = hygie_mappings.get(str(uid), "")
+                return {
+                    "id": uid,
+                    "username": name,
+                    "discord_id": hygie_discord or seerr_discord,
+                    "discord_id_seerr": seerr_discord,
+                    "discord_id_hygie": hygie_discord,
+                }
+
+            results = await asyncio.gather(*[_fetch_discord(u) for u in all_users])
+            out.extend(results)
     except Exception as e:
         logger.debug(f"seerr_get_users: {e}")
     return out

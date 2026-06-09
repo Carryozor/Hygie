@@ -110,32 +110,36 @@ async def delete_now(
     media_id: int, user: str = Depends(require_auth)
 ):
     """Manually trigger deletion of a single item."""
+    # Atomically claim the item by updating status to 'deleting' — prevents double-delete race
     async with get_db() as db:
-        row = await db.fetch_one(
-            "SELECT * FROM media_queue WHERE id=? AND status=?", (media_id, STATUS_PENDING)
+        claimed = await db.execute_write(
+            "UPDATE media_queue SET status='deleting' WHERE id=? AND status=?",
+            (media_id, STATUS_PENDING),
         )
-        if not row:
+        if not claimed:
             raise HTTPException(404, "Média introuvable ou déjà supprimé")
+        await db.commit()
+        row = await db.fetch_one("SELECT * FROM media_queue WHERE id=?", (media_id,))
 
     dry_run = (await get_setting("dry_run") or "false").lower() == "true"
     ok = await _delete_media(row, dry_run)
 
-    if ok:
-        async with get_db() as db:
-            # Re-verify row is still pending before marking deleted (prevents double-delete race)
-            still_pending = await db.fetch_one(
-                "SELECT id FROM media_queue WHERE id=? AND status=?", (media_id, STATUS_PENDING)
+    async with get_db() as db:
+        if ok:
+            await db.execute(
+                "UPDATE media_queue SET status=? WHERE id=?", (STATUS_DELETED, media_id)
             )
-            if still_pending:
-                await db.execute(
-                    "UPDATE media_queue SET status=? WHERE id=?",
-                    (STATUS_DELETED, media_id),
-                )
-                await db.execute(
-                    "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
-                    (media_id, "now"),
-                )
-                await db.commit()
+            await db.execute(
+                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                (media_id, "now"),
+            )
+        else:
+            await db.execute(
+                "UPDATE media_queue SET status=? WHERE id=?", (STATUS_PENDING, media_id)
+            )
+        await db.commit()
+
+    if ok:
         return {"status": "deleted"}
     raise HTTPException(500, "Suppression échouée")
 
@@ -277,6 +281,7 @@ async def enrich_seerr(
             )
 
         enriched = 0
+        pending_updates: list = []
         for row in rows:
             updates = {}
 
@@ -306,14 +311,24 @@ async def enrich_seerr(
                         )
 
             if updates:
-                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-                async with get_db() as db:
+                _ALLOWED_ENRICH_COLS = frozenset({
+                    "poster_url", "seerr_id", "seerr_user_id",
+                    "seerr_username", "seerr_request_url",
+                })
+                safe = {k: v for k, v in updates.items() if k in _ALLOWED_ENRICH_COLS}
+                if safe:
+                    pending_updates.append((safe, row["id"]))
+                enriched += 1
+
+        if pending_updates:
+            async with get_db() as db:
+                for safe, row_id in pending_updates:
+                    set_clause = ", ".join(f"{k}=?" for k in safe.keys())
                     await db.execute(
                         f"UPDATE media_queue SET {set_clause} WHERE id=?",
-                        list(updates.values()) + [row["id"]],
+                        list(safe.values()) + [row_id],
                     )
-                    await db.commit()
-                enriched += 1
+                await db.commit()
 
         await add_log(
             "INFO", f"Enrichissement terminé : {enriched}/{len(rows)} entrées", "system"
@@ -335,6 +350,7 @@ async def regenerate_posters(
             )
 
         updated = 0
+        poster_updates: list = []
         for row in rows:
             new_url = await _get_poster_url(
                 row["emby_id"],
@@ -344,13 +360,18 @@ async def regenerate_posters(
                 sonarr_id=row.get("sonarr_id"),
             )
             if new_url:
-                async with get_db() as db:
+                poster_updates.append((new_url, row["id"]))
+                updated += 1
+
+        if poster_updates:
+            async with get_db() as db:
+                for new_url, row_id in poster_updates:
                     await db.execute(
                         "UPDATE media_queue SET poster_url=? WHERE id=?",
-                        (new_url, row["id"]),
+                        (new_url, row_id),
                     )
-                    await db.commit()
-                updated += 1
+                await db.commit()
+
         await add_log(
             "INFO", f"Affiches régénérées : {updated}/{len(rows)}", "system"
         )

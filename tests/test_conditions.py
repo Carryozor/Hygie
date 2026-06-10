@@ -320,3 +320,56 @@ async def test_resolve_arr_ids_movie_no_cache_uses_http():
             "/movies/Dune.mkv", "Movie", None, None
         )
     assert rid == 77
+
+
+# ─── Equivalence contract for the engine unification ──────────────────────────
+# These tests pin down legacy edge-case semantics that MUST survive the
+# migration of _evaluate_conditions onto rules/engine.py.
+
+def test_days_not_watched_never_watched_matches_even_with_lt_op():
+    """Legacy quirk: never-watched items satisfy days_not_watched regardless of op."""
+    conds = [{"field": "days_not_watched", "op": "lt", "value": 5}]
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 0, True) is True
+
+
+def test_days_not_watched_no_last_played_not_never_watched_is_false():
+    conds = [{"field": "days_not_watched", "op": "gt", "value": 5}]
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 3, False) is False
+
+
+def test_unknown_field_is_false_in_and_logic():
+    conds = [
+        {"field": "play_count", "op": "eq", "value": 0},
+        {"field": "bogus_field", "op": "gt", "value": 1},
+    ]
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 0, True) is False
+
+
+def test_unknown_field_ignored_in_or_logic_when_other_matches():
+    conds = [
+        {"field": "bogus_field", "op": "gt", "value": 1},
+        {"field": "play_count", "op": "eq", "value": 0},
+    ]
+    assert _evaluate_conditions(conds, "OR", _dt(100), None, 0, True) is True
+
+
+def test_invalid_op_is_false_in_and_logic():
+    conds = [{"field": "play_count", "op": "wat", "value": 0}]
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 0, True) is False
+
+
+def test_never_watched_condition_with_truthy_value():
+    conds = [{"field": "never_watched", "op": "eq", "value": 1}]
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 0, True) is True
+    assert _evaluate_conditions(conds, "AND", _dt(100), _dt(2), 3, False) is False
+
+
+def test_never_watched_condition_with_falsy_value():
+    conds = [{"field": "never_watched", "op": "eq", "value": 0}]
+    assert _evaluate_conditions(conds, "AND", _dt(100), _dt(2), 3, False) is True
+    assert _evaluate_conditions(conds, "AND", _dt(100), None, 0, True) is False
+
+
+def test_days_since_added_none_added_date_is_false():
+    conds = [{"field": "days_since_added", "op": "gt", "value": 5}]
+    assert _evaluate_conditions(conds, "AND", None, None, 0, True) is False

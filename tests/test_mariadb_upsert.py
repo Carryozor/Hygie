@@ -70,6 +70,15 @@ async def test_live_mariadb_upsert_round_trip(monkeypatch):
     assert eng.DIALECT == "mariadb"
     await eng.init_db_pool()
     try:
+        # Idempotency: drop any tables left by a previous run before init.
+        from backend.db.schema_mariadb import MARIADB_TABLES
+        async with eng.get_db() as db:
+            await db.execute("SET FOREIGN_KEY_CHECKS=0")
+            for tname, _ in MARIADB_TABLES:
+                await db.execute(f"DROP TABLE IF EXISTS `{tname}`")
+            await db.execute("SET FOREIGN_KEY_CHECKS=1")
+            await db.commit()
+
         from backend.db.schema import init_db
         await init_db()
 
@@ -111,6 +120,15 @@ async def test_live_mariadb_upsert_round_trip(monkeypatch):
             assert cnt["n"] == 1
     finally:
         await eng.close_db_pool()
+        # CRITICAL: reloading eng switched the shared module into MariaDB mode.
+        # Restore SQLite mode so the rest of the suite is not contaminated
+        # (every module that did `from .engine import get_db` shares this dict).
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        importlib.reload(eng)
+        import backend.db.settings_store as _ss
+        importlib.reload(_ss)
+        _ss._settings_cache.clear()
+        _ss._settings_cache_ts = 0.0
 
 
 def test_literal_percent_escaped_for_mariadb():

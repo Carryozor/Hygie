@@ -162,7 +162,8 @@ def test_no_backend_sql_string_hardcodes_percent_s():
     """No backend SQL should hard-code a %s placeholder — it must use ? so the
     dialect layer translates it. A literal %s gets doubled to %%s by the
     %→%% escaping and breaks MariaDB parameter binding (the m008 bug)."""
-    import pathlib, re
+    import pathlib
+    import re
     root = pathlib.Path(__file__).resolve().parent.parent / "backend"
     # Match a quoted SQL-ish string containing %s, excluding tools/ (raw drivers)
     offenders = []

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.utils import escape_like
 
 router = APIRouter(prefix="/api/ignored", tags=["ignored"])
 
@@ -31,8 +32,9 @@ async def list_ignored(
     where = ""
     params = []
     if search:
-        where = "WHERE title LIKE ? OR reason LIKE ?"
-        params = [f"%{search}%", f"%{search}%"]
+        where = "WHERE title LIKE ? ESCAPE '!' OR reason LIKE ? ESCAPE '!'"
+        s = f"%{escape_like(search)}%"
+        params = [s, s]
 
     async with get_db() as db:
         rows = await db.fetch_all(

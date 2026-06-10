@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.utils import escape_like
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
@@ -27,8 +28,8 @@ async def list_logs(
         where.append("source = ?")
         params.append(source)
     if search:
-        where.append("message LIKE ?")
-        params.append(f"%{search}%")
+        where.append("message LIKE ? ESCAPE '!'")
+        params.append(f"%{escape_like(search)}%")
     where_clause = f"WHERE {' AND '.join(where)}" if where else ""
 
     async with get_db() as db:

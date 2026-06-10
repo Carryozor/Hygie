@@ -17,6 +17,11 @@ _Q_RE = re.compile(
     r"|(\?)"               # group 1: bare ? parameter placeholder
 )
 
+# Strip string literals before keyword checks (a literal 'no limit' must not
+# be mistaken for a LIMIT clause).
+_LITERAL_RE = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"')
+_LIMIT_KW_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
+
 logger = logging.getLogger(__name__)
 
 DATABASE_URL: str = os.environ.get("DATABASE_URL", "").strip()
@@ -122,7 +127,12 @@ class DbConn:
 
     async def fetch_one(self, sql: str, params: tuple = ()) -> dict | None:
         stripped = sql.rstrip().rstrip(";")
-        if "LIMIT" not in stripped.upper():
+        # Append LIMIT 1 only to SELECT/CTE statements that have no LIMIT clause
+        # outside string literals — PRAGMA and friends don't accept LIMIT.
+        head = stripped.lstrip().upper()
+        if head.startswith(("SELECT", "WITH")) and not _LIMIT_KW_RE.search(
+            _LITERAL_RE.sub("''", stripped)
+        ):
             sql = stripped + " LIMIT 1"
         rows = await self.fetch_all(sql, params)
         return rows[0] if rows else None
@@ -196,6 +206,9 @@ async def get_db():
         async with aiosqlite.connect(SQLITE_PATH) as raw:
             await raw.execute("PRAGMA journal_mode=WAL")
             await raw.execute("PRAGMA foreign_keys=ON")
+            # Wait instead of failing with "database is locked" under
+            # concurrent library scans (parallel writers on one SQLite file).
+            await raw.execute("PRAGMA busy_timeout=5000")
             yield DbConn(raw, "sqlite")
     else:
         if _pool is None:

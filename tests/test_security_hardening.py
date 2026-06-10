@@ -107,23 +107,36 @@ async def test_proxy_blocks_redirect_to_unlisted_host(monkeypatch):
 
 # ─── Plex webhook: fail-closed secret ─────────────────────────────────────────
 
-@pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def wh_client(tmp_path_factory):
-    import importlib
+@pytest_asyncio.fixture
+async def wh_client(tmp_path):
+    """Minimal app with only the webhook router — no scheduler, no lifespan."""
+    from fastapi import FastAPI
     from httpx import AsyncClient, ASGITransport
     import backend.db.engine as _eng
-    db_path = str(tmp_path_factory.mktemp("hardening") / "wh.db")
-    _eng.SQLITE_PATH = db_path
+    import backend.db.utils as _db_utils
     import backend.db.settings_store as _ss
+
+    db_path = str(tmp_path / "wh.db")
+    orig_engine, orig_utils = _eng.SQLITE_PATH, _db_utils.DB_PATH
+    _eng.SQLITE_PATH = db_path
+    _db_utils.DB_PATH = db_path
     _ss._settings_cache.clear()
     _ss._settings_cache_ts = 0.0
-    import backend.main as main_mod
-    importlib.reload(main_mod)
-    app = main_mod.app
-    async with main_mod.lifespan(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+
+    from backend.db.schema import init_db
+    await init_db()
+
+    from backend.routers import plex_webhook
+    app = FastAPI()
+    app.include_router(plex_webhook.router)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+    _eng.SQLITE_PATH = orig_engine
+    _db_utils.DB_PATH = orig_utils
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
 
 
 def _scrobble_payload() -> str:
@@ -134,7 +147,7 @@ def _scrobble_payload() -> str:
     })
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_webhook_rejected_when_no_secret_configured(wh_client):
     resp = await wh_client.post(
         "/api/plex/webhook", data={"payload": _scrobble_payload()}
@@ -142,7 +155,7 @@ async def test_webhook_rejected_when_no_secret_configured(wh_client):
     assert resp.status_code == 403
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_webhook_rejected_with_wrong_secret(wh_client):
     from backend.db.settings_store import set_setting
     await set_setting("plex_webhook_secret", "s3cret-token")
@@ -152,7 +165,7 @@ async def test_webhook_rejected_with_wrong_secret(wh_client):
     assert resp.status_code == 403
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_webhook_accepted_with_correct_secret(wh_client):
     from backend.db.settings_store import set_setting
     await set_setting("plex_webhook_secret", "s3cret-token")
@@ -235,8 +248,11 @@ async def _insert_due_item(title="Old Movie") -> int:
     from backend.db.engine import get_db
     async with get_db() as db:
         item_id = await db.execute(
-            "INSERT INTO media_queue (emby_id, title, media_type, status, delete_at, detected_at, library_id) "
-            "VALUES (?, ?, 'Movie', 'pending', '2000-01-01T00:00:00+00:00', '2000-01-01T00:00:00+00:00', '')",
+            "INSERT INTO media_queue "
+            "(emby_id, title, media_type, status, delete_at, detected_at, "
+            " library_id, library_name, file_path) "
+            "VALUES (?, ?, 'Movie', 'pending', "
+            "'2000-01-01T00:00:00+00:00', '2000-01-01T00:00:00+00:00', '', '', '')",
             (f"emby-{title}", title),
         )
         await db.commit()
@@ -275,7 +291,7 @@ async def test_dry_run_does_not_mark_items_deleted(queue_db):
 
 def test_escape_like_escapes_wildcards():
     from backend.db.utils import escape_like
-    assert escape_like("50%") == r"50\%"
-    assert escape_like("a_b") == r"a\_b"
-    assert escape_like("back\\slash") == "back\\\\slash"
+    assert escape_like("50%") == "50!%"
+    assert escape_like("a_b") == "a!_b"
+    assert escape_like("yes!") == "yes!!"
     assert escape_like("plain") == "plain"

@@ -5,7 +5,9 @@ import logging
 from datetime import timedelta
 from typing import Optional
 
-from .db.utils import DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc
+from .db.utils import (
+    DB_PATH, STATUS_DELETED, STATUS_DELETING, STATUS_ERROR, STATUS_PENDING, now_utc,
+)
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
@@ -81,10 +83,24 @@ async def run_deletion() -> None:
                     _alert_threshold = 3
                 _counters = {"errors": 0}
 
-                async def _delete_one(row: dict) -> bool:
+                async def _delete_one(row: dict) -> Optional[bool]:
                     async with _del_sem:
+                        # Dry-run simulates only: no claim, no status change.
+                        if dry_run:
+                            return await _delete_media(
+                                row, True,
+                                qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id,
+                            )
+                        # Atomic claim (pending → deleting) — the same item may be
+                        # processed concurrently via the delete-now endpoint.
+                        if not await _claim_pending(row["id"]):
+                            logger.info(
+                                "Deletion: item %s already claimed elsewhere — skipping",
+                                row.get("title", row["id"]),
+                            )
+                            return None
                         ok = await _delete_media(
-                            row, dry_run,
+                            row, False,
                             qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id,
                         )
                         await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
@@ -136,6 +152,21 @@ async def run_deletion() -> None:
         finally:
             _current_job_id.reset(ctx_token)
             await finish_job_run(run_id, _dl_status, _dl_msg)
+
+
+async def _claim_pending(item_id: int) -> bool:
+    """Atomically claim a queue item (pending → deleting).
+
+    Returns False if the item was already claimed (e.g. by the delete-now
+    endpoint) — the caller must then skip it to avoid a double deletion.
+    """
+    async with get_db() as db:
+        claimed = await db.execute_write(
+            "UPDATE media_queue SET status=? WHERE id=? AND status=?",
+            (STATUS_DELETING, item_id, STATUS_PENDING),
+        )
+        await db.commit()
+    return bool(claimed)
 
 
 async def _find_torrent_hash(row: dict) -> Optional[str]:

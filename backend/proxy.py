@@ -22,10 +22,39 @@ _ITEM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 # ─── Image proxy whitelist cache (TTL: 5 min) ────────────────────────────────
+# Whitelist entries are (hostname, port) tuples — matching on hostname alone
+# would allow port-scanning a whitelisted internal host through the proxy.
 _proxy_whitelist: set = set()
 _proxy_whitelist_ts: float = 0.0
 _proxy_whitelist_lock = asyncio.Lock()
 _PROXY_WHITELIST_TTL = 300
+_PROXY_MAX_REDIRECTS = 3
+
+
+def _add_url_to_whitelist(allowed: set, url: str) -> None:
+    """Add (host, port) of a configured service URL to the whitelist."""
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        allowed.add((host, port))
+    except Exception:
+        pass
+
+
+def _is_url_allowed(url: str, allowed: set) -> bool:
+    """True if url targets a whitelisted (host, port) over http(s)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        return (host, port) in allowed
+    except Exception:
+        return False
 
 
 def invalidate_proxy_whitelist() -> None:
@@ -42,34 +71,27 @@ async def _get_proxy_whitelist() -> set:
         # Double-check inside lock to avoid thundering herd
         if _proxy_whitelist and time.time() - _proxy_whitelist_ts < _PROXY_WHITELIST_TTL:
             return _proxy_whitelist
-        allowed = {
+        allowed: set = set()
+        for cdn_host in (
             "image.tmdb.org",
             "artworks.thetvdb.com",
             "thetvdb.com",
             "fanart.tv",
             "assets.fanart.tv",
-        }
+        ):
+            allowed.add((cdn_host, 443))
+            allowed.add((cdn_host, 80))
         # Legacy single-server URLs (emby* covered by media_servers loop below)
         for setting_key in ("radarr_url", "sonarr_url"):
             s = await get_setting(setting_key)
             if s:
-                try:
-                    h = (urlparse(s).hostname or "").lower()
-                    if h:
-                        allowed.add(h)
-                except Exception:
-                    pass
+                _add_url_to_whitelist(allowed, s)
         # Multi-server: add all configured server URLs and external URLs
         for srv in await get_media_servers():
             for field in ("url", "ext_url"):
                 u = (srv.get(field) or "").strip()
                 if u:
-                    try:
-                        h = (urlparse(u).hostname or "").lower()
-                        if h:
-                            allowed.add(h)
-                    except Exception:
-                        pass
+                    _add_url_to_whitelist(allowed, u)
         _proxy_whitelist = allowed
         _proxy_whitelist_ts = time.time()
         return allowed
@@ -93,42 +115,56 @@ async def proxy_image(request: Request):
         if parsed.scheme not in ("http", "https"):
             return Response(status_code=400)
 
-        host = (parsed.hostname or "").lower()
-
         allowed = await _get_proxy_whitelist()
 
-        if host not in allowed:
+        if not _is_url_allowed(target_url, allowed):
+            host = (parsed.hostname or "").lower()
             logger.warning(f"Proxy: host {host!r} not in whitelist")
             return Response(status_code=403, content=f"Host not allowed: {host}")
 
         _PROXY_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — guard against memory exhaustion
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            async with client.stream("GET", target_url) as r:
-                if r.status_code == 200:
-                    ct = r.headers.get("content-type", "image/jpeg")
-                    if not ct.startswith("image/"):
-                        return Response(status_code=415)
-                    chunks: list[bytes] = []
-                    total = 0
-                    async for chunk in r.aiter_bytes(65536):
-                        total += len(chunk)
-                        if total > _PROXY_MAX_BYTES:
+        # Redirects are followed manually so every hop is re-validated against
+        # the whitelist — follow_redirects=True would let a whitelisted host
+        # redirect the proxy to an internal/arbitrary target (SSRF).
+        url = target_url
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            for _ in range(_PROXY_MAX_REDIRECTS + 1):
+                async with client.stream("GET", url) as r:
+                    if r.status_code in (301, 302, 303, 307, 308):
+                        from urllib.parse import urljoin
+                        url = urljoin(url, r.headers.get("location", ""))
+                        if not _is_url_allowed(url, allowed):
                             logger.warning(
-                                f"Proxy: response too large (>{_PROXY_MAX_BYTES // 1024 // 1024} MB)"
-                                f" for {sanitize_url(target_url)[:80]}"
+                                f"Proxy: redirect target not in whitelist: {sanitize_url(url)[:80]}"
                             )
-                            return Response(status_code=413)
-                        chunks.append(chunk)
-                    return Response(
-                        content=b"".join(chunks),
-                        media_type=ct,
-                        headers={"Cache-Control": "public, max-age=3600"},
-                    )
-                # Don't warn on 500 (Emby returns this for items without posters)
-                if r.status_code != 500:
-                    logger.warning(
-                        f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(target_url)[:80]}"
-                    )
+                            return Response(status_code=403)
+                        continue
+                    if r.status_code == 200:
+                        ct = r.headers.get("content-type", "image/jpeg")
+                        if not ct.startswith("image/"):
+                            return Response(status_code=415)
+                        chunks: list[bytes] = []
+                        total = 0
+                        async for chunk in r.aiter_bytes(65536):
+                            total += len(chunk)
+                            if total > _PROXY_MAX_BYTES:
+                                logger.warning(
+                                    f"Proxy: response too large (>{_PROXY_MAX_BYTES // 1024 // 1024} MB)"
+                                    f" for {sanitize_url(url)[:80]}"
+                                )
+                                return Response(status_code=413)
+                            chunks.append(chunk)
+                        return Response(
+                            content=b"".join(chunks),
+                            media_type=ct,
+                            headers={"Cache-Control": "public, max-age=3600"},
+                        )
+                    # Don't warn on 500 (Emby returns this for items without posters)
+                    if r.status_code != 500:
+                        logger.warning(
+                            f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(url)[:80]}"
+                        )
+                    return Response(status_code=404)
     except Exception as e:
         logger.error(f"Proxy error: {e}")
     return Response(status_code=404)
@@ -166,7 +202,9 @@ async def proxy_poster(server_id: str, item_id: str):
 
     _PROXY_MAX_BYTES = 10 * 1024 * 1024
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        # No redirect following: the target is built from the configured server
+        # URL — a redirect elsewhere would bypass that trust boundary.
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             async with client.stream("GET", target, headers=headers) as r:
                 if r.status_code == 200:
                     ct = r.headers.get("content-type", "image/jpeg")

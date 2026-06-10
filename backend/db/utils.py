@@ -9,9 +9,14 @@ from typing import Optional
 DB_PATH = os.environ.get("DB_PATH", "/app/data/hygie.db")
 
 # ─── Status constants ─────────────────────────────────────────────────────────
-STATUS_PENDING = "pending"
-STATUS_DELETED = "deleted"
-STATUS_ERROR   = "error"
+STATUS_PENDING  = "pending"
+STATUS_DELETING = "deleting"
+STATUS_DELETED  = "deleted"
+STATUS_ERROR    = "error"
+
+# Escape character for SQL LIKE patterns. '!' is used instead of backslash
+# because backslash-in-literal semantics differ between SQLite and MariaDB.
+LIKE_ESCAPE_CHAR = "!"
 
 # ─── HTTP timeout constants (seconds) ─────────────────────────────────────────
 TIMEOUT_SHORT  = 10   # fast API calls (auth, status, single item)
@@ -29,6 +34,19 @@ def now_utc() -> datetime:
 def sanitize_url(url: str) -> str:
     """Redact sensitive query parameters from a URL for safe logging."""
     return _SENSITIVE_PARAMS.sub(r'\1=***', url)
+
+
+def escape_like(text: str) -> str:
+    """Escape LIKE wildcards in user input.
+
+    Use with: column LIKE ? ESCAPE '!'  (see LIKE_ESCAPE_CHAR).
+    Without this, a search for "100%" matches everything starting with "100".
+    """
+    return (
+        text.replace(LIKE_ESCAPE_CHAR, LIKE_ESCAPE_CHAR * 2)
+        .replace("%", LIKE_ESCAPE_CHAR + "%")
+        .replace("_", LIKE_ESCAPE_CHAR + "_")
+    )
 
 
 def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:

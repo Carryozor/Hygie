@@ -391,13 +391,13 @@ async def test_proxy_rejects_oversized_image(registered_client, monkeypatch):
     c, token = registered_client
 
     # Whitelist the test host
-    monkeypatch.setattr(proxy_mod, "_proxy_whitelist", {"bighost.example.com"})
+    monkeypatch.setattr(proxy_mod, "_proxy_whitelist", {("bighost.example.com", 80), ("bighost.example.com", 443)})
     monkeypatch.setattr(proxy_mod, "_proxy_whitelist_ts", float("inf"))
 
     big_content = b"x" * (11 * 1024 * 1024)  # 11 MB
 
     async def _fake_get_proxy_whitelist():
-        return {"bighost.example.com"}
+        return {("bighost.example.com", 80), ("bighost.example.com", 443)}
 
     monkeypatch.setattr(proxy_mod, "_get_proxy_whitelist", _fake_get_proxy_whitelist)
 

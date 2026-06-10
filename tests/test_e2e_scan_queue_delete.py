@@ -385,4 +385,7 @@ async def test_dry_run_prevents_deletion(isolated_db):
     async with aiosqlite.connect(isolated_db) as db:
         async with db.execute("SELECT status FROM media_queue WHERE emby_id=?", (emby_id,)) as cur:
             row = await cur.fetchone()
-    assert row[0] == "deleted", "dry_run should still mark item as 'deleted' in DB"
+    # Dry-run must simulate only: the item stays 'pending' so disabling
+    # dry_run later actually deletes it (previously it was marked 'deleted'
+    # without any file removal — the item was then lost to the pipeline).
+    assert row[0] == "pending", "dry_run must leave the item 'pending' in DB"

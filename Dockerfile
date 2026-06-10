@@ -2,7 +2,7 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend/vue/package*.json ./
-RUN npm install
+RUN npm ci
 COPY frontend/vue/ ./
 RUN npm run build
 # Output: /build/../dist = /dist  (vite outDir: '../dist')

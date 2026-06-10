@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
+from ..db.utils import STATUS_PENDING, STATUS_DELETING, STATUS_DELETED, STATUS_ERROR, escape_like
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
@@ -84,8 +84,11 @@ async def list_queue(
         where.append("library_id = ?")
         params.append(library_id)
     if search:
-        where.append("(title LIKE ? OR library_name LIKE ? OR seerr_username LIKE ?)")
-        s = f"%{search}%"
+        where.append(
+            "(title LIKE ? ESCAPE '!' OR library_name LIKE ? ESCAPE '!' "
+            "OR seerr_username LIKE ? ESCAPE '!')"
+        )
+        s = f"%{escape_like(search)}%"
         params.extend([s, s, s])
 
     where_clause = f"WHERE {' AND '.join(where)}" if where else ""
@@ -113,8 +116,8 @@ async def delete_now(
     # Atomically claim the item by updating status to 'deleting' — prevents double-delete race
     async with get_db() as db:
         claimed = await db.execute_write(
-            "UPDATE media_queue SET status='deleting' WHERE id=? AND status=?",
-            (media_id, STATUS_PENDING),
+            "UPDATE media_queue SET status=? WHERE id=? AND status=?",
+            (STATUS_DELETING, media_id, STATUS_PENDING),
         )
         if not claimed:
             raise HTTPException(404, "Média introuvable ou déjà supprimé")

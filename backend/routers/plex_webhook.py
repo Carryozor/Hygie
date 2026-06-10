@@ -2,6 +2,7 @@
 """POST /api/plex/webhook — receive Plex Media Server webhook events."""
 import json
 import logging
+import secrets as _secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Query, Response
@@ -21,8 +22,15 @@ async def plex_webhook(
     secret: str = Query(default=""),
 ) -> Response:
     """Receive a Plex webhook event (multipart/form-data, payload field = JSON)."""
+    # Fail closed: without a configured secret anyone could forge scrobble
+    # events and shift last_played, delaying or preventing deletions.
     configured_secret = await get_setting("plex_webhook_secret") or ""
-    if configured_secret and secret != configured_secret:
+    if not configured_secret:
+        raise HTTPException(
+            status_code=403,
+            detail="Webhook secret not configured — set plex_webhook_secret in settings",
+        )
+    if not _secrets.compare_digest(secret, configured_secret):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     try:

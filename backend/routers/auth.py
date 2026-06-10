@@ -1,4 +1,5 @@
 """Auth routes — login, setup, password change."""
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -57,7 +58,8 @@ async def setup(body: SetupRequest, request: Request):
     if await user_exists():
         raise HTTPException(409, "Un utilisateur existe déjà")
     ip = get_client_ip(request)
-    if rate_limit(f"setup:{ip}"):
+    # rate_limit fait du SQLite synchrone — exécuté hors de l'event loop
+    if await asyncio.to_thread(rate_limit, f"setup:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     await create_user(body.username, body.password)
     access_token  = create_access_token(body.username)
@@ -85,12 +87,14 @@ async def login(body: LoginRequest, request: Request):
     ip = get_client_ip(request)
     # Rate limit AVANT la vérification — empêche le bypass par alternance
     # succès/échec et protège toutes les tentatives, valides ou non.
-    if rate_limit(f"login:{ip}"):
+    if await asyncio.to_thread(rate_limit, f"login:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(body.username)
     # Toujours appeler verify_password pour éliminer le timing side-channel :
     # sans ceci, un username inexistant répond ~170ms plus vite (pas d'Argon2).
-    password_ok = verify_password(
+    # Argon2 est CPU-bound (~170ms) — exécuté hors de l'event loop.
+    password_ok = await asyncio.to_thread(
+        verify_password,
         body.password,
         user["password_hash"] if user else _DUMMY_HASH,
     )
@@ -110,7 +114,7 @@ async def login(body: LoginRequest, request: Request):
 async def refresh(body: RefreshRequest, request: Request):
     """Exchange a valid refresh token for a new access token."""
     ip = get_client_ip(request)
-    if rate_limit(f"refresh:{ip}"):
+    if await asyncio.to_thread(rate_limit, f"refresh:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     if not body.refresh_token:
         raise HTTPException(401, "Refresh token requis")
@@ -141,7 +145,9 @@ async def change_password(
     body: ChangePasswordRequest, username: str = Depends(require_auth)
 ):
     user = await get_user(username)
-    if not user or not verify_password(body.current_password, user["password_hash"]):
+    if not user or not await asyncio.to_thread(
+        verify_password, body.current_password, user["password_hash"]
+    ):
         raise HTTPException(401, "Mot de passe actuel incorrect")
     await update_password(username, body.new_password)
     await revoke_all_refresh_tokens(username)

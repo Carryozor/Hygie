@@ -20,6 +20,10 @@ async def client(tmp_path_factory):
     importlib.reload(main_mod)
     app = main_mod.app
     async with main_mod.lifespan(app):
+        # The webhook is fail-closed: a secret must be configured for any
+        # event to be accepted (see test_security_hardening.py).
+        from backend.db.settings_store import set_setting
+        await set_setting("plex_webhook_secret", "test-secret")
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
@@ -42,13 +46,17 @@ def _make_payload(event: str, rating_key: str = "101") -> str:
 
 async def test_webhook_scrobble_returns_200(client):
     payload = _make_payload("media.scrobble")
-    resp = await client.post("/api/plex/webhook", data={"payload": payload})
+    resp = await client.post(
+        "/api/plex/webhook?secret=test-secret", data={"payload": payload}
+    )
     assert resp.status_code == 200
 
 
 async def test_webhook_play_returns_200(client):
     payload = _make_payload("media.play")
-    resp = await client.post("/api/plex/webhook", data={"payload": payload})
+    resp = await client.post(
+        "/api/plex/webhook?secret=test-secret", data={"payload": payload}
+    )
     assert resp.status_code == 200
 
 
@@ -59,15 +67,16 @@ async def test_webhook_missing_payload_returns_4xx(client):
 
 
 async def test_webhook_invalid_json_returns_400(client):
-    resp = await client.post("/api/plex/webhook", data={"payload": "not-json"})
+    resp = await client.post(
+        "/api/plex/webhook?secret=test-secret", data={"payload": "not-json"}
+    )
     assert resp.status_code == 400
 
 
-async def test_webhook_wrong_secret_accepted_when_none_configured(client):
+async def test_webhook_wrong_secret_rejected(client):
     payload = _make_payload("media.scrobble")
     resp = await client.post(
         "/api/plex/webhook?secret=wrongsecret",
         data={"payload": payload},
     )
-    # Fresh DB has no plex_webhook_secret → all secrets accepted
-    assert resp.status_code in (200, 403)
+    assert resp.status_code == 403

@@ -287,6 +287,64 @@ async def test_dry_run_does_not_mark_items_deleted(queue_db):
     )
 
 
+@pytest.mark.asyncio
+async def test_delete_now_dry_run_does_not_mark_deleted(queue_db):
+    """delete-now in dry_run mode must simulate only — item stays pending."""
+    from unittest.mock import AsyncMock, patch
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    from backend.db.settings_store import set_setting
+    from backend.db.engine import get_db
+
+    await set_setting("dry_run", "true")
+    item_id = await _insert_due_item("DeleteNow DryRun")
+
+    from backend.routers import media as media_router
+    from backend import auth as auth_mod
+    app = FastAPI()
+    app.include_router(media_router.router)
+    app.dependency_overrides[auth_mod.require_auth] = lambda: "testuser"
+
+    transport = ASGITransport(app=app)
+    with patch("backend.routers.media._delete_media", new_callable=AsyncMock) as fake_del:
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.post(f"/api/media/{item_id}/delete-now")
+
+    assert resp.status_code == 200
+    assert not any(
+        call.args[1] is False or call.kwargs.get("dry_run") is False
+        for call in fake_del.call_args_list
+    ), "real deletion must never run in dry_run mode"
+
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT status FROM media_queue WHERE id=?", (item_id,))
+    assert row["status"] == "pending", (
+        "dry_run delete-now must leave the item pending — marking it deleted "
+        "removes it from the pipeline without any file deletion"
+    )
+
+
+@pytest.mark.asyncio
+async def test_stale_deleting_items_reset_at_startup(queue_db):
+    """Items stuck in 'deleting' (crash mid-deletion) must be recovered."""
+    from backend.db.engine import get_db
+    from backend.deletion import reset_stale_deleting
+
+    item_id = await _insert_due_item("Crashed Mid-Delete")
+    async with get_db() as db:
+        await db.execute_write(
+            "UPDATE media_queue SET status='deleting' WHERE id=?", (item_id,)
+        )
+        await db.commit()
+
+    n = await reset_stale_deleting()
+
+    assert n == 1
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT status FROM media_queue WHERE id=?", (item_id,))
+    assert row["status"] == "pending"
+
+
 # ─── LIKE wildcard escaping ───────────────────────────────────────────────────
 
 def test_escape_like_escapes_wildcards():

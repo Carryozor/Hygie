@@ -76,7 +76,7 @@ async def _migrate_encrypt_settings(db) -> None:
         return
     placeholders = ",".join("?" * len(SENSITIVE_KEYS))
     rows = await db.fetch_all(
-        f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
+        f"SELECT `key`, value FROM settings WHERE `key` IN ({placeholders})",
         tuple(SENSITIVE_KEYS),
     )
     migrated = 0
@@ -84,7 +84,7 @@ async def _migrate_encrypt_settings(db) -> None:
         key, value = row["key"], row["value"]
         if value and not value.startswith(_ENC_PREFIX):
             await db.execute(
-                "UPDATE settings SET value=? WHERE key=?",
+                "UPDATE settings SET value=? WHERE `key`=?",
                 (_encrypt_value(value), key),
             )
             migrated += 1

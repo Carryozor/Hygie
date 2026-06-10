@@ -33,7 +33,7 @@ async def get_media_servers() -> list:
         return _ms_cache
     try:
         async with get_db() as db:
-            row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+            row = await db.fetch_one("SELECT value FROM settings WHERE `key`='media_servers'")
             if not row or not row["value"]:
                 _ms_cache, _ms_cache_ts = [], now
                 return []
@@ -52,7 +52,7 @@ async def save_media_servers(servers: list) -> None:
     stored = _encrypt_value(raw)
     async with get_db() as db:
         await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO settings (`key`, value) VALUES (?, ?)",
             ("media_servers", stored)
         )
         await db.commit()

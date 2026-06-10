@@ -87,7 +87,8 @@ async def get_setting(key: str) -> str:
     now = _time.monotonic()
     if not _settings_cache or now - _settings_cache_ts >= _SETTINGS_CACHE_TTL:
         async with get_db() as db:
-            rows = await db.fetch_all("SELECT key, value FROM settings")
+            # `key` is a reserved word in MariaDB — backticks work on both dialects.
+            rows = await db.fetch_all("SELECT `key`, value FROM settings")
             _settings_cache = {r["key"]: r["value"] for r in rows}
         _settings_cache_ts = now
     raw = _settings_cache.get(key, "")
@@ -98,7 +99,7 @@ async def set_setting(key: str, value: str) -> None:
     stored = _encrypt_value(value) if key in SENSITIVE_KEYS else value
     async with get_db() as db:
         await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, stored)
+            "INSERT OR REPLACE INTO settings (`key`, value) VALUES (?, ?)", (key, stored)
         )
         await db.commit()
     _invalidate_settings_cache()
@@ -123,5 +124,5 @@ async def get_int_setting(key: str, default: int = 0) -> int:
 
 async def get_all_settings() -> dict:
     async with get_db() as db:
-        rows = await db.fetch_all("SELECT key, value FROM settings")
+        rows = await db.fetch_all("SELECT `key`, value FROM settings")
         return {r["key"]: (_decrypt_value(r["value"]) if r["key"] in SENSITIVE_KEYS else r["value"]) for r in rows}

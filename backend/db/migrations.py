@@ -279,14 +279,14 @@ async def _m009_migrate_legacy_emby_to_media_servers():
     from .encryption import _decrypt_value, _encrypt_value
 
     async with get_db() as db:
-        ms_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+        ms_row = await db.fetch_one("SELECT value FROM settings WHERE `key`='media_servers'")
     raw = (ms_row or {}).get("value", "[]") or "[]"
     current_ms = _decrypt_value(raw) if raw else "[]"
     if current_ms not in ("[]", "", None, "null"):
         return  # already populated
 
     async with get_db() as db:
-        url_row = await db.fetch_one("SELECT value FROM settings WHERE key='emby_url'")
+        url_row = await db.fetch_one("SELECT value FROM settings WHERE `key`='emby_url'")
     if not url_row or not url_row.get("value"):
         return  # nothing to migrate
 
@@ -295,9 +295,9 @@ async def _m009_migrate_legacy_emby_to_media_servers():
         return  # url stored encrypted — skip (media_servers already populated earlier)
 
     async with get_db() as db:
-        key_row  = await db.fetch_one("SELECT value FROM settings WHERE key='emby_api_key'")
-        ext_row  = await db.fetch_one("SELECT value FROM settings WHERE key='emby_external_url'")
-        type_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_server_type'")
+        key_row  = await db.fetch_one("SELECT value FROM settings WHERE `key`='emby_api_key'")
+        ext_row  = await db.fetch_one("SELECT value FROM settings WHERE `key`='emby_external_url'")
+        type_row = await db.fetch_one("SELECT value FROM settings WHERE `key`='media_server_type'")
 
     raw_key = (key_row or {}).get("value", "") or ""
     raw_ext = (ext_row or {}).get("value", "") or ""
@@ -317,7 +317,7 @@ async def _m009_migrate_legacy_emby_to_media_servers():
             )
         else:
             await db.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                "INSERT OR REPLACE INTO settings (`key`, value) VALUES (?, ?)",
                 ("media_servers", _encrypt_value(json.dumps([server0])))
             )
         await db.commit()
@@ -350,10 +350,10 @@ async def _m010_v2_to_v3_data():
                 if n:
                     logger.info("m010: backfilled deletion_unit on %d library row(s)", n)
 
-        ms_row = await db.fetch_one("SELECT value FROM settings WHERE key='media_servers'")
+        ms_row = await db.fetch_one("SELECT value FROM settings WHERE `key`='media_servers'")
         if ms_row and ms_row.get("value") not in (None, "", "[]", "null"):
             for old_key in ("emby_url", "emby_api_key", "emby_external_url", "media_server_type"):
-                n = await db.execute_write("DELETE FROM settings WHERE key=?", (old_key,))
+                n = await db.execute_write("DELETE FROM settings WHERE `key`=?", (old_key,))
                 if n:
                     logger.info("m010: removed legacy setting '%s'", old_key)
 
@@ -378,7 +378,7 @@ async def _m011_libraries_to_expert_rules():
     async with get_db() as db:
         # Existing v3 databases already have v3_migration_done — skip to avoid
         # creating unwanted "(migré)" rules that the user never configured.
-        done = await db.fetch_one("SELECT value FROM settings WHERE key='v3_migration_done'")
+        done = await db.fetch_one("SELECT value FROM settings WHERE `key`='v3_migration_done'")
         if done:
             return
 
@@ -390,7 +390,7 @@ async def _m011_libraries_to_expert_rules():
                 )
             else:
                 await db.execute(
-                    "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("v3_migration_done", "1")
+                    "INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", ("v3_migration_done", "1")
                 )
             await db.commit()
             return
@@ -457,7 +457,7 @@ async def _m011_libraries_to_expert_rules():
             )
         else:
             await db.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("v3_migration_done", "1")
+                "INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", ("v3_migration_done", "1")
             )
         await db.commit()
 
@@ -473,10 +473,10 @@ async def _m012_interval_hours_to_minutes():
             ("scan_interval_hours", "scan_interval_minutes"),
             ("deletion_check_interval_hours", "deletion_check_interval_minutes"),
         ]:
-            row = await db.fetch_one("SELECT value FROM settings WHERE key=?", (hours_key,))
+            row = await db.fetch_one("SELECT value FROM settings WHERE `key`=?", (hours_key,))
             if not row or not (row.get("value") or "").strip().isdigit():
                 continue
-            existing = await db.fetch_one("SELECT value FROM settings WHERE key=?", (minutes_key,))
+            existing = await db.fetch_one("SELECT value FROM settings WHERE `key`=?", (minutes_key,))
             if not existing:
                 if DIALECT == "mariadb":
                     await db.execute(
@@ -485,12 +485,12 @@ async def _m012_interval_hours_to_minutes():
                     )
                 else:
                     await db.execute(
-                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        "INSERT OR REPLACE INTO settings (`key`, value) VALUES (?, ?)",
                         (minutes_key, str(int(row["value"]) * 60))
                     )
                 logger.info("m012: converted %s → %s (%s→%s min)",
                             hours_key, minutes_key, row["value"], int(row["value"]) * 60)
-            await db.execute("DELETE FROM settings WHERE key=?", (hours_key,))
+            await db.execute("DELETE FROM settings WHERE `key`=?", (hours_key,))
         await db.commit()
 
 

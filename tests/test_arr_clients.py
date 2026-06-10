@@ -220,3 +220,51 @@ async def test_seerr_pages_stops_on_empty_page():
         pages.append(page)
 
     assert pages == []
+
+
+# ─── qbit_find_by_path: precise matching (no substring false positives) ───────
+
+import pytest as _pytest
+
+
+def _torrent(hash_, name="", save_path="", content_path=""):
+    return {"hash": hash_, "name": name, "save_path": save_path, "content_path": content_path}
+
+
+@_pytest.mark.asyncio
+async def test_qbit_match_exact_content_path(monkeypatch):
+    import backend.qbit_client as q
+
+    class _R:
+        status_code = 200
+        def json(self): return [_torrent("ABC", "Movie", "/dl/movies", "/dl/movies/Movie.mkv")]
+    async def _req(*a, **k): return _R()
+    monkeypatch.setattr(q, "_request", _req)
+    assert await q.qbit_find_by_path("/dl/movies/Movie.mkv") == "abc"
+
+
+@_pytest.mark.asyncio
+async def test_qbit_match_file_inside_torrent_folder(monkeypatch):
+    import backend.qbit_client as q
+
+    class _R:
+        status_code = 200
+        def json(self): return [_torrent("DEF", "Show", "/dl/tv", "/dl/tv/Show")]
+    async def _req(*a, **k): return _R()
+    monkeypatch.setattr(q, "_request", _req)
+    assert await q.qbit_find_by_path("/dl/tv/Show/S01E01.mkv") == "def"
+
+
+@_pytest.mark.asyncio
+async def test_qbit_no_substring_false_positive(monkeypatch):
+    """A torrent whose NAME is a substring of an unrelated path must NOT match."""
+    import backend.qbit_client as q
+
+    class _R:
+        status_code = 200
+        def json(self):
+            return [_torrent("BAD", "Dune", "/dl/other", "/dl/other/Dune.mkv")]
+    async def _req(*a, **k): return _R()
+    monkeypatch.setattr(q, "_request", _req)
+    # "Dune" is a substring of this path but the torrent is a different file
+    assert await q.qbit_find_by_path("/dl/movies/Dune Part Two (2024)/movie.mkv") is None

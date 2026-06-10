@@ -128,14 +128,14 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     # Startup
-    await init_db()
-    from .db.migrations import run_migrations
-    await run_migrations()
-
-    # init_db_pool() can raise on bad DATABASE_URL (MariaDB host unreachable, bad credentials,
-    # malformed URL). Previously this crashed with a raw traceback before the StartupValidator
-    # could report it as a structured CRITICAL. We now capture the error and inject it into
-    # the validator so the operator sees a clean actionable message.
+    # init_db_pool() MUST run before init_db()/run_migrations(): on MariaDB the
+    # schema init and migrations go through get_db(), which raises if the pool
+    # is not yet initialized. (No-op for SQLite.)
+    #
+    # It can raise on bad DATABASE_URL (host unreachable, bad credentials,
+    # malformed URL). Previously this crashed with a raw traceback before the
+    # StartupValidator could report it as a structured CRITICAL. We capture the
+    # error and inject it into the validator so the operator sees a clean message.
     from .db.engine import init_db_pool, close_db_pool
     _db_pool_init_error: str = ""
     try:
@@ -143,6 +143,13 @@ async def lifespan(app: FastAPI):
     except Exception as _pool_err:
         _db_pool_init_error = str(_pool_err)
         logger.critical("MariaDB pool initialization failed — startup will report CRITICAL: %s", _pool_err)
+
+    # Skip schema init / migrations if the pool failed — they would raise the
+    # same unhelpful error; the StartupValidator reports the real cause below.
+    if not _db_pool_init_error:
+        await init_db()
+        from .db.migrations import run_migrations
+        await run_migrations()
 
     # Configure log level from settings
     try:

@@ -22,6 +22,12 @@ _Q_RE = re.compile(
 _LITERAL_RE = re.compile(r"'(?:[^'\\]|\\.)*'" r'|"(?:[^"\\]|\\.)*"')
 _LIMIT_KW_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
 
+# SQLite upsert prefixes → MariaDB equivalents. Anchored to the statement
+# start so a literal containing the keywords is never rewritten. MariaDB
+# rejects `INSERT OR REPLACE` / `INSERT OR IGNORE` with a syntax error.
+_OR_REPLACE_RE = re.compile(r"^\s*INSERT\s+OR\s+REPLACE\s+INTO\b", re.IGNORECASE)
+_OR_IGNORE_RE  = re.compile(r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE)
+
 logger = logging.getLogger(__name__)
 
 DATABASE_URL: str = os.environ.get("DATABASE_URL", "").strip()
@@ -111,6 +117,13 @@ class DbConn:
         """
         if self._dialect != "mariadb":
             return sql
+        sql = _OR_REPLACE_RE.sub("REPLACE INTO", sql)
+        sql = _OR_IGNORE_RE.sub("INSERT IGNORE INTO", sql)
+        # aiomysql/pymysql treats the query as a printf-style format string
+        # (query % args), so any literal % (e.g. LIKE wildcards baked into the
+        # SQL) must be doubled. Escape first, THEN emit %s placeholders so the
+        # placeholders we generate stay single.
+        sql = sql.replace("%", "%%")
         return _Q_RE.sub(lambda m: "%s" if m.group(1) else m.group(0), sql)
 
     async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:

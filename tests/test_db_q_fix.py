@@ -31,7 +31,9 @@ def test_q_no_op_for_sqlite():
 def test_q_preserves_question_mark_in_single_quoted_literal():
     sql = "SELECT * FROM t WHERE value LIKE '?%'"
     result = _q(sql)
-    assert "'?%'" in result, f"Literal '?' must stay intact: {result}"
+    # The literal '?' must NOT become a placeholder. The literal '%' is doubled
+    # to '%%' because aiomysql treats the query as a printf-style format string.
+    assert "'?%%'" in result, f"Literal '?' kept, '%' doubled: {result}"
     assert "%s" not in result
 
 
@@ -45,8 +47,8 @@ def test_q_preserves_question_mark_in_double_quoted_literal():
 def test_q_mixed_literal_and_param():
     sql = "SELECT * FROM t WHERE value LIKE '?%' AND id = ?"
     result = _q(sql)
-    assert "'?%'" in result
-    assert result.endswith("%s")
+    assert "'?%%'" in result          # literal % doubled, literal ? preserved
+    assert result.endswith("%s")      # the real placeholder
     assert result.count("%s") == 1
 
 

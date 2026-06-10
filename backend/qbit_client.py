@@ -217,14 +217,19 @@ async def qbit_find_by_path(file_path: str) -> Optional[str]:
         return None
     try:
         for torrent in r.json():
-            save_path = torrent.get("save_path") or ""
-            content_path = torrent.get("content_path") or ""
-            name = torrent.get("name") or ""
-            if (
-                file_path == content_path
-                or file_path.startswith(save_path + "/")
-                or (name and name in file_path)
-            ):
+            save_path    = (torrent.get("save_path") or "").rstrip("/")
+            content_path = (torrent.get("content_path") or "").rstrip("/")
+            name         = torrent.get("name") or ""
+            # The torrent's content lives at content_path (file for single-file
+            # torrents, folder for multi-file). Fall back to save_path/name for
+            # qBittorrent versions that don't expose content_path.
+            effective = content_path or (f"{save_path}/{name}" if save_path and name else "")
+            if not effective:
+                continue
+            # Exact file match, or the arr file is inside the torrent's folder.
+            # Substring matching on the torrent NAME is deliberately NOT used —
+            # it could target the wrong torrent for tagging/deletion.
+            if file_path == effective or file_path.startswith(effective + "/"):
                 return (torrent.get("hash") or "").lower()
     except Exception as e:
         logger.debug(f"qbit_find_by_path parse: {e}")

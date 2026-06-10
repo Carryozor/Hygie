@@ -233,9 +233,14 @@ async def update_password(username: str, new_password: str):
 # Uses stdlib sqlite3 (synchronous) so rate_limit() stays sync.
 # Falls back to in-memory when DB_PATH == ":memory:" (tests).
 import sqlite3 as _sqlite3
+import threading as _threading
 
-_rate_buckets: dict = {}  # in-memory fallback (tests / DB error)
+_rate_buckets: dict = {}  # in-memory fallback (tests / MariaDB / DB error)
 _rate_call_counter: int = 0
+# rate_limit() runs in worker threads (asyncio.to_thread) — the dict
+# read-modify-write below must be serialized or concurrent attempts from
+# one IP would overwrite each other and under-count.
+_rate_lock = _threading.Lock()
 
 RATE_LIMIT_WINDOW = 300  # 5 minutes
 RATE_LIMIT_MAX = 5  # 5 failed attempts
@@ -243,16 +248,17 @@ RATE_LIMIT_MAX = 5  # 5 failed attempts
 
 def _memory_rate_limit(key: str, now: float, cutoff: float) -> bool:
     global _rate_call_counter
-    bucket = _rate_buckets.get(key, [])
-    bucket = [t for t in bucket if t > cutoff]
-    bucket.append(now)
-    _rate_buckets[key] = bucket
-    _rate_call_counter += 1
-    if _rate_call_counter % 500 == 0:
-        stale = [k for k, v in list(_rate_buckets.items()) if not v or v[-1] <= cutoff]
-        for k in stale:
-            del _rate_buckets[k]
-    return len(bucket) > RATE_LIMIT_MAX
+    with _rate_lock:
+        bucket = _rate_buckets.get(key, [])
+        bucket = [t for t in bucket if t > cutoff]
+        bucket.append(now)
+        _rate_buckets[key] = bucket
+        _rate_call_counter += 1
+        if _rate_call_counter % 500 == 0:
+            stale = [k for k, v in list(_rate_buckets.items()) if not v or v[-1] <= cutoff]
+            for k in stale:
+                del _rate_buckets[k]
+        return len(bucket) > RATE_LIMIT_MAX
 
 
 def rate_limit(key: str) -> bool:

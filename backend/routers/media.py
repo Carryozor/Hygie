@@ -113,6 +113,20 @@ async def delete_now(
     media_id: int, user: str = Depends(require_auth)
 ):
     """Manually trigger deletion of a single item."""
+    # Dry-run simulates only: no claim, no status change — marking the item
+    # 'deleted' here would remove it from the pipeline without deleting files.
+    dry_run = (await get_setting("dry_run") or "false").lower() == "true"
+    if dry_run:
+        async with get_db() as db:
+            row = await db.fetch_one(
+                "SELECT * FROM media_queue WHERE id=? AND status=?",
+                (media_id, STATUS_PENDING),
+            )
+        if not row:
+            raise HTTPException(404, "Média introuvable ou déjà supprimé")
+        await _delete_media(row, True)
+        return {"status": "dry_run"}
+
     # Atomically claim the item by updating status to 'deleting' — prevents double-delete race
     async with get_db() as db:
         claimed = await db.execute_write(
@@ -124,8 +138,7 @@ async def delete_now(
         await db.commit()
         row = await db.fetch_one("SELECT * FROM media_queue WHERE id=?", (media_id,))
 
-    dry_run = (await get_setting("dry_run") or "false").lower() == "true"
-    ok = await _delete_media(row, dry_run)
+    ok = await _delete_media(row, False)
 
     async with get_db() as db:
         if ok:

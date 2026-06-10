@@ -165,6 +165,10 @@ async def proxy_image(request: Request):
                             f"Proxy: upstream HTTP {r.status_code} for {sanitize_url(url)[:80]}"
                         )
                     return Response(status_code=404)
+            logger.warning(
+                f"Proxy: exceeded max redirects ({_PROXY_MAX_REDIRECTS}) "
+                f"for {sanitize_url(target_url)[:80]}"
+            )
     except Exception as e:
         logger.error(f"Proxy error: {e}")
     return Response(status_code=404)

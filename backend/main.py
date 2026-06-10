@@ -151,6 +151,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    # Recover items left in 'deleting' by a crash mid-deletion — they would
+    # otherwise be skipped by every future deletion run.
+    try:
+        from .deletion import reset_stale_deleting
+        await reset_stale_deleting()
+    except Exception as e:
+        logger.warning(f"reset_stale_deleting: {e}")
+
     # Validate configuration — log WARN issues, block on CRITICAL
     from .startup_validator import StartupValidator
     _validator = StartupValidator(db_pool_init_error=_db_pool_init_error)

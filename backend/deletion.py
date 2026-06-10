@@ -154,6 +154,24 @@ async def run_deletion() -> None:
             await finish_job_run(run_id, _dl_status, _dl_msg)
 
 
+async def reset_stale_deleting() -> int:
+    """Recover items stuck in 'deleting' after a crash mid-deletion.
+
+    Called at startup: with a single process, any 'deleting' row at boot is
+    stale by definition (the claim holder died before finishing). Without this
+    reset the items are invisible to get_pending_queue() forever.
+    """
+    async with get_db() as db:
+        n = await db.execute_write(
+            "UPDATE media_queue SET status=? WHERE status=?",
+            (STATUS_PENDING, STATUS_DELETING),
+        )
+        await db.commit()
+    if n:
+        logger.warning("Recovered %d item(s) stuck in 'deleting' status (crash recovery)", n)
+    return n
+
+
 async def _claim_pending(item_id: int) -> bool:
     """Atomically claim a queue item (pending → deleting).
 

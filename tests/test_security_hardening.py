@@ -300,10 +300,11 @@ async def test_delete_now_dry_run_does_not_mark_deleted(queue_db):
     item_id = await _insert_due_item("DeleteNow DryRun")
 
     from backend.routers import media as media_router
-    from backend import auth as auth_mod
     app = FastAPI()
     app.include_router(media_router.router)
-    app.dependency_overrides[auth_mod.require_auth] = lambda: "testuser"
+    # Override the exact symbol the router holds — module reloads done by other
+    # test fixtures can make backend.auth.require_auth a different object.
+    app.dependency_overrides[media_router.require_auth] = lambda: "testuser"
 
     transport = ASGITransport(app=app)
     with patch("backend.routers.media._delete_media", new_callable=AsyncMock) as fake_del:

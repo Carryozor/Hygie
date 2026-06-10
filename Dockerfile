@@ -67,19 +67,27 @@ COPY --from=frontend-builder --chown=hygie:hygie /dist/ /app/frontend/dist/
 COPY --chown=hygie:hygie docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Bundle frontend dependencies locally — no CDN needed at runtime
+# Bundle frontend dependencies locally — no CDN needed at runtime.
+# All downloads are integrity-checked: Font Awesome via sha256 pinning,
+# dashboard icons via a pinned upstream commit (immutable jsdelivr URL).
 RUN mkdir -p /app/frontend/static/css /app/frontend/static/webfonts \
     && curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" \
          -o /app/frontend/static/css/fa.min.css \
-    && for f in fa-solid-900.woff2 fa-regular-400.woff2 fa-brands-400.woff2; do \
-         curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/$f" \
-           -o "/app/frontend/static/webfonts/$f"; \
+    && echo "c880eb3d25c765d399840aa204fec22b3230310991089f14781f09a35ed80b8a  /app/frontend/static/css/fa.min.css" | sha256sum -c - \
+    && for f in \
+         "fa-solid-900.woff2 f4c5a5b297e623bc159679563a4d1eb16e409ca3b57698fbc00fd2c907dadae0" \
+         "fa-regular-400.woff2 3a74c08d486310c03731b458616f0172375fe3780e96165f8a1adc02d1355eaa" \
+         "fa-brands-400.woff2 b66b3da5ff7b2db79b6cb5a22c3e762e2bf16958a11987e69eeb1980bbbcdfb0"; do \
+         set -- $f; \
+         curl -fsSL "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/webfonts/$1" \
+           -o "/app/frontend/static/webfonts/$1" \
+         && echo "$2  /app/frontend/static/webfonts/$1" | sha256sum -c - || exit 1; \
        done \
     && chown -R hygie:hygie /app/frontend/static/css /app/frontend/static/webfonts \
     && mkdir -p /app/frontend/static/img/icons \
     && for icon in radarr sonarr overseerr jellyseerr qbittorrent discord emby jellyfin; do \
-         curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/$icon.png" \
-           -o "/app/frontend/static/img/icons/$icon.png" || true; \
+         curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@2c58e2cdcaadde7a65ee0e4f066eef4c84e9811a/png/$icon.png" \
+           -o "/app/frontend/static/img/icons/$icon.png" || exit 1; \
        done \
     && chown -R hygie:hygie /app/frontend/static/img/icons
 

@@ -461,7 +461,7 @@ async def _init_db_sqlite():
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)
         for k, v in DEFAULT_SETTINGS.items():
             await db.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v)
+                "INSERT OR IGNORE INTO settings (`key`, value) VALUES (?, ?)", (k, v)
             )
 
         await db.commit()
@@ -548,7 +548,7 @@ async def _migrate_libraries_to_expert_rules_dbconn() -> int:
     try:
         async with get_db() as db:
             # Guard: skip if already migrated
-            done = await db.fetch_one("SELECT value FROM settings WHERE key='v3_migration_done'")
+            done = await db.fetch_one("SELECT value FROM settings WHERE `key`='v3_migration_done'")
             if done:
                 return 0
             rows = await db.fetch_all(

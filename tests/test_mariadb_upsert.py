@@ -126,3 +126,38 @@ def test_like_escape_pattern_param_unaffected(_=None):
     # `?` placeholder for a LIKE param: the % lives in the bound value, not the SQL
     sql = _mariadb_conn()._q("SELECT * FROM t WHERE name LIKE ? ESCAPE '!'")
     assert "LIKE %s ESCAPE '!'" in sql
+
+
+def test_insert_ignore_select_with_param_translates_cleanly():
+    """Regression for m008: a dialect-agnostic `INSERT OR IGNORE ... SELECT id, ?`
+    must become `INSERT IGNORE ... SELECT id, %s` (single %s, no %%s)."""
+    sql = _mariadb_conn()._q(
+        "INSERT OR IGNORE INTO notifications (media_id, threshold) "
+        "SELECT id, ? FROM media_queue WHERE notified_7=1"
+    )
+    assert sql.startswith("INSERT IGNORE INTO notifications")
+    assert "SELECT id, %s FROM" in sql
+    assert "%%s" not in sql
+
+
+def test_no_backend_sql_string_hardcodes_percent_s():
+    """No backend SQL should hard-code a %s placeholder — it must use ? so the
+    dialect layer translates it. A literal %s gets doubled to %%s by the
+    %→%% escaping and breaks MariaDB parameter binding (the m008 bug)."""
+    import pathlib, re
+    root = pathlib.Path(__file__).resolve().parent.parent / "backend"
+    # Match a quoted SQL-ish string containing %s, excluding tools/ (raw drivers)
+    offenders = []
+    sql_kw = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
+    for py in root.rglob("*.py"):
+        if "tools/" in str(py) or "__pycache__" in str(py):
+            continue
+        for i, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            if "%s" in line and sql_kw.search(line) and ("execute" in line or "fetch" in line or "INTO" in line or "FROM" in line):
+                # Allow comments
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                if '"%s"' in line or "'%s'" in line or "%s FROM" in line or "%s," in line:
+                    offenders.append(f"{py.relative_to(root)}:{i}: {stripped[:80]}")
+    assert not offenders, "Hard-coded %s in backend SQL:\n" + "\n".join(offenders)

@@ -203,18 +203,15 @@ async def _m007_migrate_notification_columns():
             ("notified_detected", "detected"),
         ]:
             try:
-                if DIALECT == "mariadb":
-                    await db.execute(
-                        f"INSERT IGNORE INTO notifications (media_id, threshold) "
-                        f"SELECT id, %s FROM media_queue WHERE {col}=1",
-                        (threshold,),
-                    )
-                else:
-                    await db.execute(
-                        f"INSERT OR IGNORE INTO notifications (media_id, threshold) "
-                        f"SELECT id, ? FROM media_queue WHERE {col}=1",
-                        (threshold,),
-                    )
+                # Single dialect-agnostic form: DbConn._q rewrites
+                # INSERT OR IGNORE → INSERT IGNORE and ? → %s for MariaDB.
+                # (The old MariaDB branch hard-coded %s, which the %→%% escaping
+                # in _q would corrupt into %%s and break the parameter binding.)
+                await db.execute(
+                    f"INSERT OR IGNORE INTO notifications (media_id, threshold) "
+                    f"SELECT id, ? FROM media_queue WHERE {col}=1",
+                    (threshold,),
+                )
             except Exception:
                 pass  # column may not exist on very old DBs — safe to skip
 

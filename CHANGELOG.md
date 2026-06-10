@@ -4,6 +4,24 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.6.1] — 2026-06-10
+
+### Fixed
+
+- **MariaDB mode was broken for every runtime write (CRITICAL)** — MariaDB is documented as fully supported, but the database initialised and then failed on the first write. Three independent bugs, none caught because no test ever wrote to a live MariaDB (the schema tests are parse-only and the migration tests are dry-run):
+  - **SQLite-only upsert syntax** — `INSERT OR REPLACE` / `INSERT OR IGNORE` raise `ERROR 1064` on MariaDB. `DbConn` now rewrites them to `REPLACE` / `INSERT IGNORE`. This affected saving any setting, saving media servers, ignoring media, and threshold notifications.
+  - **Reserved word `key`** — the `settings.key` column was referenced unquoted in runtime queries (`settings_store`, `encryption`, `media_servers`, `migrations`), a syntax error on MariaDB. Now backtick-quoted (valid on both dialects).
+  - **Startup ordering** — `init_db()` and `run_migrations()` ran before `init_db_pool()`, so `get_db()` raised "pool not initialized" on MariaDB before any table was created. The pool is now initialised first; schema/migrations are skipped (with a clean CRITICAL) if it fails.
+  - Literal `%` (LIKE wildcards baked into SQL) is now doubled to `%%` so aiomysql's printf-style query formatting doesn't fail.
+  - A live MariaDB service was added to CI so these write paths are exercised on every run.
+- **qBittorrent torrent matched by name substring** (`qbit_client.py`) — `qbit_find_by_path` matched a torrent whenever its name was a substring of the file path (e.g. torrent "Dune" matched `/movies/Dune Part Two/…`). Since the resulting hash is used to tag or delete the torrent, this could act on the wrong torrent. Matching is now exact on `content_path` or file-inside-folder only.
+
+### Security
+
+- **Public dashboard password no longer sent in the query string** (`PublicView.vue`) — the password was passed as `?password=…`, leaking into server access logs, browser history and the Referer header. It now travels in the `X-Dashboard-Password` header (already supported server-side).
+
+---
+
 ## [3.6.0] — 2026-06-10
 
 ### Security

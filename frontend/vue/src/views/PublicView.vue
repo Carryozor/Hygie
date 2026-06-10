@@ -419,10 +419,12 @@ async function loadDashboard(password = '') {
   loading.value = true
   const params = new URLSearchParams()
   if (slug.value) params.set('slug', slug.value)
-  if (password)   params.set('password', password)
   try {
-    // Send admin token if present so admins bypass the public password requirement
     const headers = {}
+    // Password travels in a header, not the query string — query params leak
+    // into server access logs, browser history and the Referer header.
+    if (password) headers['X-Dashboard-Password'] = password
+    // Send admin token if present so admins bypass the public password requirement
     const token = localStorage.getItem('hygie_token')
     if (token) headers['Authorization'] = `Bearer ${token}`
     const res  = await fetch(`/api/public/upcoming?${params}`, { headers })

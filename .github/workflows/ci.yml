@@ -11,6 +11,22 @@ jobs:
   test:
     name: Tests (Python 3.12)
     runs-on: ubuntu-latest
+
+    # Live MariaDB so the dual-dialect write paths are exercised in CI.
+    # Without this the SQLite-only upsert / reserved-word 'key' / startup-order
+    # bugs that broke MariaDB mode went undetected (schema tests are parse-only).
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_DATABASE: hygie
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +42,8 @@ jobs:
 
       - name: Run tests
         timeout-minutes: 10
+        env:
+          TEST_MARIADB_URL: mysql+aiomysql://root:ci@127.0.0.1:3306/hygie
         run: pytest tests/ -v --tb=short --timeout=60
 
   docker:

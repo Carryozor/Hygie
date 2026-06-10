@@ -12,7 +12,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore }     from '@/stores/auth'
 import { useStatusStore }   from '@/stores/status'
@@ -39,15 +39,27 @@ function onUnauthorized() {
   }
 }
 
+function startSession() {
+  auth.fetchMe()
+  // Load settings once globally — individual views read from this store
+  // instead of each calling settings.fetch() independently.
+  settings.fetch()
+  status.start()
+}
+
 onMounted(() => {
   window.addEventListener('hygie:unauthorized', onUnauthorized)
   if (auth.isLoggedIn) {
-    auth.fetchMe()
-    // Load settings once globally — individual views read from this store
-    // instead of each calling settings.fetch() independently.
-    settings.fetch()
-    status.start()
+    startSession()
   }
+})
+
+// Login/logout happen via SPA navigation — App.vue is never remounted, so
+// onMounted alone would leave scheduler/health polling stopped until a full
+// page reload (sidebar countdowns missing after a fresh login).
+watch(() => auth.isLoggedIn, (loggedIn) => {
+  if (loggedIn) startSession()
+  else status.stop()
 })
 
 onUnmounted(() => {

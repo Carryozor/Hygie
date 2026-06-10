@@ -65,7 +65,7 @@ async def build_radarr_path_cache() -> dict:
                     if r.status_code != 200:
                         return []
                     return r.json()
-            movies = await with_retry(_fetch, label=f"radarr.build_cache[{url}]")
+            movies = await with_retry(_fetch, label=f"radarr.build_cache[{url}]", service="radarr")
             for movie in movies:
                     mid = movie.get("id")
                     if not mid:
@@ -160,7 +160,7 @@ async def radarr_delete(radarr_id: int, delete_files: bool = False, url: str = "
                     params={"deleteFiles": str(delete_files).lower(), "addImportExclusion": "false"},
                 )
                 return r.status_code in (200, 204)
-        return await with_retry(_do, label=f"radarr.delete[{radarr_id}]")
+        return await with_retry(_do, label=f"radarr.delete[{radarr_id}]", service="radarr")
     except Exception as e:
         logger.warning(f"radarr_delete: {e}")
         return False
@@ -197,7 +197,7 @@ async def radarr_get_torrent_hash(radarr_id: int, url: str = "", key: str = "") 
                         if dl_id and len(dl_id) >= 32:
                             return dl_id
                 return None
-        return await with_retry(_do, label=f"radarr.torrent_hash[{radarr_id}]")
+        return await with_retry(_do, label=f"radarr.torrent_hash[{radarr_id}]", service="radarr")
     except Exception as e:
         logger.debug(f"radarr_get_torrent_hash: {e}")
     return None

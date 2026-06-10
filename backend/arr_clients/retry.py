@@ -27,28 +27,38 @@ _RETRYABLE = (
 )
 
 
-async def with_retry(fn, *args, retries: int = 3, base_delay: float = 1.0, label: str = "", **kwargs):
+async def with_retry(fn, *args, retries: int = 3, base_delay: float = 1.0, label: str = "",
+                     service: str = "", **kwargs):
     """Call fn(*args, **kwargs) up to `retries` times on transient httpx errors.
 
     - Retries only on _RETRYABLE exceptions (network/timeout)
     - Non-retryable exceptions propagate immediately
     - Raises last exception if all retries exhausted
+    - When `service` is set, the whole retry sequence runs through that
+      service's circuit breaker: one exhausted sequence = one breaker failure,
+      and an OPEN breaker raises CircuitOpenError without touching the network.
     """
-    last_exc = None
-    for attempt in range(retries):
-        try:
-            return await fn(*args, **kwargs)
-        except _RETRYABLE as exc:
-            last_exc = exc
-            if attempt < retries - 1:
-                delay = base_delay * (2 ** attempt)
-                logger.warning(
-                    "arr retry %d/%d [%s]: %s — retrying in %.1fs",
-                    attempt + 1, retries, label, type(exc).__name__, delay,
-                )
-                await asyncio.sleep(delay)
-            else:
-                logger.error("arr retry exhausted [%s]: %s", label, exc)
-        except Exception:
-            raise  # non-retryable — propagate immediately
-    raise last_exc
+    async def _run():
+        last_exc = None
+        for attempt in range(retries):
+            try:
+                return await fn(*args, **kwargs)
+            except _RETRYABLE as exc:
+                last_exc = exc
+                if attempt < retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "arr retry %d/%d [%s]: %s — retrying in %.1fs",
+                        attempt + 1, retries, label, type(exc).__name__, delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("arr retry exhausted [%s]: %s", label, exc)
+            except Exception:
+                raise  # non-retryable — propagate immediately
+        raise last_exc
+
+    if not service:
+        return await _run()
+    from .circuit_breaker import get_breaker
+    return await get_breaker(service).call(_run)

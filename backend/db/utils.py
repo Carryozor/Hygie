@@ -70,7 +70,7 @@ def parse_iso_dt(s: Optional[str]) -> Optional[datetime]:
         return None
 
 
-async def http_retry(coro_factory, *, retries: int = 3, backoff: float = 1.0):
+async def http_retry(coro_factory, *, retries: int = 3, backoff: float = 1.0, service: str = ""):
     """Execute an async callable with exponential backoff on transient errors.
 
     coro_factory: zero-arg async callable that performs one HTTP attempt.
@@ -78,16 +78,27 @@ async def http_retry(coro_factory, *, retries: int = 3, backoff: float = 1.0):
     httpx.RemoteProtocolError.
     Raises on exhaustion or non-transient errors (4xx, logic errors).
 
+    When `service` is set, the whole retry sequence runs through that service's
+    circuit breaker (one exhausted sequence = one breaker failure; an OPEN
+    breaker raises CircuitOpenError without touching the network).
+
     Example:
-        result = await http_retry(lambda: client.get(url, headers=h))
+        result = await http_retry(lambda: client.get(url, headers=h), service="emby:0")
     """
     import httpx as _httpx
-    last_exc: Exception = RuntimeError("no attempts")
-    for attempt in range(retries):
-        try:
-            return await coro_factory()
-        except (_httpx.TimeoutException, _httpx.ConnectError, _httpx.RemoteProtocolError) as e:
-            last_exc = e
-            if attempt < retries - 1:
-                await asyncio.sleep(backoff * (2 ** attempt))
-    raise last_exc
+
+    async def _run():
+        last_exc: Exception = RuntimeError("no attempts")
+        for attempt in range(retries):
+            try:
+                return await coro_factory()
+            except (_httpx.TimeoutException, _httpx.ConnectError, _httpx.RemoteProtocolError) as e:
+                last_exc = e
+                if attempt < retries - 1:
+                    await asyncio.sleep(backoff * (2 ** attempt))
+        raise last_exc
+
+    if not service:
+        return await _run()
+    from ..arr_clients.circuit_breaker import get_breaker
+    return await get_breaker(service).call(_run)

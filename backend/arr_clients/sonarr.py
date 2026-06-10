@@ -69,7 +69,7 @@ async def build_sonarr_path_cache() -> dict:
                         return []
                     return rs.json()
 
-            all_series = await with_retry(_fetch_series, label=f"sonarr.build_cache.series[{url}]")
+            all_series = await with_retry(_fetch_series, label=f"sonarr.build_cache.series[{url}]", service="sonarr")
 
             sem = asyncio.Semaphore(8)
 
@@ -99,7 +99,7 @@ async def build_sonarr_path_cache() -> dict:
                         return []
 
                 async with sem:
-                    episode_files = await with_retry(_fetch_eps, label=f"sonarr.build_cache.episodes[{url}:{sid}]")
+                    episode_files = await with_retry(_fetch_eps, label=f"sonarr.build_cache.episodes[{url}:{sid}]", service="sonarr")
 
                 entries = []
                 for ef in episode_files:
@@ -237,7 +237,7 @@ async def sonarr_delete_episode_file(episode_file_id: int, url: str = "", key: s
                     headers=_arr_auth(key),
                 )
                 return r.status_code in (200, 204)
-        return await with_retry(_do, label=f"sonarr.delete_episode_file[{episode_file_id}]")
+        return await with_retry(_do, label=f"sonarr.delete_episode_file[{episode_file_id}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_episode_file: {e}")
         return False
@@ -269,7 +269,7 @@ async def sonarr_delete_season(series_id: int, season_number: int, url: str = ""
                     json={"episodeFileIds": ef_ids},
                 )
                 return dr.status_code in (200, 204)
-        return await with_retry(_do, label=f"sonarr.delete_season[{series_id}:{season_number}]")
+        return await with_retry(_do, label=f"sonarr.delete_season[{series_id}:{season_number}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_season: {e}")
         return False
@@ -302,7 +302,7 @@ async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> 
                     json={"episodeFileIds": ef_ids},
                 )
                 return dr.status_code in (200, 204)
-        return await with_retry(_do, label=f"sonarr.delete_series[{series_id}]")
+        return await with_retry(_do, label=f"sonarr.delete_series[{series_id}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_series: {e}")
         return False

@@ -136,8 +136,9 @@ async def build_seerr_request_cache() -> dict:
     url, key = await _seerr_config()
     if not url or not key:
         return {}
-    cache: dict = {}
-    try:
+
+    async def _fetch() -> dict:
+        cache: dict = {}
         async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
             async for items in _seerr_pages(
                 c, f"{url}/api/v1/request", {"X-Api-Key": key},
@@ -160,11 +161,19 @@ async def build_seerr_request_cache() -> dict:
                             or ""
                         ),
                     })
+        return cache
+
+    from .circuit_breaker import get_breaker, CircuitOpenError
+    try:
+        # Callers handle ArrClientError gracefully (WARN + optional Discord
+        # alert) — an OPEN breaker must surface the same way, just faster.
+        return await get_breaker("seerr").call(_fetch)
     except ArrClientError:
         raise
+    except CircuitOpenError as e:
+        raise ArrClientError(str(e)) from e
     except Exception as e:
         raise ArrClientError(f"Seerr inaccessible: {e}") from e
-    return cache
 
 
 async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:

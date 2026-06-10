@@ -108,3 +108,36 @@ async def test_refresh_without_cookie_or_body_is_401(auth_client):
     auth_client.cookies.clear()
     r = await auth_client.post("/api/auth/refresh", json={})
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_rotates_the_cookie_token(auth_client):
+    """Each refresh issues a new cookie token; the old one is retired shortly after."""
+    r = await _login(auth_client)
+    old_raw = r.json()["refresh_token"]
+
+    r2 = await auth_client.post("/api/auth/refresh", json={})
+    assert r2.status_code == 200
+    set_cookie = r2.headers.get("set-cookie", "")
+    assert COOKIE in set_cookie, "refresh must set a rotated cookie"
+    new_raw = auth_client.cookies.get(COOKIE)
+    assert new_raw and new_raw != old_raw
+
+    # New token works
+    r3 = await auth_client.post("/api/auth/refresh", json={})
+    assert r3.status_code == 200
+
+    # Old token is retired: expires within the short grace window (not 30 days)
+    from datetime import datetime, timedelta, timezone
+    from backend.auth import _hash_token
+    from backend.db.engine import get_db
+    async with get_db() as db:
+        row = await db.fetch_one(
+            "SELECT expires_at FROM refresh_tokens WHERE token_hash=?",
+            (_hash_token(old_raw),),
+        )
+    assert row is not None
+    expires = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+    assert expires <= datetime.now(timezone.utc) + timedelta(seconds=90), (
+        "old refresh token must be retired after a short grace window"
+    )

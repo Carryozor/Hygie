@@ -159,6 +159,24 @@ async def verify_refresh_token(raw: str) -> Optional[str]:
     return row["username"]
 
 
+async def retire_refresh_token(raw: str, grace_seconds: int = 60) -> None:
+    """Shorten a refresh token's lifetime to a small grace window.
+
+    Used for rotation: the old token must survive a few seconds so that
+    concurrent refreshes (multiple tabs sharing the cookie) don't log the
+    user out, but it must not remain valid for its full 30 days.
+    """
+    hashed = _hash_token(raw)
+    cutoff = (datetime.now(timezone.utc) + timedelta(seconds=grace_seconds)).isoformat()
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE refresh_tokens SET expires_at=? "
+            "WHERE token_hash=? AND expires_at > ?",
+            (cutoff, hashed, cutoff),
+        )
+        await db.commit()
+
+
 async def revoke_refresh_token(raw: str) -> None:
     """Mark a specific refresh token as revoked."""
     hashed = _hash_token(raw)

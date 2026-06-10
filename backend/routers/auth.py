@@ -13,6 +13,7 @@ from ..auth import (
     get_user,
     rate_limit,
     require_auth,
+    retire_refresh_token,
     revoke_all_refresh_tokens,
     revoke_refresh_token,
     update_password,
@@ -140,11 +141,15 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.post("/refresh")
-async def refresh(body: RefreshRequest, request: Request):
+async def refresh(body: RefreshRequest, request: Request, response: Response):
     """Exchange a valid refresh token for a new access token.
 
     The token is read from the httpOnly cookie first, then from the JSON
     body (backward compatibility with pre-cookie clients).
+
+    Rotation: each successful refresh issues a NEW refresh token cookie and
+    retires the old token after a short grace window — a stolen cookie stops
+    working at the next legitimate refresh instead of lasting 30 days.
     """
     ip = get_client_ip(request)
     if await asyncio.to_thread(rate_limit, f"refresh:{ip}"):
@@ -156,6 +161,12 @@ async def refresh(body: RefreshRequest, request: Request):
     if not username:
         raise HTTPException(401, "Refresh token invalide ou expiré")
     access_token = create_access_token(username)
+
+    new_refresh = await create_refresh_token(username)
+    # Grace window: concurrent tabs may still hold the old cookie value.
+    await retire_refresh_token(raw, grace_seconds=60)
+    _set_refresh_cookie(response, request, new_refresh)
+
     return {"access_token": access_token, "token": access_token}
 
 
@@ -166,8 +177,11 @@ async def logout(
     response: Response,
     username: str = Depends(require_auth),
 ):
-    """Revoke the refresh token (cookie or body) and clear the cookie."""
-    raw = body.refresh_token or request.cookies.get(REFRESH_COOKIE, "")
+    """Revoke the refresh token and clear the cookie.
+
+    Cookie-first, like /refresh — the body field only serves legacy clients.
+    """
+    raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
     if raw:
         await revoke_refresh_token(raw)
     _clear_refresh_cookie(response)

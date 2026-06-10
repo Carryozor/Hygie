@@ -2,7 +2,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth import (
@@ -24,6 +24,33 @@ from ..auth import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
+# ── Refresh token cookie ───────────────────────────────────────────────────────
+# The 30-day refresh token is delivered as an httpOnly cookie so XSS cannot
+# exfiltrate it from localStorage. Scoped to /api/auth — it is only ever
+# needed by the refresh/logout endpoints. The JSON body field is kept for
+# one release for backward compatibility (old cached frontends, API users).
+REFRESH_COOKIE = "hygie_refresh"
+_REFRESH_COOKIE_PATH = "/api/auth"
+
+
+def _set_refresh_cookie(response: Response, request: Request, raw_token: str) -> None:
+    from ..auth import REFRESH_TOKEN_EXPIRE_DAYS
+    response.set_cookie(
+        REFRESH_COOKIE,
+        raw_token,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path=_REFRESH_COOKIE_PATH,
+        httponly=True,
+        samesite="strict",
+        # Most self-hosted deployments run plain HTTP on the LAN — only mark
+        # Secure when the request actually came over HTTPS.
+        secure=(request.url.scheme == "https"),
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
+
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
@@ -41,7 +68,7 @@ class ChangePasswordRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = ""   # optional — the httpOnly cookie is preferred
 
 class LogoutRequest(BaseModel):
     refresh_token: str = ""
@@ -54,7 +81,7 @@ async def auth_status():
 
 
 @router.post("/setup")
-async def setup(body: SetupRequest, request: Request):
+async def setup(body: SetupRequest, request: Request, response: Response):
     if await user_exists():
         raise HTTPException(409, "Un utilisateur existe déjà")
     ip = get_client_ip(request)
@@ -64,6 +91,7 @@ async def setup(body: SetupRequest, request: Request):
     await create_user(body.username, body.password)
     access_token  = create_access_token(body.username)
     refresh_token = await create_refresh_token(body.username)
+    _set_refresh_cookie(response, request, refresh_token)
     return {
         "token":         access_token,
         "access_token":  access_token,
@@ -83,7 +111,7 @@ _DUMMY_HASH = (
 
 
 @router.post("/login")
-async def login(body: LoginRequest, request: Request):
+async def login(body: LoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
     # Rate limit AVANT la vérification — empêche le bypass par alternance
     # succès/échec et protège toutes les tentatives, valides ou non.
@@ -102,6 +130,7 @@ async def login(body: LoginRequest, request: Request):
         raise HTTPException(401, "Identifiants invalides")
     access_token  = create_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
+    _set_refresh_cookie(response, request, refresh_token)
     return {
         "token":         access_token,
         "access_token":  access_token,
@@ -112,13 +141,18 @@ async def login(body: LoginRequest, request: Request):
 
 @router.post("/refresh")
 async def refresh(body: RefreshRequest, request: Request):
-    """Exchange a valid refresh token for a new access token."""
+    """Exchange a valid refresh token for a new access token.
+
+    The token is read from the httpOnly cookie first, then from the JSON
+    body (backward compatibility with pre-cookie clients).
+    """
     ip = get_client_ip(request)
     if await asyncio.to_thread(rate_limit, f"refresh:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
-    if not body.refresh_token:
+    raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
+    if not raw:
         raise HTTPException(401, "Refresh token requis")
-    username = await verify_refresh_token(body.refresh_token)
+    username = await verify_refresh_token(raw)
     if not username:
         raise HTTPException(401, "Refresh token invalide ou expiré")
     access_token = create_access_token(username)
@@ -126,10 +160,17 @@ async def refresh(body: RefreshRequest, request: Request):
 
 
 @router.post("/logout")
-async def logout(body: LogoutRequest, username: str = Depends(require_auth)):
-    """Revoke the provided refresh token."""
-    if body.refresh_token:
-        await revoke_refresh_token(body.refresh_token)
+async def logout(
+    body: LogoutRequest,
+    request: Request,
+    response: Response,
+    username: str = Depends(require_auth),
+):
+    """Revoke the refresh token (cookie or body) and clear the cookie."""
+    raw = body.refresh_token or request.cookies.get(REFRESH_COOKIE, "")
+    if raw:
+        await revoke_refresh_token(raw)
+    _clear_refresh_cookie(response)
     return {"status": "logged_out"}
 
 
@@ -142,7 +183,10 @@ async def logout_all(username: str = Depends(require_auth)):
 
 @router.post("/change-password")
 async def change_password(
-    body: ChangePasswordRequest, username: str = Depends(require_auth)
+    body: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    username: str = Depends(require_auth),
 ):
     user = await get_user(username)
     if not user or not await asyncio.to_thread(
@@ -153,6 +197,7 @@ async def change_password(
     await revoke_all_refresh_tokens(username)
     access_token  = create_access_token(username)
     refresh_token = await create_refresh_token(username)
+    _set_refresh_cookie(response, request, refresh_token)
     return {
         "status":        "ok",
         "access_token":  access_token,

@@ -4,13 +4,14 @@ import { ref, computed } from 'vue'
 import api from '@/api/client'
 
 const ACCESS_TOKEN_KEY  = 'hygie_token'
-const REFRESH_TOKEN_KEY = 'hygie_refresh_token'
+// Pre-cookie versions persisted the refresh token here — now it lives in an
+// httpOnly cookie. The key is only read once for migration, then purged.
+const LEGACY_REFRESH_KEY = 'hygie_refresh_token'
 const ACCESS_TTL_MS     = 60 * 60 * 1000   // 1h — matches backend ACCESS_TOKEN_EXPIRE_MINUTES
 const REFRESH_BEFORE_MS = 5  * 60 * 1000   // refresh 5min before expiry
 
 export const useAuthStore = defineStore('auth', () => {
-  const token         = ref(localStorage.getItem(ACCESS_TOKEN_KEY)  || '')
-  const refreshToken  = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || '')
+  const token         = ref(localStorage.getItem(ACCESS_TOKEN_KEY) || '')
   const username      = ref('')
   const setupComplete = ref(null)
 
@@ -19,19 +20,18 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
 
   // ── Token storage ──────────────────────────────────────────────────────────
-  function _setTokens(access, refresh) {
-    token.value        = access
-    if (refresh) refreshToken.value = refresh
+  // Only the short-lived access token touches localStorage. The 30-day
+  // refresh token is an httpOnly cookie set by the backend — invisible to JS.
+  function _setAccessToken(access) {
+    token.value = access
     localStorage.setItem(ACCESS_TOKEN_KEY, access)
-    if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh)
     _scheduleRefresh()
   }
 
   function _clearTokens() {
-    token.value        = ''
-    refreshToken.value = ''
+    token.value = ''
     localStorage.removeItem(ACCESS_TOKEN_KEY)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(LEGACY_REFRESH_KEY)
     if (_refreshTimer) clearTimeout(_refreshTimer)
     _refreshTimer = null
   }
@@ -39,7 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
   // ── Auto-refresh scheduling ────────────────────────────────────────────────
   function _scheduleRefresh() {
     if (_refreshTimer) clearTimeout(_refreshTimer)
-    if (!refreshToken.value) return
+    if (!token.value) return
     const delay = ACCESS_TTL_MS - REFRESH_BEFORE_MS  // 55 minutes
     _refreshTimer = setTimeout(refresh, delay > 0 ? delay : 1000)
   }
@@ -54,24 +54,25 @@ export const useAuthStore = defineStore('auth', () => {
   async function setup(u, p) {
     const { data } = await api.post('/auth/setup', { username: u, password: p })
     username.value = data.username || u
-    _setTokens(data.access_token || data.token, data.refresh_token)
+    _setAccessToken(data.access_token || data.token)
   }
 
   async function login(u, p) {
     const { data } = await api.post('/auth/login', { username: u, password: p })
     username.value = data.username || u
-    _setTokens(data.access_token || data.token, data.refresh_token)
+    _setAccessToken(data.access_token || data.token)
   }
 
   async function refresh() {
-    if (!refreshToken.value) return false
+    // The httpOnly cookie carries the refresh token; the body field is only
+    // used to migrate sessions created before the cookie change.
+    const legacy = localStorage.getItem(LEGACY_REFRESH_KEY) || ''
     try {
-      const { data } = await api.post('/auth/refresh', {
-        refresh_token: refreshToken.value,
-      })
+      const { data } = await api.post('/auth/refresh', { refresh_token: legacy })
       const newAccess = data.access_token || data.token
       if (newAccess) {
-        _setTokens(newAccess, null)   // keep same refresh token
+        localStorage.removeItem(LEGACY_REFRESH_KEY)
+        _setAccessToken(newAccess)
         return true
       }
     } catch {
@@ -90,21 +91,22 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    if (refreshToken.value) {
-      try {
-        await api.post('/auth/logout', { refresh_token: refreshToken.value })
-      } catch { /* best-effort server-side revocation */ }
-    }
+    try {
+      // Revokes the cookie-held refresh token server-side and clears the cookie
+      await api.post('/auth/logout', {
+        refresh_token: localStorage.getItem(LEGACY_REFRESH_KEY) || '',
+      })
+    } catch { /* best-effort server-side revocation */ }
     _clearTokens()
   }
 
   // Schedule refresh on store init if already logged in
-  if (token.value && refreshToken.value) {
+  if (token.value) {
     _scheduleRefresh()
   }
 
   return {
-    token, refreshToken, username, setupComplete, isLoggedIn,
+    token, username, setupComplete, isLoggedIn,
     checkSetup, setup, login, refresh, fetchMe, logout,
   }
 })

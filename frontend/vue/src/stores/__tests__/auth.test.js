@@ -26,16 +26,17 @@ describe('useAuthStore', () => {
     expect(useAuthStore().isLoggedIn).toBe(true)
   })
 
-  it('login stores access_token and refresh_token', async () => {
+  it('login stores access_token but never persists the refresh token', async () => {
+    // The refresh token lives in an httpOnly cookie — localStorage would
+    // expose it to any XSS.
     api.post.mockResolvedValueOnce({
       data: { access_token: 'acc', refresh_token: 'ref', username: 'admin' },
     })
     const store = useAuthStore()
     await store.login('admin', 'pass')
     expect(store.token).toBe('acc')
-    expect(store.refreshToken).toBe('ref')
     expect(localStorage.getItem('hygie_token')).toBe('acc')
-    expect(localStorage.getItem('hygie_refresh_token')).toBe('ref')
+    expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 
   it('login falls back to token field for backward compat', async () => {
@@ -56,14 +57,23 @@ describe('useAuthStore', () => {
     expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 
-  it('refresh calls /auth/refresh and updates token', async () => {
+  it('refresh relies on the httpOnly cookie (empty body)', async () => {
     api.post.mockResolvedValueOnce({ data: { access_token: 'new' } })
     const store = useAuthStore()
-    store.refreshToken = 'my-ref'
     const ok = await store.refresh()
     expect(ok).toBe(true)
     expect(store.token).toBe('new')
-    expect(api.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'my-ref' })
+    expect(api.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: '' })
+  })
+
+  it('refresh sends and purges a legacy localStorage refresh token', async () => {
+    localStorage.setItem('hygie_refresh_token', 'legacy-ref')
+    api.post.mockResolvedValueOnce({ data: { access_token: 'new' } })
+    const store = useAuthStore()
+    const ok = await store.refresh()
+    expect(ok).toBe(true)
+    expect(api.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'legacy-ref' })
+    expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 
   it('refresh emits unauthorized on failure', async () => {
@@ -71,7 +81,6 @@ describe('useAuthStore', () => {
     const events = []
     window.addEventListener('hygie:unauthorized', () => events.push(1))
     const store = useAuthStore()
-    store.refreshToken = 'bad'
     const ok = await store.refresh()
     expect(ok).toBe(false)
     expect(events.length).toBeGreaterThan(0)

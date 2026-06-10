@@ -41,14 +41,6 @@ api.interceptors.response.use(
     const isAuthEndpoint = originalReq?.url?.includes('/auth/')
 
     if (is401 && !isPublicPage && !isAuthEndpoint && !originalReq._retried) {
-      const refreshToken = localStorage.getItem('hygie_refresh_token')
-
-      if (!refreshToken) {
-        localStorage.removeItem('hygie_token')
-        window.dispatchEvent(new Event('hygie:unauthorized'))
-        return Promise.reject(err)
-      }
-
       if (_isRefreshing) {
         // Another refresh in progress — queue this request
         return new Promise((resolve, reject) => {
@@ -64,12 +56,16 @@ api.interceptors.response.use(
       originalReq._retried = true
 
       try {
-        // Use plain axios (not api) to avoid interceptor loop
+        // Use plain axios (not api) to avoid interceptor loop.
+        // The refresh token travels in an httpOnly cookie (same-origin —
+        // sent automatically); the body carries only a legacy localStorage
+        // token from pre-cookie sessions, purged after first use.
         const { data } = await axios.post('/api/auth/refresh', {
-          refresh_token: refreshToken,
+          refresh_token: localStorage.getItem('hygie_refresh_token') || '',
         })
         const newToken = data.access_token || data.token
         localStorage.setItem('hygie_token', newToken)
+        localStorage.removeItem('hygie_refresh_token')
         api.defaults.headers.common.Authorization = `Bearer ${newToken}`
         _processQueue(null, newToken)
         originalReq.headers.Authorization = `Bearer ${newToken}`

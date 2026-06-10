@@ -47,20 +47,18 @@ class ScanContext:
     ignored_ids: Optional[set] = None
 
 
-# ─── Primitive operators ──────────────────────────────────────────────────────
+# ─── Primitive operators (delegated to the unified rules engine) ──────────────
 
 def _eval_op(actual, op: str, expected) -> bool:
+    """Compare actual vs expected — thin wrapper over rules/engine.py operators."""
+    from .engine import _NUMERIC_OPS
+    from .models import ConditionOp
     if actual is None:
         return False
     try:
-        if op == "gt":  return actual > expected
-        if op == "gte": return actual >= expected
-        if op == "lt":  return actual < expected
-        if op == "lte": return actual <= expected
-        if op == "eq":  return actual == expected
+        return bool(_NUMERIC_OPS[ConditionOp(op)](actual, expected))
     except Exception:
-        pass
-    return False
+        return False
 
 
 def _days_since(dt: Optional[datetime]) -> Optional[int]:
@@ -69,7 +67,44 @@ def _days_since(dt: Optional[datetime]) -> Optional[int]:
     return (now_utc() - dt).days
 
 
-# ─── Library condition matching ───────────────────────────────────────────────
+# ─── Library condition matching (adapter onto the expert rules engine) ────────
+#
+# Per-library conditions are the historical rule format. Since v3.6 they are
+# converted on the fly into an ExpertRule and evaluated by rules/engine.py —
+# there is a single comparison engine for Emby and Plex libraries.
+
+def _legacy_condition_to_group(c: dict):
+    """Convert one legacy condition dict into a ConditionGroup, or None if invalid."""
+    from .models import Condition, ConditionField, ConditionGroup, ConditionOp, RuleOperator
+
+    field = c.get("field")
+    op    = c.get("op", "gt")
+    value = c.get("value", 0)
+    try:
+        if field == "days_since_added":
+            return ConditionGroup(conditions=[
+                Condition(field=ConditionField.ADDED_DAYS_AGO, op=ConditionOp(op), value=value),
+            ])
+        if field == "play_count":
+            return ConditionGroup(conditions=[
+                Condition(field=ConditionField.PLAY_COUNT, op=ConditionOp(op), value=value),
+            ])
+        if field == "never_watched":
+            return ConditionGroup(conditions=[
+                Condition(field=ConditionField.NEVER_WATCHED, op=ConditionOp.EQ,
+                          value=1 if value else 0),
+            ])
+        if field == "days_not_watched":
+            # Legacy semantics: never-watched items satisfy this condition
+            # regardless of the operator — expressed as an OR group.
+            return ConditionGroup(operator=RuleOperator.OR, conditions=[
+                Condition(field=ConditionField.NEVER_WATCHED, op=ConditionOp.EQ, value=1),
+                Condition(field=ConditionField.DAYS_NOT_WATCHED, op=ConditionOp(op), value=value),
+            ])
+    except Exception as e:
+        logger.debug("_legacy_condition_to_group(%r): %s", c, e)
+    return None  # unknown field or invalid op/value
+
 
 def _evaluate_conditions(
     conditions: list,
@@ -79,28 +114,49 @@ def _evaluate_conditions(
     play_count: int,
     never_watched: bool,
 ) -> bool:
-    """Check if a media item matches the library's conditions."""
+    """Check if a media item matches the library's conditions.
+
+    Adapter onto rules/engine.py: the legacy condition dicts become one
+    ConditionGroup each, combined with the library's AND/OR logic.
+    """
+    from .engine import evaluate_rule
+    from .models import ExpertRule, RuleOperator
+
     if not conditions:
         return False
-    results = []
+
+    groups = []
     for c in conditions:
-        field = c.get("field")
-        op    = c.get("op", "gt")
-        value = c.get("value", 0)
-        if field == "days_since_added":
-            results.append(_eval_op(_days_since(added_date), op, value))
-        elif field == "days_not_watched":
-            if never_watched:
-                results.append(True)
-            else:
-                results.append(_eval_op(_days_since(last_played), op, value))
-        elif field == "never_watched":
-            results.append(never_watched == bool(value))
-        elif field == "play_count":
-            results.append(_eval_op(play_count, op, value))
-        else:
-            results.append(False)
-    return any(results) if logic == "OR" else all(results)
+        group = _legacy_condition_to_group(c)
+        if group is None:
+            # Invalid condition evaluates to False — fatal under AND,
+            # simply non-contributing under OR (legacy behavior).
+            if logic != "OR":
+                return False
+            continue
+        groups.append(group)
+    if not groups:
+        return False
+
+    rule = ExpertRule(
+        name="__library_conditions__",
+        condition_groups=groups,
+        operator=RuleOperator.OR if logic == "OR" else RuleOperator.AND,
+    )
+
+    item = {
+        "play_count":    play_count,
+        "never_watched": 1 if never_watched else 0,
+    }
+    added_days = _days_since(added_date)
+    if added_days is not None:
+        item["added_days_ago"] = added_days
+    if not never_watched:
+        watched_days = _days_since(last_played)
+        if watched_days is not None:
+            item["days_not_watched"] = watched_days
+
+    return evaluate_rule(rule, item)
 
 
 def _seerr_filter_passes(seerr_user_id: Optional[int], seerr_conditions: list) -> bool:

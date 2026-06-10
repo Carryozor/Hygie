@@ -55,15 +55,18 @@ scanning, and both jobs have hard timeouts (scan: 2h, deletion: 1h).
 inter-process job queue (Redis, RabbitMQ) and distributed lock management. This
 is a v4.0 consideration, not currently planned.
 
-### Two rule evaluation engines (v3.0 — known debt)
+### Unified rule evaluation engine (v3.6)
 
-- `rules/legacy_conditions.py` — evaluated by `_emby_scanner.py` for Emby/Jellyfin libraries
-- `rules/engine.py` — evaluated by `_plex_scanner.py` for Plex libraries
+`rules/engine.py` is the single comparison engine for both library formats:
 
-These co-exist because the Plex integration was built on top of the expert rules
-system, while Emby uses the older per-library conditions. Unifying them requires
-rewriting `_emby_scanner.py` to use `rules/engine.py` — a large refactor
-planned for v3.2.
+- Expert rules are evaluated directly (Emby/Jellyfin and Plex scanners).
+- Per-library legacy conditions are converted on the fly into an `ExpertRule`
+  by the adapter in `rules/legacy_conditions.py` (`_legacy_condition_to_group`)
+  and evaluated by the same engine. Legacy edge-case semantics (never-watched
+  items always satisfy `days_not_watched`, unknown fields evaluate to False)
+  are preserved and pinned by tests in `tests/test_conditions.py`.
+
+`never_watched` is now a first-class `ConditionField` usable in expert rules.
 
 ### DeletionPipeline (v3.1)
 
@@ -76,13 +79,17 @@ it in `build_default_pipeline()` at the correct position. Steps that must run
 before `MediaServerStep` (so the item still exists on the server) are:
 `SizeLookupStep`, `TorrentHashStep`, `DiscordNotifyStep`.
 
-### Circuit breakers (v3.1)
+### Circuit breakers (v3.1, fully wired in v3.6)
 
 `arr_clients/circuit_breaker.py` provides a simple three-state circuit breaker
 (`CLOSED → OPEN → HALF_OPEN`). Register a breaker with `get_breaker("service_name")`.
 The breaker state is exposed at `/health` in the `circuit_breakers` field.
 
-Currently not wired to specific HTTP calls — this is a planned v3.2 task.
+Wiring: Emby (`emby:{server_id}`) and Plex (`plex:{server_id}`) clients route
+scan-critical calls through their breakers directly; Radarr/Sonarr go through
+`with_retry(..., service="radarr"/"sonarr")`; Seerr's cache builder goes
+through the `seerr` breaker and converts `CircuitOpenError` to
+`ArrClientError` so callers degrade gracefully.
 
 ### Job correlation via ContextVar (v3.1)
 
@@ -119,8 +126,6 @@ and will not be affected.
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Unify rule engines (legacy + expert) | v3.2 | Rewrite `_emby_scanner.py` to use `rules/engine.py` |
-| Wire circuit breakers to HTTP clients | v3.2 | `emby_client.py`, `arr_clients/` |
 | Separate scanner/deletion workers | v4.0 | Requires job queue + distributed locks |
 | DB-level distributed locks | v4.0 | `SELECT GET_LOCK()` (MariaDB) / `advisory_lock` (SQLite) |
 | Normalize `media_queue` schema | v4.0 | Server-specific columns belong in extension tables |

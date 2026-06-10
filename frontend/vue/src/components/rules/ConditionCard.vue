@@ -102,6 +102,7 @@ const fields = computed(() => [
   { value: 'added_days_ago',   label: t('conditions.addedDaysAgo') },
   { value: 'media_type',       label: t('conditions.mediaType') },
   { value: 'seerr_user_id',    label: t('conditions.seerrUser') },
+  { value: 'never_watched',    label: t('conditions.neverWatched') },
 ])
 
 const LIST_OPS = ['in', 'not_in']
@@ -117,8 +118,12 @@ const ALL_OPS = computed(() => [
 ])
 
 const TEXT_FIELDS = ['media_type', 'seerr_user_id']
+const BOOL_FIELDS = ['never_watched']
 
 const availableOps = computed(() => {
+  if (BOOL_FIELDS.includes(props.condition.field)) {
+    return ALL_OPS.value.filter(o => o.value === 'eq')
+  }
   if (TEXT_FIELDS.includes(props.condition.field)) {
     return ALL_OPS.value.filter(o => ['eq', 'in', 'not_in'].includes(o.value))
   }

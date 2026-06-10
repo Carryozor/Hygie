@@ -101,3 +101,31 @@ def test_evaluate_rule_disabled_always_false():
         )],
     )
     assert evaluate_rule(rule, MOVIE) is False
+
+
+# ─── never_watched — first-class expert rule field (engine unification) ───────
+
+def test_never_watched_field_matches():
+    from backend.rules.models import Condition, ConditionField, ConditionGroup, ConditionOp, ExpertRule
+    from backend.rules.engine import evaluate_rule
+    rule = ExpertRule(
+        name="unwatched only",
+        condition_groups=[ConditionGroup(conditions=[
+            Condition(field=ConditionField.NEVER_WATCHED, op=ConditionOp.EQ, value=1),
+        ])],
+    )
+    assert evaluate_rule(rule, {"never_watched": 1}) is True
+    assert evaluate_rule(rule, {"never_watched": 0}) is False
+    assert evaluate_rule(rule, {}) is False  # missing field never matches
+
+
+def test_item_data_builders_expose_never_watched():
+    from backend.scanner._expert_rules import _build_item_data, _build_plex_item_data
+    emby_unwatched = _build_item_data({"Type": "Movie"}, 0, None, None)
+    assert emby_unwatched["never_watched"] == 1
+    emby_watched = _build_item_data({"Type": "Movie"}, 3, None, None)
+    assert emby_watched["never_watched"] == 0
+    plex_unwatched = _build_plex_item_data({"title": "x", "view_count": 0})
+    assert plex_unwatched["never_watched"] == 1
+    plex_watched = _build_plex_item_data({"title": "x", "view_count": 2})
+    assert plex_watched["never_watched"] == 0

@@ -495,7 +495,8 @@
     "showNames": "Mostrar nombres",
     "showIds": "Mostrar IDs",
     "selectedCount": "{n} seleccionado(s)",
-    "noUsers": "Sin usuarios Seerr"
+    "noUsers": "Sin usuarios Seerr",
+    "neverWatched": "Nunca visto (1/0)"
   },
   "operators": {
     "in": "en",

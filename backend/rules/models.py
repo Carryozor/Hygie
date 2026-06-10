@@ -10,6 +10,7 @@ class ConditionField(str, Enum):
     ADDED_DAYS_AGO   = "added_days_ago"
     MEDIA_TYPE       = "media_type"
     SEERR_USER_ID    = "seerr_user_id"
+    NEVER_WATCHED    = "never_watched"   # 1/0 — also used by the legacy-conditions adapter
 
 class ConditionOp(str, Enum):
     GT     = "gt"

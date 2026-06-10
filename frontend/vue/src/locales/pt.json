@@ -495,7 +495,8 @@
     "showNames": "Mostrar nomes",
     "showIds": "Mostrar IDs",
     "selectedCount": "{n} selecionado(s)",
-    "noUsers": "Sem utilizadores Seerr"
+    "noUsers": "Sem utilizadores Seerr",
+    "neverWatched": "Nunca assistido (1/0)"
   },
   "operators": {
     "in": "em",

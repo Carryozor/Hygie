@@ -495,7 +495,8 @@
     "showNames": "Namen tonen",
     "showIds": "ID's tonen",
     "selectedCount": "{n} geselecteerd",
-    "noUsers": "Geen Seerr-gebruikers"
+    "noUsers": "Geen Seerr-gebruikers",
+    "neverWatched": "Nooit bekeken (1/0)"
   },
   "operators": {
     "in": "in",

@@ -85,6 +85,7 @@ const fieldLabels = computed(() => ({
   added_days_ago:   t('conditions.addedDaysAgoShort'),
   media_type:       t('conditions.type'),
   seerr_user_id:    t('conditions.seerrUserShort'),
+  never_watched:    t('conditions.neverWatched'),
 }))
 
 const OP_LABELS = {

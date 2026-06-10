@@ -35,6 +35,7 @@ def _build_plex_item_data(item: dict) -> dict:
         "added_days_ago":   (now - added_at).days if added_at else 0,
         "media_type":       item.get("media_type") or "Movie",
         "seerr_user_id":    None,
+        "never_watched":    1 if (view_count == 0 and not last_viewed_at) else 0,
     }
 
 
@@ -77,6 +78,7 @@ def _build_item_data(
         "added_days_ago":   added_days_ago,
         "media_type":       item.get("Type") or "Movie",
         "seerr_user_id":    seerr_user_id,
+        "never_watched":    1 if (play_count == 0 and last_played is None) else 0,
     }
 
 

@@ -4,6 +4,37 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.6.0] — 2026-06-10
+
+### Security
+
+- **SSRF hardening of the image proxy** (`proxy.py`) — The whitelist now matches `(host, port)` instead of hostname alone, closing a port-scanning oracle through whitelisted hosts. Redirects are followed manually (max 3 hops) with every hop re-validated against the whitelist — a whitelisted host can no longer redirect the proxy to an internal target. The poster proxy no longer follows redirects at all.
+- **Plex webhook is now fail-closed** (`plex_webhook.py`) — Events are rejected with 403 until `plex_webhook_secret` is configured; previously an unconfigured secret accepted any caller, letting anyone forge scrobble events and shift `last_played` to delay or prevent deletions. Secret comparison now uses `secrets.compare_digest` (constant-time). **Action required:** if you use the Plex webhook, set a secret in Settings and append `?secret=<value>` to the webhook URL in Plex.
+- **Refresh token moved to an httpOnly cookie** (`routers/auth.py`, frontend) — The 30-day refresh token no longer touches `localStorage` where any XSS could read it. It is delivered as an `httpOnly` `SameSite=Strict` cookie scoped to `/api/auth` (`Secure` on HTTPS), **rotated on every refresh** with the previous token retired after a 60-second grace window for concurrent tabs. Existing sessions are migrated transparently; the JSON body field is kept one release for backward compatibility.
+- **LIKE wildcard injection in search inputs** (`media.py`, `ignored.py`, `logs.py`) — User search strings containing `%` or `_` are now escaped (`ESCAPE '!'`, portable across SQLite and MariaDB).
+- **CDN asset integrity at build time** (`Dockerfile`) — Font Awesome CSS and fonts are pinned by sha256; dashboard icons are pinned to an immutable upstream commit; any failed or tampered download now fails the build instead of being silently ignored.
+
+### Fixed
+
+- **Dry-run no longer marks items as deleted** (`deletion.py`, `media.py`) — Both the scheduled deletion job and the delete-now endpoint previously set `status='deleted'` in dry-run mode without deleting any file, permanently removing the item from the pipeline. Dry-run now simulates only: items stay `pending`, and delete-now returns `{"status": "dry_run"}`.
+- **Double-deletion race between the deletion job and delete-now** (`deletion.py`) — The scheduled job now claims each item atomically (`pending → deleting`) before deleting, like the endpoint already did. Items left stuck in `deleting` by a crash mid-deletion are recovered to `pending` at startup.
+- **Sidebar scan/deletion countdowns missing after login** (`App.vue`) — `status.start()` only ran on mount, which never re-executes on SPA navigation; after a fresh login the scheduler polling never started until a full page reload. A watcher on the login state now starts/stops polling correctly.
+- **`fetch_one` corrupted non-SELECT statements** (`db/engine.py`) — `LIMIT 1` was appended to any statement lacking the word LIMIT, breaking `PRAGMA` queries and misfiring on literals containing "limit". It now applies only to SELECT/CTE statements, checked outside string literals.
+- **`database is locked` under parallel library scans** (`db/engine.py`) — SQLite connections now set `PRAGMA busy_timeout=5000`.
+- **Event-loop stalls during authentication** (`routers/auth.py`, `auth.py`) — Argon2 verification (~170 ms CPU) and the synchronous SQLite rate limiter now run in worker threads via `asyncio.to_thread`; the in-memory rate-limit fallback is protected by a lock for thread safety.
+
+### Changed
+
+- **Single rule evaluation engine** (`rules/`) — Per-library legacy conditions are now converted on the fly into expert rules and evaluated by `rules/engine.py`, the same engine used by expert rules on Emby/Jellyfin and Plex. Legacy edge-case semantics are preserved and pinned by tests (never-watched items always satisfy `days_not_watched`; unknown fields evaluate to false). The duplicated comparison logic in `legacy_conditions.py` is gone.
+- **Circuit breakers fully wired** (`arr_clients/`, `db/utils.py`) — Radarr, Sonarr and Seerr calls now route through their circuit breakers via `with_retry(service=...)` / the `seerr` breaker (Emby and Plex were already wired). When a service is down, scans fast-fail instead of hammering it; breaker states are visible in `/health` under `circuit_breakers`.
+- **Reproducible frontend builds** (`Dockerfile`) — `npm install` replaced by `npm ci`.
+
+### Added
+
+- **`never_watched` as a first-class expert rule field** — Usable in the expert rule builder (all 8 languages), populated by both the Emby/Jellyfin and Plex scanners (`1`/`0`, operator `=`).
+
+---
+
 ## [3.4.3] — 2026-06-09
 
 ### Security

@@ -26,6 +26,11 @@ def test_extract_discord_id_prefers_new_format():
     assert _extract_discord_id({"discordIds": ["111"], "discordId": "222"}) == "111"
 
 
+def test_extract_discord_id_multiple_entries_first_wins():
+    from backend.arr_clients.seerr import _extract_discord_id
+    assert _extract_discord_id({"discordIds": ["111", "222"]}) == "111"
+
+
 def test_extract_discord_id_empty_cases():
     from backend.arr_clients.seerr import _extract_discord_id
     assert _extract_discord_id({}) == ""

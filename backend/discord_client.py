@@ -18,6 +18,7 @@ from typing import List, Optional
 
 import httpx
 
+from .arr_clients.seerr import _extract_discord_id
 from .db.utils import parse_iso_dt, http_retry
 from .db.engine import get_db
 from .db.settings_store import get_setting
@@ -91,7 +92,6 @@ async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
                     headers={"X-Api-Key": seerr_key},
                 )
                 if r.status_code == 200:
-                    from .arr_clients.seerr import _extract_discord_id
                     disc = _extract_discord_id(r.json())
                     if disc:
                         logger.debug(

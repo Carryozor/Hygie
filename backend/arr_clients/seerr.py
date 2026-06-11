@@ -65,6 +65,8 @@ def _extract_discord_id(notif: dict) -> str:
 
     Recent Seerr/Jellyseerr versions return `discordIds` (list of strings);
     older versions returned a single `discordId` string. Support both.
+    When several IDs are linked, the first entry wins (Hygie mentions one
+    Discord account per Seerr user).
     """
     ids = notif.get("discordIds")
     if isinstance(ids, (list, tuple)) and ids:

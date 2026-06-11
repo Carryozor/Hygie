@@ -19,8 +19,10 @@ from ..emby_client import (
     get_items_in_library,
     get_library_user_data,
     get_play_activity,
+    get_series_tmdb_map,
     get_user_data,
     get_users,
+    resolve_item_tmdb,
 )
 from ..arr_clients import radarr_find_by_path_cached, sonarr_get_cache_entry
 from ..rules.legacy_conditions import _evaluate_conditions, _evaluate_item, _get_poster_url
@@ -111,6 +113,11 @@ async def _scan_library(
     seerr_ext_url: str = await get_setting("seerr_external_url") or ""
     dry_run = await get_bool_setting("dry_run")
 
+    # Episodes carry no series-level Tmdb id — map SeriesId → series tmdb so
+    # Seerr matching works for series. Fetched lazily on the first episode
+    # encountered: movie-only libraries never pay the extra HTTP call.
+    series_tmdb_map: Optional[dict] = None
+
     eligible: list = []
     while True:
         items, total = await get_items_in_library(
@@ -119,6 +126,8 @@ async def _scan_library(
         if not items:
             break
         for item in items:
+            if series_tmdb_map is None and (item.get("Type") or "") == "Episode":
+                series_tmdb_map = await get_series_tmdb_map(emby_library_id, server_id)
             entry = await _evaluate_item(
                 item, lib, conditions, logic, grace_days, user_ids, seerr_conditions,
                 user_data_cache=user_data_cache,
@@ -129,6 +138,7 @@ async def _scan_library(
                 seerr_ext=seerr_ext_url,
                 queued_ids=queued_ids,
                 ignored_ids=ignored_ids,
+                series_tmdb_map=series_tmdb_map,
             )
             if entry is not None:
                 eligible.append(entry)
@@ -161,7 +171,7 @@ async def _scan_library(
 
                 seerr_user_id = None
                 if seerr_cache is not None:
-                    tmdb_id    = str(item.get("ProviderIds", {}).get("Tmdb") or "")
+                    tmdb_id    = resolve_item_tmdb(item, series_tmdb_map)
                     seerr_data = seerr_cache.get(tmdb_id) if tmdb_id else None
                     if seerr_data:
                         seerr_user_id = seerr_data.get("user_id")
@@ -170,7 +180,7 @@ async def _scan_library(
                 action, rule_grace    = await _evaluate_expert_rules(item_data, lib["id"], rules_cache=expert_rules_cache)
 
                 if action == _RuleAction.QUEUE.value:
-                    tmdb_id            = str(item.get("ProviderIds", {}).get("Tmdb") or "")
+                    tmdb_id            = resolve_item_tmdb(item, series_tmdb_map)
                     media_type_item    = item.get("Type") or "Movie"
                     seerr_data         = (seerr_cache or {}).get(tmdb_id) if tmdb_id else None
                     seerr_id_val       = seerr_data.get("seerr_id") if seerr_data else None

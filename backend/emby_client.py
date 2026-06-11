@@ -227,6 +227,67 @@ async def get_items_in_library(
     return [], 0
 
 
+async def get_series_tmdb_map(library_id: str, server_id: str = "0") -> dict:
+    """Return {series_emby_id: series_tmdb_id_str} for all series in a library.
+
+    Emby Episode items carry no series-level Tmdb provider id (only episode
+    Tvdb/Imdb ids), while the Seerr request cache is keyed by the series
+    tmdbId — this parent-level map bridges the two.
+    """
+    url, key = await get_client(server_id)
+    if not url or not key:
+        return {}
+    out: dict = {}
+    start = 0
+    breaker = _emby_breaker(server_id)
+    while True:
+        params = {
+            "ParentId": library_id,
+            "Recursive": "true",
+            "IncludeItemTypes": "Series",
+            "Fields": "ProviderIds",
+            "Limit": 500,
+            "StartIndex": start,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+                r = await breaker.call(
+                    lambda: http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=params))
+                )
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                items = data.get("Items", [])
+                total = data.get("TotalRecordCount", 0)
+        except CircuitOpenError:
+            logger.warning("Circuit breaker OPEN for emby:%s — get_series_tmdb_map skipped (lib=%s)", server_id, library_id)
+            break
+        except Exception as e:
+            logger.warning(f"get_series_tmdb_map error: {e}")
+            break
+        for it in items:
+            sid  = it.get("Id")
+            tmdb = str((it.get("ProviderIds") or {}).get("Tmdb") or "")
+            if sid and tmdb:
+                out[sid] = tmdb
+        start += 500
+        if start >= total:
+            break
+    return out
+
+
+def resolve_item_tmdb(item: dict, series_tmdb_map: Optional[dict]) -> str:
+    """Return the Seerr-matchable TMDB id for an Emby item.
+
+    Movies carry their own Tmdb provider id; episodes must use the parent
+    series' Tmdb id (their own ProviderIds never contain it).
+    """
+    if (item.get("Type") or "") == "Episode":
+        series_id = item.get("SeriesId") or ""
+        return (series_tmdb_map or {}).get(series_id, "")
+    return str((item.get("ProviderIds") or {}).get("Tmdb") or "")
+
+
 async def get_library_user_data(user_id: str, library_id: str, server_id: str = "0") -> dict:
     """Return {emby_item_id: UserData} for all items in a library for one user.
 

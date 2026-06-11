@@ -28,7 +28,7 @@ from ..arr_clients import (
     sonarr_get_cache_entry,
     sonarr_get_poster_url,
 )
-from ..emby_client import get_client, get_user_data
+from ..emby_client import get_client, get_user_data, resolve_item_tmdb
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +371,7 @@ async def _evaluate_item(
     seerr_ext: str = "",
     queued_ids: Optional[set] = None,
     ignored_ids: Optional[set] = None,
+    series_tmdb_map: Optional[dict] = None,
 ) -> Optional[dict]:
     """Evaluate a single Emby item; return queue-entry dict if eligible, else None.
 
@@ -381,6 +382,8 @@ async def _evaluate_item(
     seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — pre-fetched once per scan.
     queued_ids:      set of emby_ids already in media_queue   — pre-fetched once per scan.
     ignored_ids:     set of emby_ids in ignored_media         — pre-fetched once per scan.
+    series_tmdb_map: {series_emby_id: series_tmdb_id} — pre-fetched per library;
+                     required for episodes (their ProviderIds lack the series Tmdb id).
     Falls back to individual DB/HTTP calls when caches are absent.
     Pass a ScanContext via `ctx` as a convenient alternative to the individual cache kwargs.
     """
@@ -397,7 +400,7 @@ async def _evaluate_item(
     title      = item.get("Name") or "?"
     media_type = item.get("Type") or ""
     file_path  = item.get("Path") or ""
-    tmdb_id    = str(item.get("ProviderIds", {}).get("Tmdb") or "")
+    tmdb_id    = resolve_item_tmdb(item, series_tmdb_map)
     date_str   = item.get("DateCreated") or ""
 
     if not emby_id or not file_path:

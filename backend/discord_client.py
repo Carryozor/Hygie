@@ -7,7 +7,7 @@ Public API:
 
 Discord ID resolution priority for mentions:
   1. seerr_user_rules.discord_id (manually configured in Hygie)
-  2. Seerr user notification settings discordId (auto from Seerr)
+  2. Seerr user notification settings discordIds (auto from Seerr)
 """
 import asyncio
 import logging
@@ -57,7 +57,7 @@ async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
 
     Priority:
       1. seerr_user_rules.discord_id  (manually set in Hygie UI)
-      2. Seerr notification settings discordId  (auto-detected from Seerr)
+      2. Seerr notification settings discordIds  (auto-detected from Seerr)
 
     Returns the raw Discord ID string (without <@>), or '' if not found.
     """
@@ -91,7 +91,8 @@ async def _resolve_discord_id(seerr_user_id: Optional[int]) -> str:
                     headers={"X-Api-Key": seerr_key},
                 )
                 if r.status_code == 200:
-                    disc = str(r.json().get("discordId") or "").strip()
+                    from .arr_clients.seerr import _extract_discord_id
+                    disc = _extract_discord_id(r.json())
                     if disc:
                         logger.debug(
                             f"Discord ID for seerr_uid={seerr_user_id} "

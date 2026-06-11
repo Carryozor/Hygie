@@ -60,11 +60,23 @@ async def test_seerr() -> tuple[bool, str]:
         return False, str(e)
 
 
+def _extract_discord_id(notif: dict) -> str:
+    """Extract the Discord ID from a Seerr notification-settings payload.
+
+    Recent Seerr/Jellyseerr versions return `discordIds` (list of strings);
+    older versions returned a single `discordId` string. Support both.
+    """
+    ids = notif.get("discordIds")
+    if isinstance(ids, (list, tuple)) and ids:
+        return str(ids[0] or "").strip()
+    return str(notif.get("discordId") or "").strip()
+
+
 async def seerr_get_users() -> List[dict]:
     """
     List all Seerr users with their Discord IDs.
     discord_id comes from two sources (merged):
-      - Seerr user notification settings (discordId field)
+      - Seerr user notification settings (discordIds field, legacy discordId)
       - Hygie seerr_user_rules table (manually configured)
     The Hygie manual mapping takes priority if both are set.
     """
@@ -108,7 +120,7 @@ async def seerr_get_users() -> List[dict]:
                             headers={"X-Api-Key": key},
                         )
                         if rn.status_code == 200:
-                            seerr_discord = str(rn.json().get("discordId") or "").strip()
+                            seerr_discord = _extract_discord_id(rn.json())
                     except Exception:
                         pass
                 hygie_discord = hygie_mappings.get(str(uid), "")

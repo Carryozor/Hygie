@@ -4,6 +4,14 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.6.3] — 2026-06-11
+
+### Fixed
+
+- **Discord IDs from Seerr came back empty for every user** — recent Seerr/Jellyseerr versions replaced the single `discordId` string with a `discordIds` list in `/api/v1/user/{id}/settings/notifications`; Hygie still read the legacy field, so auto-detected Discord IDs (used for mentions in deletion notifications) silently disappeared. The new list format is now read (first entry wins), with fallback to the legacy `discordId` string for older Seerr versions. Affects both the Seerr users listing (`seerr_get_users`) and the per-user mention resolution (`_resolve_discord_id`).
+
+---
+
 ## [3.6.2] — 2026-06-11
 
 ### Fixed

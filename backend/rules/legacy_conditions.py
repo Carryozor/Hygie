@@ -45,6 +45,7 @@ class ScanContext:
     seerr_ext: str = ""
     queued_ids: Optional[set] = None
     ignored_ids: Optional[set] = None
+    series_tmdb_map: Optional[dict] = None
 
 
 # ─── Primitive operators (delegated to the unified rules engine) ──────────────
@@ -395,6 +396,7 @@ async def _evaluate_item(
         seerr_ext       = seerr_ext       or ctx.seerr_ext
         queued_ids      = queued_ids      if queued_ids is not None      else ctx.queued_ids
         ignored_ids     = ignored_ids     if ignored_ids is not None     else ctx.ignored_ids
+        series_tmdb_map = series_tmdb_map if series_tmdb_map is not None else ctx.series_tmdb_map
 
     emby_id    = item.get("Id")
     title      = item.get("Name") or "?"

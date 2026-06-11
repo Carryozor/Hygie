@@ -240,39 +240,39 @@ async def get_series_tmdb_map(library_id: str, server_id: str = "0") -> dict:
     out: dict = {}
     start = 0
     breaker = _emby_breaker(server_id)
-    while True:
-        params = {
-            "ParentId": library_id,
-            "Recursive": "true",
-            "IncludeItemTypes": "Series",
-            "Fields": "ProviderIds",
-            "Limit": 500,
-            "StartIndex": start,
-        }
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+    async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+        while True:
+            params = {
+                "ParentId": library_id,
+                "Recursive": "true",
+                "IncludeItemTypes": "Series",
+                "Fields": "ProviderIds",
+                "Limit": 500,
+                "StartIndex": start,
+            }
+            try:
                 r = await breaker.call(
-                    lambda: http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=params))
+                    lambda p=params: http_retry(lambda: client.get(f"{url}/Items", headers=_auth(key), params=p))
                 )
                 if r.status_code != 200:
                     break
                 data = r.json()
                 items = data.get("Items", [])
                 total = data.get("TotalRecordCount", 0)
-        except CircuitOpenError:
-            logger.warning("Circuit breaker OPEN for emby:%s — get_series_tmdb_map skipped (lib=%s)", server_id, library_id)
-            break
-        except Exception as e:
-            logger.warning(f"get_series_tmdb_map error: {e}")
-            break
-        for it in items:
-            sid  = it.get("Id")
-            tmdb = str((it.get("ProviderIds") or {}).get("Tmdb") or "")
-            if sid and tmdb:
-                out[sid] = tmdb
-        start += 500
-        if start >= total:
-            break
+            except CircuitOpenError:
+                logger.warning("Circuit breaker OPEN for emby:%s — get_series_tmdb_map skipped (lib=%s)", server_id, library_id)
+                break
+            except Exception as e:
+                logger.warning(f"get_series_tmdb_map error: {e}")
+                break
+            for it in items:
+                sid  = it.get("Id")
+                tmdb = str((it.get("ProviderIds") or {}).get("Tmdb") or "")
+                if sid and tmdb:
+                    out[sid] = tmdb
+            start += 500
+            if start >= total:
+                break
     return out
 
 

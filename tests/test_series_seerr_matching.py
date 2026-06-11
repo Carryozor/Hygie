@@ -157,17 +157,11 @@ def _scan_patches(emby_items: list):
         new_callable=AsyncMock,
         return_value="",
     ))
-    # Series-level tmdb resolution — present only once the fix is in place.
-    # On unfixed code the patch target does not exist; skip it so the test
-    # fails on the bug itself (empty queue), not on an AttributeError.
-    try:
-        stack.enter_context(patch(
-            "backend.scanner._emby_scanner.get_series_tmdb_map",
-            new_callable=AsyncMock,
-            return_value={SERIES_EMBY_ID: SERIES_TMDB_ID},
-        ))
-    except AttributeError:
-        pass
+    stack.enter_context(patch(
+        "backend.scanner._emby_scanner.get_series_tmdb_map",
+        new_callable=AsyncMock,
+        return_value={SERIES_EMBY_ID: SERIES_TMDB_ID},
+    ))
     return stack
 
 

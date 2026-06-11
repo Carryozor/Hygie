@@ -4,6 +4,14 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [3.6.2] — 2026-06-11
+
+### Fixed
+
+- **Series were silently excluded from scans whenever a Seerr user filter was active (CRITICAL)** — `seerr_user_id` was resolved from the item's own `ProviderIds.Tmdb`, but Emby/Jellyfin **Episode** items never carry the series-level TMDB id (only episode Tvdb/Imdb ids), while the Seerr request cache is keyed by the series `tmdbId`. The lookup therefore always returned `None` for episodes, and any expert rule with a `seerr_user_id IN […]` condition or library `user_include`/`user_exclude` filter excluded **all series** — movies were unaffected. The scanner now builds a per-library `{SeriesId → series tmdb}` map (fetched lazily on the first episode encountered, circuit-breaker protected, fail-soft) and resolves episodes through their parent series. Queue entries for episodes now also store the series TMDB id, fixing the Seerr request link and the poster fallback for series.
+
+---
+
 ## [3.6.1] — 2026-06-10
 
 ### Fixed

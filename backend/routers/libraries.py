@@ -273,27 +273,13 @@ async def reevaluate(library_id: str, user: str = Depends(require_auth)):
 @router.post("/test/{service}")
 async def test_service_alias(service: str, user: str = Depends(require_auth)):
     """Test a service connection (alias of /api/settings/test/{service})."""
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-    from ..emby_client import test_connection as test_emby
-    from ..arr_clients import test_radarr, test_sonarr, test_seerr
-    from ..qbit_client import test_qbit
-    from ..discord_client import test_discord, test_discord_alerts
-    testers = {
-        "emby": test_emby,
-        "radarr": test_radarr,
-        "sonarr": test_sonarr,
-        "seerr": test_seerr,
-        "qbit": test_qbit,
-        "discord": test_discord,
-        "discord_alerts": test_discord_alerts,
-    }
-    tester = testers.get(service)
+    from .settings import _TESTERS
+    tester = _TESTERS.get(service)
     if not tester:
-        _log.warning(f"Test service inconnu : '{service}'")
+        logger.warning("Test service inconnu : '%s'", service)
         raise HTTPException(404, f"Service inconnu : {service}")
     result = await tester()
     ok, message = result[0], result[1]
     if not ok:
-        _log.warning(f"Test {service} échoué : {message}")
+        logger.warning("Test %s échoué : %s", service, message)
     return {"ok": ok, "message": message}

@@ -28,7 +28,6 @@ async def health():
     status_info: dict = {
         "status": "healthy",
         "version": VERSION,
-        "dialect": DIALECT,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -44,15 +43,14 @@ async def health():
                 row = await db.fetch_one(
                     "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table'"
                 )
-            n = row["n"] if row else 0
             mq_exists = await db.table_exists("media_queue")
             if not mq_exists:
-                status_info["database"] = f"{DIALECT} / missing required tables"
+                status_info["database"] = "missing required tables"
                 status_info["status"] = "degraded"
             else:
-                status_info["database"] = f"{DIALECT} / {n} tables"
-    except Exception as e:
-        status_info["database"] = f"error: {e}"
+                status_info["database"] = "ok"
+    except Exception:
+        status_info["database"] = "error"
         status_info["status"] = "degraded"
 
     # Scheduler check
@@ -76,7 +74,6 @@ async def health():
         disk_dir = os.path.dirname(os.environ.get("DB_PATH", "/app/data/hygie.db")) or "/app/data"
         _, _, free = shutil.disk_usage(disk_dir)
         free_mb = free // (1024 * 1024)
-        status_info["disk_free_mb"] = free_mb
         status_info["disk"] = "low" if free_mb < 50 else "ok"
         if free_mb < 50:
             status_info["status"] = "degraded"
@@ -87,18 +84,18 @@ async def health():
     if os.environ.get("HYGIE_ENCRYPTION_KEY"):
         status_info["encryption"] = "enabled"
     else:
-        status_info["encryption"] = "disabled (HYGIE_ENCRYPTION_KEY not set)"
+        status_info["encryption"] = "disabled"
         if status_info["status"] == "healthy":
             status_info["status"] = "degraded"
 
-    # Circuit breakers — expose state of all registered breakers
+    # Circuit breakers — expose open/total count only (not internal service names)
     try:
         from ..arr_clients.circuit_breaker import all_breaker_states
         breakers = all_breaker_states()
         if breakers:
-            open_breakers = [n for n, s in breakers.items() if s["state"] == "open"]
-            status_info["circuit_breakers"] = breakers
-            if open_breakers:
+            open_count = sum(1 for s in breakers.values() if s["state"] == "open")
+            status_info["circuit_breakers"] = {"open": open_count, "total": len(breakers)}
+            if open_count:
                 status_info["status"] = "degraded"
     except Exception:
         pass

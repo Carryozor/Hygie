@@ -1,7 +1,9 @@
 """Image proxy endpoint with SSRF-protection whitelist."""
 import asyncio
+import ipaddress
 import logging
 import re
+import socket
 import time
 from urllib.parse import urlparse
 
@@ -55,6 +57,29 @@ def _is_url_allowed(url: str, allowed: set) -> bool:
         return (host, port) in allowed
     except Exception:
         return False
+
+
+async def _resolves_to_loopback_or_link_local(hostname: str) -> bool:
+    """Return True if hostname resolves to a loopback or link-local address.
+
+    DNS rebinding protection: a whitelisted hostname could be temporarily
+    rebound to 127.x.x.x or 169.254.x.x by an attacker. RFC1918 LAN
+    addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are NOT blocked here
+    because legitimate self-hosted Emby servers often live on a LAN.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        infos = await loop.run_in_executor(
+            None,
+            lambda: socket.getaddrinfo(hostname, None, 0, socket.SOCK_STREAM),
+        )
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_loopback or ip.is_link_local:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def invalidate_proxy_whitelist() -> None:
@@ -121,6 +146,11 @@ async def proxy_image(request: Request):
             host = (parsed.hostname or "").lower()
             logger.warning(f"Proxy: host {host!r} not in whitelist")
             return Response(status_code=403, content=f"Host not allowed: {host}")
+
+        host = (parsed.hostname or "").lower()
+        if await _resolves_to_loopback_or_link_local(host):
+            logger.warning("Proxy: DNS rebinding attempt detected for host %r", host)
+            return Response(status_code=403)
 
         _PROXY_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — guard against memory exhaustion
         # Redirects are followed manually so every hop is re-validated against

@@ -131,6 +131,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             seerr_user_id  INT          NOT NULL,
             seerr_username VARCHAR(255) NOT NULL,
             library_id     VARCHAR(255) NOT NULL,
+            library_ids    LONGTEXT     DEFAULT NULL,
             grace_days     INT          NOT NULL DEFAULT 30,
             enabled        TINYINT      NOT NULL DEFAULT 1,
             discord_id     VARCHAR(255) DEFAULT '',

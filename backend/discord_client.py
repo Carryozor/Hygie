@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # when a large batch of deletions fails and each triggers its own alert.
 _DISCORD_ALERT_MIN_INTERVAL = 0.22  # seconds
 _discord_alert_last_ts: float = 0.0
+_discord_alert_lock = asyncio.Lock()
 
 _KIND_COLORS = {
     "detected": 0x57F287,
@@ -263,11 +264,12 @@ async def send_alert(
     custom_msg: template string; supports {detail}, {title}, {count} vars via template_vars.
     """
     global _discord_alert_last_ts
-    now = time.monotonic()
-    elapsed = now - _discord_alert_last_ts
-    if elapsed < _DISCORD_ALERT_MIN_INTERVAL:
-        await asyncio.sleep(_DISCORD_ALERT_MIN_INTERVAL - elapsed)
-    _discord_alert_last_ts = time.monotonic()
+    async with _discord_alert_lock:
+        now = time.monotonic()
+        elapsed = now - _discord_alert_last_ts
+        if elapsed < _DISCORD_ALERT_MIN_INTERVAL:
+            await asyncio.sleep(_DISCORD_ALERT_MIN_INTERVAL - elapsed)
+        _discord_alert_last_ts = time.monotonic()
 
     webhook = await _get_alert_webhook()
     if not webhook:

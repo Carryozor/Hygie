@@ -19,6 +19,7 @@ from typing import Optional
 from ..db.utils import now_utc, parse_iso_dt
 from ..db.engine import get_db
 from ..db.logs import add_log
+from ..types import QueueEntry
 from ..arr_clients import (
     radarr_find_by_path,
     radarr_find_by_path_cached,
@@ -352,6 +353,76 @@ async def _resolve_arr_ids(
     return radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val
 
 
+# ─── Item evaluation — helpers ────────────────────────────────────────────────
+
+async def _update_queued_item_if_pending(
+    existing: dict,
+    lib: dict,
+    grace_days: int,
+    title: str,
+    last_played: Optional[datetime],
+    play_count: int,
+) -> None:
+    """Update delete_at/last_played/view_count for a pending queue row when grace changed."""
+    row_status = existing["status"]
+    row_detected_at = existing["detected_at"]
+    if row_status != "pending" or not row_detected_at:
+        return
+    try:
+        detected_at_dt = parse_iso_dt(row_detected_at)
+        if not detected_at_dt:
+            return
+        effective_grace = await _get_seerr_grace(existing["seerr_user_id"], lib["id"], grace_days)
+        new_delete_at = detected_at_dt + timedelta(days=effective_grace)
+        lp_iso = last_played.isoformat() if last_played else None
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
+                (new_delete_at.isoformat(), lp_iso, play_count, existing["id"]),
+            )
+            await db.commit()
+    except Exception as e:
+        logger.error("Erreur recalcul delete_at pour %s: %s", title, e)
+
+
+async def _is_already_queued(
+    emby_id: str,
+    queued_ids: Optional[set],
+    lib: dict,
+    grace_days: int,
+    title: str,
+    last_played: Optional[datetime],
+    play_count: int,
+) -> bool:
+    """Return True if item is already in the queue (and update delete_at if grace changed)."""
+    if queued_ids is not None:
+        if emby_id not in queued_ids:
+            return False
+        await _update_delete_at_if_pending(
+            emby_id, lib, grace_days, title,
+            last_played=last_played, play_count=play_count,
+        )
+        return True
+    # No pre-fetched set — fall back to DB lookup
+    async with get_db() as db:
+        existing = await db.fetch_one(
+            "SELECT id, status, detected_at, seerr_user_id FROM media_queue WHERE emby_id=?",
+            (emby_id,),
+        )
+    if not existing:
+        return False
+    await _update_queued_item_if_pending(existing, lib, grace_days, title, last_played, play_count)
+    return True
+
+
+async def _is_already_ignored(emby_id: str, ignored_ids: Optional[set]) -> bool:
+    """Return True if item is in the ignored list."""
+    if ignored_ids is not None:
+        return emby_id in ignored_ids
+    async with get_db() as db:
+        return bool(await db.fetch_one("SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)))
+
+
 # ─── Item evaluation ──────────────────────────────────────────────────────────
 
 async def _evaluate_item(
@@ -373,7 +444,7 @@ async def _evaluate_item(
     queued_ids: Optional[set] = None,
     ignored_ids: Optional[set] = None,
     series_tmdb_map: Optional[dict] = None,
-) -> Optional[dict]:
+) -> Optional[QueueEntry]:
     """Evaluate a single Emby item; return queue-entry dict if eligible, else None.
 
     The caller (_scan_library) is responsible for DB insert and notifications.
@@ -403,13 +474,9 @@ async def _evaluate_item(
     media_type = item.get("Type") or ""
     file_path  = item.get("Path") or ""
     tmdb_id    = resolve_item_tmdb(item, series_tmdb_map)
-    date_str   = item.get("DateCreated") or ""
+    added_date = parse_iso_dt(item.get("DateCreated") or "")
 
-    if not emby_id or not file_path:
-        return None
-
-    added_date = parse_iso_dt(date_str)
-    if not added_date:
+    if not emby_id or not file_path or not added_date:
         return None
 
     play_count, never_watched, last_played = await _aggregate_user_data(
@@ -419,49 +486,11 @@ async def _evaluate_item(
     if not _evaluate_conditions(conditions, logic, added_date, last_played, play_count, never_watched):
         return None
 
-    # Skip if already in queue — but recalculate delete_at if grace changed
-    if queued_ids is not None:
-        if emby_id in queued_ids:
-            await _update_delete_at_if_pending(
-                emby_id, lib, grace_days, title,
-                last_played=last_played, play_count=play_count,
-            )
-            return None
-    else:
-        async with get_db() as db:
-            existing = await db.fetch_one(
-                "SELECT id, status, detected_at, seerr_user_id FROM media_queue WHERE emby_id=?",
-                (emby_id,),
-            )
-        if existing:
-            row_id = existing["id"]
-            row_status = existing["status"]
-            row_detected_at = existing["detected_at"]
-            row_seerr_user_id = existing["seerr_user_id"]
-            if row_status == "pending" and row_detected_at:
-                try:
-                    detected_at_dt = parse_iso_dt(row_detected_at)
-                    if detected_at_dt:
-                        effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
-                        new_delete_at = detected_at_dt + timedelta(days=effective_grace)
-                        lp_iso = last_played.isoformat() if last_played else None
-                        async with get_db() as db2:
-                            await db2.execute(
-                                "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
-                                (new_delete_at.isoformat(), lp_iso, play_count, row_id),
-                            )
-                            await db2.commit()
-                except Exception as e:
-                    logger.error(f"Erreur recalcul delete_at pour {title}: {e}")
-            return None
+    if await _is_already_queued(emby_id, queued_ids, lib, grace_days, title, last_played, play_count):
+        return None
 
-    if ignored_ids is not None:
-        if emby_id in ignored_ids:
-            return None
-    else:
-        async with get_db() as db:
-            if await db.fetch_one("SELECT id FROM ignored_media WHERE emby_id=?", (emby_id,)):
-                return None
+    if await _is_already_ignored(emby_id, ignored_ids):
+        return None
 
     # Seerr lookup
     if seerr_cache is not None:

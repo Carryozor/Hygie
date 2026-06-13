@@ -1,17 +1,19 @@
 """Public no-auth endpoint — upcoming deletions calendar."""
+import asyncio
 import hmac
 from collections import defaultdict
+from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
-from ..auth import verify_token
+from ..auth import verify_token, rate_limit, get_client_ip
 from ..db.settings_store import get_setting
 from ..db.engine import get_db
 from ..db.media_servers import get_media_servers
 from ..db.encryption import _decrypt_value
-from ..db.utils import parse_iso_dt
+from ..db.utils import now_utc, parse_iso_dt
 
 router = APIRouter(tags=["public"])
 
@@ -23,6 +25,7 @@ def _clean_url(raw: str) -> str:
 
 @router.get("/api/public/upcoming")
 async def public_upcoming(
+    request: Request,
     slug: str = "",
     password: str = "",
     authorization: Optional[str] = Header(default=None),
@@ -33,6 +36,10 @@ async def public_upcoming(
     Authenticated admins (valid Bearer token) bypass the public dashboard password.
     Anonymous visitors must supply the configured password if one is set.
     """
+    ip = get_client_ip(request)
+    if await asyncio.to_thread(rate_limit, f"public_upcoming:{ip}"):
+        return JSONResponse({"error": "too_many_requests"}, status_code=429)
+
     enabled = await get_setting("public_dashboard_enabled")
     if enabled != "true":
         return JSONResponse({"error": "disabled"}, status_code=403)
@@ -54,6 +61,7 @@ async def public_upcoming(
         if not hmac.compare_digest(provided.encode(), cfg_pwd.encode()):
             return JSONResponse({"error": "wrong_password"}, status_code=403)
 
+    horizon = (now_utc() + timedelta(days=90)).isoformat()
     async with get_db() as db:
         rows = await db.fetch_all(
             "SELECT mq.id, mq.emby_id, mq.title, mq.media_type, mq.library_name, mq.library_id, "
@@ -61,7 +69,8 @@ async def public_upcoming(
             "COALESCE(l.server_id, '0') AS server_id "
             "FROM media_queue mq "
             "LEFT JOIN libraries l ON mq.library_id = l.id "
-            "WHERE mq.status='pending' ORDER BY mq.delete_at ASC"
+            "WHERE mq.status='pending' AND mq.delete_at <= ? ORDER BY mq.delete_at ASC",
+            (horizon,),
         )
         libs = await db.fetch_all(
             "SELECT id, name, server_id FROM libraries WHERE enabled=1 ORDER BY name"

@@ -73,8 +73,8 @@ async def ensure_server_uid(server_id: str = "0") -> None:
                     if uid:
                         s["server_uid"] = uid
                         await save_media_servers(servers)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("ensure_server_uid server_id=%s: %s", server_id, e)
         return
 
 
@@ -113,9 +113,9 @@ async def get_client_ext_url(server_id: str = "0") -> str:
     return ext
 
 
-async def test_connection(server_id: str = "0") -> Tuple[bool, str, str]:
+async def test_connection(server_id: str = "0") -> tuple[bool, str, str, str]:
     """Test connection and auto-detect server type (emby|jellyfin|unknown).
-    Returns (ok, message, server_type). Updates server type in media_servers on success.
+    Returns (ok, message, server_type, error_code). Updates server type in media_servers on success.
     """
     url, key = await get_client(server_id)
     if not url or not key:
@@ -344,8 +344,8 @@ async def get_user_data(user_id: str, item_id: str, server_id: str = "0") -> Opt
             )
             if r.status_code == 200:
                 return r.json().get("UserData", {})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("get_user_data user=%s item=%s server=%s: %s", user_id, item_id, server_id, e)
     return None
 
 

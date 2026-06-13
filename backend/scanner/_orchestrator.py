@@ -34,28 +34,44 @@ async def _purge_stale_seerr_items() -> None:
     (have an IN condition on that field), then pending items with seerr_user_id = NULL
     should be removed — they were added before the Seerr filter was configured.
     """
+    from collections import defaultdict
     from ..db.repositories import get_expert_rules
     from ..rules.models import ConditionField, ConditionOp
 
+    def _has_seerr_filter(rule) -> bool:
+        return any(
+            any(
+                c.field == ConditionField.SEERR_USER_ID and c.op == ConditionOp.IN
+                for c in group.conditions
+            )
+            for group in rule.condition_groups
+        )
+
     try:
         rules = await get_expert_rules(enabled_only=True)
-        # Find libraries where every active rule requires a specific seerr_user_id
-        # (i.e., at least one condition group has seerr_user_id IN [...])
-        libraries_requiring_seerr: set = set()
+
+        # Group rules by the library IDs they target. Rules with no library
+        # scope are global and apply to every library.
+        library_to_rules: dict[str, list] = defaultdict(list)
+        global_rules: list = []
         for rule in rules:
-            has_seerr_filter = any(
-                any(
-                    c.field == ConditionField.SEERR_USER_ID and c.op == ConditionOp.IN
-                    for c in group.conditions
-                )
-                for group in rule.condition_groups
-            )
-            if has_seerr_filter:
-                if rule.library_ids:
-                    for lid in rule.library_ids:
-                        libraries_requiring_seerr.add(str(lid))
-                elif rule.library_id:
-                    libraries_requiring_seerr.add(str(rule.library_id))
+            if rule.library_ids:
+                for lid in rule.library_ids:
+                    library_to_rules[str(lid)].append(rule)
+            elif rule.library_id:
+                library_to_rules[str(rule.library_id)].append(rule)
+            else:
+                global_rules.append(rule)
+
+        # A library qualifies for purge only when EVERY rule that can fire on
+        # it (library-specific + global) requires a seerr_user_id. If even one
+        # rule lacks a Seerr filter, items without seerr_user_id may be
+        # legitimately queued by that rule.
+        libraries_requiring_seerr: set = set()
+        for lid, lib_rules in library_to_rules.items():
+            all_applicable = lib_rules + global_rules
+            if all_applicable and all(_has_seerr_filter(r) for r in all_applicable):
+                libraries_requiring_seerr.add(lid)
 
         if not libraries_requiring_seerr:
             return
@@ -159,7 +175,7 @@ async def _do_scan_one_library(
     try:
         _activity_log = await get_play_activity(server_id=server_id, days=730)
     except Exception as _al_e:
-        logger.debug("activity log fetch failed for server %s: %s", server_id, _al_e)
+        logger.warning("activity log fetch failed for server %s: %s", server_id, _al_e)
 
     added = await _scan_library(
         lib, user_ids, server_id=server_id, server_name=server_name,
@@ -212,7 +228,7 @@ async def _scan_single_server(
     try:
         server_activity_log = await get_play_activity(server_id=server_id, days=730)
     except Exception as _al_err:
-        logger.debug("activity log fetch failed for server %s: %s", server_id, _al_err)
+        logger.warning("activity log fetch failed for server %s: %s", server_id, _al_err)
 
     try:
         max_parallel = int(await get_setting("max_parallel_library_scans") or "3")

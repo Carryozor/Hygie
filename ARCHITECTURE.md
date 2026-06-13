@@ -7,26 +7,30 @@ technical debt of Hygie v3.x. It is updated at each minor release.
 
 ## Constraints you MUST respect
 
-### Single-worker deployment (CRITICAL)
+### Single-worker deployment (default)
 
-Hygie uses `asyncio.Lock()` objects in `_job_state.py` for scan and deletion
-job exclusivity. These locks exist only within a single Python process.
+Hygie's default backend uses `AsyncioLockBackend` (`asyncio.Lock`) in
+`_lock_backend.py` for scan and deletion job exclusivity. These locks exist only
+within a single Python process.
 
-**If you run Gunicorn with `--workers 2` or more:**
+**If you run Gunicorn with `--workers 2` or more using the default backend:**
 - Two scans can run simultaneously
 - Both will write to `media_queue` concurrently → duplicate entries
 - Both will call Emby/Radarr deletion APIs for the same item → data corruption
 
-**Required configuration:**
+**Required configuration (default):**
 ```
 WORKERS=1
+HYGIE_LOCK_BACKEND=asyncio   # default, can be omitted
 ```
 
-This is enforced at startup: the `StartupValidator` logs a CRITICAL error if
-`WORKERS > 1`.
+**Multi-worker mode (MariaDB only):**
 
-**To scale horizontally:** Deploy separate Hygie instances with separate
-databases, one per media server. Do not share a DB between instances.
+Set `HYGIE_LOCK_BACKEND=mariadb` to enable `MariaDBAdvisoryLockBackend`, which
+uses `GET_LOCK()`/`RELEASE_LOCK()` advisory locks. This allows running multiple
+Uvicorn/Gunicorn workers sharing the same MariaDB. A worker that cannot acquire
+the lock skips the job cycle (non-blocking, 0-second timeout); the next
+scheduler tick will succeed. See `_lock_backend.py` for implementation details.
 
 ---
 
@@ -52,8 +56,39 @@ saturated. Mitigation: scans use `asyncio.Semaphore` for parallel library
 scanning, and both jobs have hard timeouts (scan: 2h, deletion: 1h).
 
 **Future:** Separating scanner and API into distinct processes would require an
-inter-process job queue (Redis, RabbitMQ) and distributed lock management. This
-is a v4.0 consideration, not currently planned.
+inter-process job queue (Redis, RabbitMQ) and full multi-worker coordination.
+This is a v4.0 consideration.
+
+### LockBackend abstraction (v3.7)
+
+`_lock_backend.py` provides a `LockBackend` Protocol with two implementations:
+
+- `AsyncioLockBackend` — wraps `asyncio.Lock()`, in-process only (default)
+- `MariaDBAdvisoryLockBackend` — uses MySQL `GET_LOCK()`/`RELEASE_LOCK()`,
+  supports multiple workers or containers sharing a MariaDB instance
+
+`_job_state.py` imports `scan_lock` and `deletion_lock` singletons from
+`_lock_backend.py`. All callers use them as async context managers (`async with`)
+without knowing the backend. Switch by setting `HYGIE_LOCK_BACKEND=mariadb`.
+
+### MediaServerFactory (v3.7)
+
+`media_server_factory.py` centralizes Emby/Plex dispatch with two helpers:
+
+- `get_server_item_id(server, item)` — returns `plex_rating_key` or `emby_id`
+- `delete_server_item(server, item, *, server_id=None)` — dispatches to
+  `PleXClient.delete_item()` or `emby_client.delete_item()`
+
+Both `deletion.py` and `deletion_pipeline.py` use these helpers, eliminating
+scattered `is_plex()` checks at the call sites.
+
+### QueueEntry TypedDict (v3.7)
+
+`types.py` defines `QueueEntry(TypedDict, total=False)` with 22 fields.
+Required fields (`emby_id`, `title`, `media_type`, `library_id`, `library_name`,
+`file_path`, `detected_at`, `delete_at`) are marked with `Required[T]`.
+All queue-building code (`_queue_entry.py`, `legacy_conditions.py`) annotates
+return types with `QueueEntry`.
 
 ### Unified rule evaluation engine (v3.6)
 
@@ -101,17 +136,18 @@ will carry `job_id = run_id`, making them filterable from `job_history`.
 ### Global in-process caches
 
 Several module-level variables cache data to avoid DB/HTTP calls on every
-request. They are all incompatible with multi-worker deployments.
+request. All have `asyncio.Lock` guards (v3.7) to prevent cache stampedes under
+concurrent requests. They are incompatible with multi-worker deployments unless
+moved to Redis.
 
-| Module | Variable | TTL |
-|--------|----------|-----|
-| `settings_store.py` | `_settings_cache` | 30s |
-| `media_servers.py` | `_ms_cache` | 30s |
-| `collection.py` | `_overlay_cache` | session |
-| `proxy.py` | `_proxy_whitelist` | 5min |
-| `qbit_client.py` | `_sid_cookie` | session |
-
-If multi-worker ever becomes a requirement, these caches must be moved to Redis.
+| Module | Variable | TTL | Lock |
+|--------|----------|-----|------|
+| `settings_store.py` | `_settings_cache` | 30s | `_settings_cache_lock` |
+| `discord_client.py` | `_discord_alert_last_ts` | 60s | `_discord_alert_lock` |
+| `media_servers.py` | `_ms_cache` | 30s | — |
+| `collection.py` | `_overlay_cache` | session | — |
+| `proxy.py` | `_proxy_whitelist` | 5min | — |
+| `qbit_client.py` | `_sid_cookie` | session | — |
 
 ### API versioning
 
@@ -127,6 +163,7 @@ and will not be affected.
 | Item | Priority | Notes |
 |------|----------|-------|
 | Separate scanner/deletion workers | v4.0 | Requires job queue + distributed locks |
-| DB-level distributed locks | v4.0 | `SELECT GET_LOCK()` (MariaDB) / `advisory_lock` (SQLite) |
 | Normalize `media_queue` schema | v4.0 | Server-specific columns belong in extension tables |
+| Centralize media_queue SQL | v3.8 | ~8 files still build SQL directly; move to `db/repositories.py` |
 | Retire `frontend/static/` | v3.2 | Only used if Vue build fails; audit templates first |
+| Move in-process caches to Redis | v4.0 | Required for true multi-worker horizontal scaling |

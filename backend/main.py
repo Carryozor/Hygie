@@ -270,6 +270,17 @@ _allowed_origins = [
     if o.strip()
 ] or ["http://localhost:8000", "http://localhost:5173"]
 
+# Wildcard origin with credentials is forbidden by the CORS spec and allows
+# any site to make credentialed requests — refuse it at startup.
+if "*" in _allowed_origins:
+    import sys
+    print(
+        "FATAL: HYGIE_ALLOWED_ORIGINS contains '*' which is incompatible with "
+        "allow_credentials=True. Set explicit origins instead.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -329,16 +340,24 @@ app.include_router(plex_webhook.router)
 
 
 # ─── Static & templates ───────────────────────────────────────────────────────
+_ROOT = os.path.dirname(os.path.dirname(__file__))
 app.mount(
     "/static",
-    StaticFiles(directory="frontend/static"),
+    StaticFiles(directory=os.path.join(_ROOT, "frontend", "static")),
     name="static",
 )
-templates = Jinja2Templates(directory="frontend/templates")
+templates = Jinja2Templates(directory=os.path.join(_ROOT, "frontend", "templates"))
 
 # ─── WebSocket — log stream ───────────────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # Reject cross-origin WebSocket connections before accepting to prevent
+    # DNS-rebinding and CSRF-style attacks from hostile pages.
+    origin = ws.headers.get("origin", "")
+    if origin and origin not in _allowed_origins:
+        await ws.close(code=1008)
+        return
+
     await ws.accept()
     try:
         # First message must carry the auth token (sent by frontend onopen).

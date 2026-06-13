@@ -125,12 +125,26 @@ class TorrentHashStep(DeletionStep):
 
 
 class DiscordNotifyStep(DeletionStep):
-    """Send Discord deletion notification before Emby removal (poster still accessible)."""
+    """Send Discord deletion notification before Emby removal (poster still accessible).
+
+    Idempotent: skips if a 'now' notification was already recorded for this item,
+    so a failed-then-retried deletion does not send a duplicate Discord message.
+    """
 
     async def execute(self, ctx: DeletionContext) -> None:
         if ctx.dry_run:
             return
         try:
+            item_id = ctx.item.get("id")
+            if item_id:
+                from .db.engine import get_db
+                async with get_db() as _db:
+                    _row = await _db.fetch_one(
+                        "SELECT 1 FROM notifications WHERE media_id=? AND threshold='now'",
+                        (item_id,),
+                    )
+                if _row:
+                    return
             from .discord_client import send_notification
             await send_notification([ctx.item], "now", dry_run=False)
         except Exception as e:
@@ -170,20 +184,17 @@ class MediaServerStep(DeletionStep):
         if not emby_id or emby_id.startswith("sonarr-"):
             return
 
+        from .media_server_factory import delete_server_item, get_server_item_id
         from .db.media_servers import is_plex
         from .db.logs import add_log
         from .logmsg import lm
 
-        if is_plex(ctx.server or {}):
-            from .plex_client import build_plex_client
-            plex = build_plex_client(ctx.server or {})
-            if plex:
-                rating_key = ctx.item.get("plex_rating_key") or emby_id
-                await plex.delete_item(rating_key)
-                await add_log("DEBUG", lm("plex.deleted", key=rating_key), "deletion")
+        server = ctx.server or {}
+        await delete_server_item(server, ctx.item, server_id=ctx.server_id)
+        if is_plex(server):
+            item_id = get_server_item_id(server, ctx.item)
+            await add_log("DEBUG", lm("plex.deleted", key=item_id), "deletion")
         else:
-            from .emby_client import delete_item
-            await delete_item(emby_id, server_id=ctx.server_id)
             await add_log("DEBUG", lm("emby.hardlink", title=ctx.title), "deletion")
 
 

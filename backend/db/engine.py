@@ -36,6 +36,7 @@ SQLITE_PATH: str = os.environ.get("DB_PATH", "/app/data/hygie.db")
 DIALECT: str = "mariadb" if DATABASE_URL.startswith(("mysql+", "mariadb+", "mysql://", "mariadb://")) else "sqlite"
 
 _pool: Any = None
+_sqlite_pragmas_applied: bool = False  # WAL mode persists in the DB file — set once
 
 
 def _parse_mariadb_url(url: str) -> dict:
@@ -66,9 +67,15 @@ def _parse_mariadb_url(url: str) -> dict:
 
 
 async def init_db_pool() -> None:
-    """Initialize connection pool (no-op for SQLite)."""
-    global _pool
+    """Initialize connection pool. For SQLite: applies one-time PRAGMAs."""
+    global _pool, _sqlite_pragmas_applied
     if DIALECT != "mariadb":
+        import aiosqlite
+        async with aiosqlite.connect(SQLITE_PATH) as raw:
+            await raw.execute("PRAGMA journal_mode=WAL")
+            await raw.execute("PRAGMA foreign_keys=ON")
+            await raw.execute("PRAGMA busy_timeout=5000")
+        _sqlite_pragmas_applied = True
         return
     import aiomysql
     kwargs = _parse_mariadb_url(DATABASE_URL)
@@ -217,11 +224,17 @@ async def get_db():
     if DIALECT == "sqlite":
         import aiosqlite
         async with aiosqlite.connect(SQLITE_PATH) as raw:
-            await raw.execute("PRAGMA journal_mode=WAL")
-            await raw.execute("PRAGMA foreign_keys=ON")
-            # Wait instead of failing with "database is locked" under
-            # concurrent library scans (parallel writers on one SQLite file).
-            await raw.execute("PRAGMA busy_timeout=5000")
+            if not _sqlite_pragmas_applied:
+                # Fallback: init_db_pool() sets these at startup; this path is
+                # reached only in tests or if startup is bypassed.
+                await raw.execute("PRAGMA journal_mode=WAL")
+                await raw.execute("PRAGMA foreign_keys=ON")
+                await raw.execute("PRAGMA busy_timeout=5000")
+            else:
+                # foreign_keys and busy_timeout are connection-level — re-apply.
+                # journal_mode=WAL is DB-file-level (persists) so omitted here.
+                await raw.execute("PRAGMA foreign_keys=ON")
+                await raw.execute("PRAGMA busy_timeout=5000")
             yield DbConn(raw, "sqlite")
     else:
         if _pool is None:

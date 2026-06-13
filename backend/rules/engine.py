@@ -49,6 +49,8 @@ def evaluate_rule(rule: ExpertRule, item: dict) -> bool:
 
     group_results = []
     for group in rule.condition_groups:
+        if not group.conditions:
+            continue
         cond_results = [evaluate_condition(c, item) for c in group.conditions]
         if group.operator == RuleOperator.AND:
             group_results.append(all(cond_results))

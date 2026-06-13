@@ -25,7 +25,12 @@ from ..emby_client import (
     resolve_item_tmdb,
 )
 from ..arr_clients import radarr_find_by_path_cached, sonarr_get_cache_entry
-from ..rules.legacy_conditions import _evaluate_conditions, _evaluate_item, _get_poster_url
+from ..rules.legacy_conditions import (
+    _aggregate_user_data,
+    _evaluate_conditions,
+    _evaluate_item,
+    _get_poster_url,
+)
 from ..collection import sync_emby_collection
 from ._queue_entry import _build_queue_entry, _insert_queue_entry
 from ._expert_rules import _build_item_data, _evaluate_expert_rules
@@ -88,7 +93,7 @@ async def _scan_library(
         try:
             activity_log = await get_play_activity(server_id=server_id, days=730)
         except Exception as _al_err:
-            logger.debug("activity log fetch failed: %s", _al_err)
+            logger.warning("activity log fetch failed: %s", _al_err)
 
     # Direct update: write last_played + view_count for any pending queue entry
     # that has a play record in the activity log — regardless of whether the item
@@ -96,19 +101,22 @@ async def _scan_library(
     # display is correct even if the conditions check short-circuits the update path.
     if activity_log:
         try:
-            from ..db.engine import get_db as _get_db
-            async with _get_db() as _db:
-                for _eid, _date in activity_log.items():
-                    if _date:
-                        await _db.execute(
-                            "UPDATE media_queue SET last_played=?, view_count=MAX(COALESCE(view_count,0),1) "
-                            "WHERE emby_id=? AND status='pending' "
-                            "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
-                            (_date, _eid, _date),
-                        )
-                await _db.commit()
+            params = [
+                (_date, _eid, _date)
+                for _eid, _date in activity_log.items()
+                if _date
+            ]
+            if params:
+                async with get_db() as _db:
+                    await _db.executemany(
+                        "UPDATE media_queue SET last_played=?, view_count=MAX(COALESCE(view_count,0),1) "
+                        "WHERE emby_id=? AND status='pending' "
+                        "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
+                        params,
+                    )
+                    await _db.commit()
         except Exception as _upd_err:
-            logger.debug("activity log DB update failed: %s", _upd_err)
+            logger.warning("activity log DB update failed: %s", _upd_err)
 
     seerr_ext_url: str = await get_setting("seerr_external_url") or ""
     dry_run = await get_bool_setting("dry_run")
@@ -152,22 +160,10 @@ async def _scan_library(
                 if ignored_ids is not None and emby_id in ignored_ids:
                     continue
 
-                play_count  = 0
-                last_played = None
-                added_date  = parse_iso_dt(item.get("DateCreated") or "")
-                for uid in user_ids:
-                    ud     = (user_data_cache.get(uid) or {}).get(emby_id) or {}
-                    pc     = ud.get("PlayCount") or 0
-                    played = bool(ud.get("Played"))
-                    play_count = max(play_count, max(pc, 1) if played else pc)
-                    lp_str = ud.get("LastPlayedDate") or ""
-                    if not lp_str and (played or pc > 0):
-                        # Fallback: activity log stores most-recent stop date across all users
-                        lp_str = activity_log.get(emby_id) or ""
-                    if lp_str:
-                        lp = parse_iso_dt(lp_str)
-                        if lp and (last_played is None or lp > last_played):
-                            last_played = lp
+                added_date = parse_iso_dt(item.get("DateCreated") or "")
+                play_count, _, last_played = await _aggregate_user_data(
+                    user_ids, emby_id, user_data_cache, activity_log
+                )
 
                 seerr_user_id = None
                 if seerr_cache is not None:
@@ -279,28 +275,18 @@ async def reevaluate_library_queue(library_id: str) -> int:
         user_data_cache = dict(zip(user_ids, results))
 
     for row in pending:
-        emby_id      = row["emby_id"]
-        added_date   = parse_iso_dt(row.get("added_date"))
-        last_played  = None
-        play_count   = 0
-        never_watched = True
+        emby_id    = row["emby_id"]
+        added_date = parse_iso_dt(row.get("added_date"))
+
+        play_count, never_watched, last_played = await _aggregate_user_data(
+            user_ids, emby_id, user_data_cache, None
+        )
+        # Merge with DB-stored last_played (may predate the current user-data cache)
         raw_lp = parse_iso_dt(row.get("last_played"))
         if raw_lp:
-            last_played   = raw_lp
             never_watched = False
-
-        for uid in user_ids:
-            ud = user_data_cache.get(uid, {}).get(emby_id) or {}
-            pc     = ud.get("PlayCount") or 0
-            played = bool(ud.get("Played"))
-            play_count = max(play_count, max(pc, 1) if played else pc)
-            if played or pc > 0:
-                never_watched = False
-                lp_str = ud.get("LastPlayedDate") or ""
-                if lp_str:
-                    lp = parse_iso_dt(lp_str)
-                    if lp and (last_played is None or lp > last_played):
-                        last_played = lp
+            if last_played is None or raw_lp > last_played:
+                last_played = raw_lp
 
         if not _evaluate_conditions(conditions, logic, added_date, last_played, play_count, never_watched):
             poster_url = row.get("poster_url", "")

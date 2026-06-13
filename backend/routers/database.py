@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import re
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -85,7 +86,9 @@ async def test_connection(body: TestRequest, user: str = Depends(require_auth)):
     except ImportError:
         return {"ok": False, "message": "aiomysql non installé — MariaDB non supporté"}
     except Exception as e:
-        return {"ok": False, "message": str(e)}
+        # Strip credentials from connection strings that may appear in driver errors
+        safe_msg = re.sub(r"://[^@\s]+@", "://***@", str(e))
+        return {"ok": False, "message": safe_msg}
 
 
 # ── Migration ─────────────────────────────────────────────────────────────────

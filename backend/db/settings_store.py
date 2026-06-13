@@ -1,5 +1,6 @@
 # backend/db/settings_store.py
 """Settings cache and CRUD — all reads are served from an in-process TTL cache."""
+import asyncio as _asyncio
 import time as _time
 
 from .utils import DB_PATH
@@ -68,6 +69,7 @@ DEFAULT_SETTINGS = {
 # Sensitive values are stored encrypted in the cache; decryption happens on read.
 _settings_cache: dict[str, str] = {}
 _settings_cache_ts: float = 0.0
+_settings_cache_lock = _asyncio.Lock()
 _SETTINGS_CACHE_TTL: float = 30.0  # seconds
 
 
@@ -86,11 +88,15 @@ async def get_setting(key: str) -> str:
     global _settings_cache, _settings_cache_ts
     now = _time.monotonic()
     if not _settings_cache or now - _settings_cache_ts >= _SETTINGS_CACHE_TTL:
-        async with get_db() as db:
-            # `key` is a reserved word in MariaDB — backticks work on both dialects.
-            rows = await db.fetch_all("SELECT `key`, value FROM settings")
-            _settings_cache = {r["key"]: r["value"] for r in rows}
-        _settings_cache_ts = now
+        async with _settings_cache_lock:
+            # Double-check inside lock — another concurrent task may have refreshed already.
+            now = _time.monotonic()
+            if not _settings_cache or now - _settings_cache_ts >= _SETTINGS_CACHE_TTL:
+                async with get_db() as db:
+                    # `key` is a reserved word in MariaDB — backticks work on both dialects.
+                    rows = await db.fetch_all("SELECT `key`, value FROM settings")
+                    _settings_cache = {r["key"]: r["value"] for r in rows}
+                _settings_cache_ts = now
     raw = _settings_cache.get(key, "")
     return _decrypt_value(raw) if key in SENSITIVE_KEYS else raw
 

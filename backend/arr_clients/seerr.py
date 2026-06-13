@@ -137,7 +137,7 @@ async def seerr_get_users() -> List[dict]:
             results = await asyncio.gather(*[_fetch_discord(u) for u in all_users])
             out.extend(results)
     except Exception as e:
-        logger.debug(f"seerr_get_users: {e}")
+        logger.warning(f"seerr_get_users: {e}")
     return out
 
 
@@ -216,7 +216,7 @@ async def seerr_find_request_by_tmdb(tmdb_id: str) -> Optional[dict]:
                             ),
                         }
     except Exception as e:
-        logger.debug(f"seerr_find_request_by_tmdb: {e}")
+        logger.warning(f"seerr_find_request_by_tmdb: {e}")
     return None
 
 

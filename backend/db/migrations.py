@@ -507,6 +507,24 @@ async def _m013_purge_verbose_scan_logs():
             logger.info("m013: purged %d verbose per-item scan log entries", n)
 
 
+async def _m014_add_library_ids_to_seerr_user_rules():
+    """Add library_ids column to seerr_user_rules (was missing from the original MariaDB DDL).
+
+    The SQLite DDL gained this column implicitly via CREATE TABLE. On MariaDB,
+    seerr_rules.update_rule writes library_ids — without this column the UPDATE
+    would fail with an 'Unknown column' error on fresh MariaDB installs.
+    """
+    async with get_db() as db:
+        cols = await db.table_columns("seerr_user_rules")
+        if "library_ids" not in cols:
+            await db.execute(
+                "ALTER TABLE seerr_user_rules ADD COLUMN library_ids LONGTEXT DEFAULT NULL"
+                if DIALECT == "mariadb" else
+                "ALTER TABLE seerr_user_rules ADD COLUMN library_ids TEXT DEFAULT NULL"
+            )
+            await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -521,4 +539,5 @@ _MIGRATIONS = [
     ("m011", "Convert library conditions to expert_rules rows",          _m011_libraries_to_expert_rules),
     ("m012", "Convert interval settings from hours to minutes",          _m012_interval_hours_to_minutes),
     ("m013", "Purge verbose per-item scan log entries",                  _m013_purge_verbose_scan_logs),
+    ("m014", "Add library_ids to seerr_user_rules (missing from MariaDB DDL)", _m014_add_library_ids_to_seerr_user_rules),
 ]

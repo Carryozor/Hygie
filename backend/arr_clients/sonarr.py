@@ -121,7 +121,7 @@ async def build_sonarr_path_cache() -> dict:
                 for ep_path, entry in entries:
                     cache[ep_path] = entry
         except Exception as e:
-            logger.debug(f"build_sonarr_path_cache [{url}]: {e}")
+            logger.warning(f"build_sonarr_path_cache [{url}]: {e}")
     return cache
 
 
@@ -168,7 +168,7 @@ async def sonarr_find_by_path(file_path: str) -> Optional[int]:
                             if ef.get("path") == file_path:
                                 return ef.get("id")
         except Exception as e:
-            logger.debug(f"sonarr_find_by_path [{url}]: {e}")
+            logger.warning(f"sonarr_find_by_path [{url}]: {e}")
     return None
 
 
@@ -192,7 +192,7 @@ async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
             if rs.status_code == 200:
                 return rs.json()
     except Exception as e:
-        logger.debug(f"sonarr_get_series: {e}")
+        logger.warning(f"sonarr_get_series: {e}")
     return None
 
 
@@ -207,7 +207,7 @@ async def sonarr_get_series_by_id(series_id: int) -> Optional[dict]:
             if r.status_code == 200:
                 return r.json()
     except Exception as e:
-        logger.debug(f"sonarr_get_series_by_id: {e}")
+        logger.warning(f"sonarr_get_series_by_id: {e}")
     return None
 
 
@@ -337,5 +337,5 @@ async def sonarr_get_torrent_hash(episode_file_id: int, url: str = "", key: str 
                     if dl_id and len(dl_id) >= 32:
                         return dl_id
     except Exception as e:
-        logger.debug(f"sonarr_get_torrent_hash: {e}")
+        logger.warning(f"sonarr_get_torrent_hash: {e}")
     return None

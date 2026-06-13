@@ -48,6 +48,11 @@ _INSERT_SQL = """INSERT INTO media_queue
      detected_at, delete_at, added_date, last_played, view_count, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"""
 
+# Single-row inserts use OR IGNORE so a duplicate emby_id during a scan does
+# not abort the entire library loop — the scanner's pre-filter (queued_ids) is
+# the primary guard; this is a fail-safe for races.
+_INSERT_OR_IGNORE_SQL = _INSERT_SQL.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+
 
 def _entry_params(entry: dict) -> tuple:
     return (
@@ -64,9 +69,9 @@ def _entry_params(entry: dict) -> tuple:
 
 
 async def insert_queue_entry(entry: dict) -> None:
-    """Insert one row into media_queue (status='pending')."""
+    """Insert one row into media_queue (status='pending'). Duplicate emby_id is silently ignored."""
     async with get_db() as db:
-        await db.execute(_INSERT_SQL, _entry_params(entry))
+        await db.execute(_INSERT_OR_IGNORE_SQL, _entry_params(entry))
         await db.commit()
 
 

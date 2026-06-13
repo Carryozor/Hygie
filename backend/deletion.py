@@ -26,7 +26,6 @@ from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock
 from .logmsg import lm
-from .db.media_servers import is_plex
 
 logger = logging.getLogger(__name__)
 
@@ -414,27 +413,12 @@ async def run_ignored_cleanup():
 
 
 async def _delete_single_item(*, item: dict, server: dict, dry_run: bool = False) -> bool:
-    """Delete one item via the appropriate client based on server type.
-
-    Thin wrapper used for testing and manual single-item deletion.
-    For Plex servers, uses PlexClient.delete_item().
-    For Emby/Jellyfin servers, calls emby_client.delete_item().
-    """
-    if server.get("type") == "plex":
-        from .plex_client import build_plex_client
-        plex = build_plex_client(server)
-        if plex is None:
-            return False
-        rating_key = item.get("plex_rating_key") or item.get("emby_id", "")
-        if dry_run:
-            logger.info("[DRY RUN] Plex: would delete ratingKey=%s", rating_key)
-            return True
-        return await plex.delete_item(rating_key)
-    else:
-        emby_id = item.get("emby_id", "")
-        server_id = str(server.get("id", "0"))
-        if dry_run:
-            logger.info("[DRY RUN] Emby: would delete emby_id=%s", emby_id)
-            return True
-        await delete_item(emby_id, server_id=server_id)
+    """Delete one item via the appropriate client based on server type."""
+    from .media_server_factory import delete_server_item, get_server_item_id
+    from .db.media_servers import is_plex
+    if dry_run:
+        item_id = get_server_item_id(server, item)
+        label = "ratingKey" if is_plex(server) else "emby_id"
+        logger.info("[DRY RUN] %s: would delete %s=%s", server.get("type", "emby"), label, item_id)
         return True
+    return await delete_server_item(server, item)

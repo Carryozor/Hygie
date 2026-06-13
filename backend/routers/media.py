@@ -160,6 +160,32 @@ async def delete_now(
     raise HTTPException(500, "Suppression échouée")
 
 
+_UPSERT_IGNORED_SQL = (
+    "INSERT OR REPLACE INTO ignored_media "
+    "(emby_id, title, media_type, library_id, library_name, file_path, "
+    "poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username, "
+    "seerr_request_url, radarr_id, sonarr_id, added_date, last_played, "
+    "reason, ignored_at, expire_at) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+def _upsert_ignored_params(row: dict, reason: str, ignored_at: str, expire_at) -> tuple:
+    """Build the parameter tuple for _UPSERT_IGNORED_SQL from a media_queue row."""
+    return (
+        row["emby_id"], row["title"],
+        row.get("media_type") or "Movie",
+        row.get("library_id") or "", row.get("library_name") or "",
+        row.get("file_path") or "", row.get("poster_url") or "",
+        row.get("tmdb_id") or "", row.get("seerr_id"),
+        row.get("seerr_user_id"), row.get("seerr_username") or "",
+        row.get("seerr_request_url") or "",
+        row.get("radarr_id"), row.get("sonarr_id"),
+        row.get("added_date"), row.get("last_played"),
+        reason, ignored_at, expire_at,
+    )
+
+
 @router.post("/bulk")
 async def bulk(body: BulkAction, user: str = Depends(require_auth)):
     """Bulk action on selected items."""
@@ -181,21 +207,8 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
             )
             for row in rows:
                 await db.execute(
-                    """INSERT OR REPLACE INTO ignored_media
-                       (emby_id, title, media_type, library_id, library_name, file_path,
-                        poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
-                        seerr_request_url, radarr_id, sonarr_id, added_date, last_played,
-                        reason, ignored_at, expire_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (row["emby_id"], row["title"], row.get("media_type") or "Movie",
-                     row.get("library_id") or "", row.get("library_name") or "",
-                     row.get("file_path") or "", row.get("poster_url") or "",
-                     row.get("tmdb_id") or "", row.get("seerr_id"),
-                     row.get("seerr_user_id"), row.get("seerr_username") or "",
-                     row.get("seerr_request_url") or "",
-                     row.get("radarr_id"), row.get("sonarr_id"),
-                     row.get("added_date"), row.get("last_played"),
-                     body.reason or "", ignored_at, expire_at),
+                    _UPSERT_IGNORED_SQL,
+                    _upsert_ignored_params(row, body.reason or "", ignored_at, expire_at),
                 )
                 await db.execute("DELETE FROM media_queue WHERE id=?", (row["id"],))
             await db.commit()
@@ -246,24 +259,8 @@ async def ignore_one(
         if not row:
             raise HTTPException(404, "Média introuvable")
         await db.execute(
-            "INSERT OR REPLACE INTO ignored_media "
-            "(emby_id, title, media_type, library_id, library_name, file_path, "
-            "poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username, "
-            "seerr_request_url, radarr_id, sonarr_id, added_date, last_played, "
-            "reason, ignored_at, expire_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                row["emby_id"], row["title"],
-                row.get("media_type") or "Movie",
-                row.get("library_id") or "", row.get("library_name") or "",
-                row.get("file_path") or "", row.get("poster_url") or "",
-                row.get("tmdb_id") or "", row.get("seerr_id"),
-                row.get("seerr_user_id"), row.get("seerr_username") or "",
-                row.get("seerr_request_url") or "",
-                row.get("radarr_id"), row.get("sonarr_id"),
-                row.get("added_date"), row.get("last_played"),
-                reason or "", datetime.now(timezone.utc).isoformat(), expire_at,
-            ),
+            _UPSERT_IGNORED_SQL,
+            _upsert_ignored_params(row, reason or "", datetime.now(timezone.utc).isoformat(), expire_at),
         )
         await db.execute("DELETE FROM media_queue WHERE id=?", (media_id,))
         await db.commit()

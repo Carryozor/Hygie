@@ -208,8 +208,8 @@ class PlexClient:
         return results
 
 
-async def test_plex_server(server: dict) -> tuple[bool, str, str]:
-    """Test a Plex server connection. Returns (ok, message, server_type)."""
+async def test_plex_server(server: dict) -> tuple[bool, str, str, str]:
+    """Test a Plex server connection. Returns (ok, message, server_type, error_code)."""
     url = (server.get("url") or "").rstrip("/")
     token = server.get("api_key") or ""
     if not url or not token:

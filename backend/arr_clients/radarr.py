@@ -78,7 +78,7 @@ async def build_radarr_path_cache() -> dict:
                     if folder:
                         cache[folder] = entry
         except Exception as e:
-            logger.debug(f"build_radarr_path_cache [{url}]: {e}")
+            logger.warning(f"build_radarr_path_cache [{url}]: {e}")
     return cache
 
 
@@ -112,7 +112,7 @@ async def radarr_find_by_path(file_path: str) -> Optional[tuple]:
                     if _path_matches(file_path, mf.get("path") or "", movie.get("path") or ""):
                         return (movie.get("id"), url, key)
         except Exception as e:
-            logger.debug(f"radarr_find_by_path [{url}]: {e}")
+            logger.warning(f"radarr_find_by_path [{url}]: {e}")
     return None
 
 
@@ -128,7 +128,7 @@ async def radarr_get(radarr_id: int, url: str = "", key: str = "") -> Optional[d
             if r.status_code == 200:
                 return r.json()
     except Exception as e:
-        logger.debug(f"radarr_get: {e}")
+        logger.warning(f"radarr_get: {e}")
     return None
 
 
@@ -199,7 +199,7 @@ async def radarr_get_torrent_hash(radarr_id: int, url: str = "", key: str = "") 
                 return None
         return await with_retry(_do, label=f"radarr.torrent_hash[{radarr_id}]", service="radarr")
     except Exception as e:
-        logger.debug(f"radarr_get_torrent_hash: {e}")
+        logger.warning(f"radarr_get_torrent_hash: {e}")
     return None
 
 

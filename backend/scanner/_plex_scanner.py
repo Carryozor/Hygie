@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from ..plex_client import build_plex_client
 from ..db.engine import get_db
-from ..db.utils import now_utc, parse_iso_dt
+from ..db.utils import now_utc
 from ..db.repositories import insert_queue_entry
 from ..db.logs import add_log
 from ..logmsg import lm
@@ -51,7 +51,6 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
     items = await plex.scan_library(section_id)
     await add_log("INFO", lm("scan.lib_scan", prefix=f"{server_name} : ", name=lib_name), "scan")
 
-    cutoff = now_utc() - timedelta(days=grace_days)
     added  = 0
 
     plex_server_id = str(server.get("id", ""))
@@ -113,8 +112,6 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
         # Cross-server TMDB ignore: content ignored on any server blocks Plex too
         if tmdb_key and tmdb_key in ignored_tmdb:
             continue
-
-        added_at = parse_iso_dt(item.get("added_at") or "")
 
         # ── Cross-server TMDB check ────────────────────────────────────────────
         if tmdb_key and tmdb_key in queued_tmdb:

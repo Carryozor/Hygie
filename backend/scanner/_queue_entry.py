@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..db.repositories import insert_queue_entry, mark_notified_detected
 from ..discord_client import send_notification
+from ..types import QueueEntry
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def _build_queue_entry(
     sonarr_id=None,
     sonarr_series_id=None,
     season_number=None,
-) -> dict:
+) -> QueueEntry:
     """Build a media_queue entry dict from an Emby/Plex item and enrichment data."""
     return {
         "emby_id":           item.get("Id", ""),

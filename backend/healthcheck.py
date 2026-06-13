@@ -9,8 +9,16 @@ Dialect-aware:
 Exit 0 = healthy, 1 = unhealthy.
 """
 import os
-import shutil
 import sys
+
+# Python adds the script's directory (/app/backend/) to sys.path[0] when running
+# a script directly. This shadows the stdlib 'types' module with backend/types.py,
+# breaking any import that transitively imports 'types' (shutil, re, enum, ...).
+# Remove the script's own directory before importing anything else.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path = [p for p in sys.path if os.path.abspath(p) != _here]
+
+import shutil
 import urllib.error
 import urllib.request
 

@@ -1,36 +1,45 @@
 # Hygie — Architecture Decisions
 
 This document records the key architectural constraints, decisions, and
-technical debt of Hygie v3.x. It is updated at each minor release.
+technical debt of Hygie. It is updated at each minor release.
 
 ---
 
-## Constraints you MUST respect
+## Deployment modes
 
-### Single-worker deployment (default)
+### Single-worker (default, SQLite or MariaDB)
 
-Hygie's default backend uses `AsyncioLockBackend` (`asyncio.Lock`) in
-`_lock_backend.py` for scan and deletion job exclusivity. These locks exist only
-within a single Python process.
-
-**If you run Gunicorn with `--workers 2` or more using the default backend:**
-- Two scans can run simultaneously
-- Both will write to `media_queue` concurrently → duplicate entries
-- Both will call Emby/Radarr deletion APIs for the same item → data corruption
-
-**Required configuration (default):**
 ```
-WORKERS=1
+WORKERS=1                    # default
 HYGIE_LOCK_BACKEND=asyncio   # default, can be omitted
 ```
 
-**Multi-worker mode (MariaDB only):**
+Scan and deletion jobs are serialized by an `asyncio.Lock` (`AsyncioLockBackend`).
+Safe for SQLite and MariaDB. No additional configuration required.
 
-Set `HYGIE_LOCK_BACKEND=mariadb` to enable `MariaDBAdvisoryLockBackend`, which
-uses `GET_LOCK()`/`RELEASE_LOCK()` advisory locks. This allows running multiple
-Uvicorn/Gunicorn workers sharing the same MariaDB. A worker that cannot acquire
-the lock skips the job cycle (non-blocking, 0-second timeout); the next
-scheduler tick will succeed. See `_lock_backend.py` for implementation details.
+### Multi-worker (MariaDB required)
+
+```
+WORKERS=4
+DATABASE_URL=mysql+aiomysql://hygie:secret@host:3306/hygie
+HYGIE_LOCK_BACKEND=mariadb
+```
+
+`MariaDBAdvisoryLockBackend` (`GET_LOCK()`/`RELEASE_LOCK()`) serializes
+scan and deletion across OS processes. Each worker runs its own APScheduler
+instance; only the first worker to acquire the advisory lock runs the job —
+the others return immediately (non-blocking `GET_LOCK(name, 0)`). If the lock
+cannot be acquired, `LockNotAvailable` is raised and silenced at the call site.
+
+WebSocket log streaming uses DB polling (`SELECT … WHERE id > cursor`) so
+clients connected to any worker receive logs written by any worker.
+
+In-process caches (`_settings_cache`, `_ms_cache`) have 30-second TTLs —
+a settings write propagates to all workers within 30 s.
+
+**Startup validation:** `StartupValidator._check_worker_count()` enforces:
+- `WORKERS > 1` + SQLite → CRITICAL (SQLite unsafe for concurrent writers)
+- `WORKERS > 1` + `HYGIE_LOCK_BACKEND != mariadb` → CRITICAL
 
 ---
 
@@ -51,21 +60,24 @@ must use `db.table_columns()` instead of `PRAGMA table_info()`.
 The scan and deletion jobs run inside the same process as the FastAPI API via
 APScheduler. This is intentional for simplicity in single-instance deployments.
 
+**Multi-worker:** Each worker runs its own APScheduler. All workers fire the
+job at approximately the same time (they share the same `job_history` table and
+compute identical `next_run_time` from it). The advisory lock ensures only one
+worker proceeds; the others skip the cycle silently via `LockNotAvailable`.
+
 **Limitation:** A long scan can degrade API response times if the event loop is
 saturated. Mitigation: scans use `asyncio.Semaphore` for parallel library
 scanning, and both jobs have hard timeouts (scan: 2h, deletion: 1h).
 
-**Future:** Separating scanner and API into distinct processes would require an
-inter-process job queue (Redis, RabbitMQ) and full multi-worker coordination.
-This is a v4.0 consideration.
-
-### LockBackend abstraction (v3.7)
+### LockBackend abstraction (v3.7) + non-blocking acquire (v4.0)
 
 `_lock_backend.py` provides a `LockBackend` Protocol with two implementations:
 
 - `AsyncioLockBackend` — wraps `asyncio.Lock()`, in-process only (default)
-- `MariaDBAdvisoryLockBackend` — uses MySQL `GET_LOCK()`/`RELEASE_LOCK()`,
-  supports multiple workers or containers sharing a MariaDB instance
+- `MariaDBAdvisoryLockBackend` — uses `GET_LOCK(name, 0)` (non-blocking) and
+  `RELEASE_LOCK()`. If the lock is not available, raises `LockNotAvailable`.
+  `run_scan()`, `run_scan_libraries()`, and `_run_deletion_guarded()` catch
+  `LockNotAvailable` and return silently.
 
 `_job_state.py` imports `scan_lock` and `deletion_lock` singletons from
 `_lock_backend.py`. All callers use them as async context managers (`async with`)
@@ -137,8 +149,12 @@ will carry `job_id = run_id`, making them filterable from `job_history`.
 
 Several module-level variables cache data to avoid DB/HTTP calls on every
 request. All have `asyncio.Lock` guards (v3.7) to prevent cache stampedes under
-concurrent requests. They are incompatible with multi-worker deployments unless
-moved to Redis.
+concurrent async requests.
+
+In multi-worker mode, each worker has its own copy of these caches. A write in
+worker A does not immediately propagate to workers B/C/D. Workers B/C/D will
+read stale data until their TTL expires. For the default 30 s TTL, the maximum
+staleness is 30 s — acceptable for settings and media server configuration.
 
 | Module | Variable | TTL | Lock |
 |--------|----------|-----|------|
@@ -162,8 +178,6 @@ and will not be affected.
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Separate scanner/deletion workers | v4.0 | Requires job queue + distributed locks |
-| Normalize `media_queue` schema | v4.0 | Server-specific columns belong in extension tables |
-| Centralize media_queue SQL | v3.8 | ~8 files still build SQL directly; move to `db/repositories.py` |
-| Retire `frontend/static/` | v3.2 | Only used if Vue build fails; audit templates first |
-| Move in-process caches to Redis | v4.0 | Required for true multi-worker horizontal scaling |
+| Normalize `media_queue` schema | v4.x | Server-specific columns belong in extension tables |
+| Retire `frontend/static/` | v4.x | Only used if Vue build fails; audit templates first |
+| Move in-process caches to shared store | v5.0 | Eliminates 30s staleness in multi-worker mode |

@@ -1,11 +1,19 @@
 # backend/db/websocket.py
-"""WebSocket broadcast helpers — tracks connected clients and fan-outs JSON payloads."""
-import asyncio
+"""WebSocket client tracking.
+
+Log delivery uses DB polling (logs table) rather than in-process push so that
+all workers in a multi-worker deployment share the same log stream — the WS
+endpoint running on worker B can deliver logs written by worker A because both
+read from the shared database.
+
+_broadcast() is kept as a no-op to avoid changes to add_log() callers, but it
+does nothing: the WS endpoint polls independently.
+"""
 import logging
 
 logger = logging.getLogger(__name__)
 
-# ─── WebSocket broadcast ──────────────────────────────────────────────────────
+# ─── Client registry (still useful for graceful disconnect tracking) ──────────
 _ws_clients: set = set()
 
 def register_ws(ws):
@@ -15,18 +23,4 @@ def unregister_ws(ws):
     _ws_clients.discard(ws)
 
 async def _broadcast(payload: dict):
-    """Send a payload to all connected WebSocket clients.
-
-    Each send is wrapped in a 5-second timeout so a slow or stuck client
-    cannot block the broadcast for all other subscribers.
-    """
-    if not _ws_clients:
-        return
-    dead = []
-    for ws in list(_ws_clients):
-        try:
-            await asyncio.wait_for(ws.send_json(payload), timeout=5.0)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        _ws_clients.discard(ws)
+    """No-op — log delivery is now DB-poll based (see main.py websocket_endpoint)."""

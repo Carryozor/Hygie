@@ -63,19 +63,32 @@ class StartupValidator:
     async def _check_worker_count(self, issues: list) -> None:
         workers_env = os.environ.get("WORKERS", "1")
         try:
-            if int(workers_env) > 1:
-                issues.append(ValidationIssue(
-                    "CRITICAL",
-                    f"WORKERS={workers_env} is unsupported. "
-                    "Hygie uses asyncio.Lock() for scan/deletion exclusivity — "
-                    "these locks do NOT extend across OS processes. "
-                    "Running >1 worker can cause concurrent scans, duplicate queue entries, "
-                    "and data corruption.",
-                    "Set WORKERS=1 (the default). To scale horizontally, "
-                    "deploy separate Hygie instances with separate databases.",
-                ))
+            workers = int(workers_env)
         except (ValueError, TypeError):
-            pass
+            return
+        if workers <= 1:
+            return
+
+        # Multi-worker mode requires MariaDB (SQLite is not safe for concurrent writers)
+        # and the MariaDB advisory lock backend (cross-process job serialization).
+        db_url = os.environ.get("DATABASE_URL", "")
+        lock_backend = os.environ.get("HYGIE_LOCK_BACKEND", "asyncio").lower()
+
+        if not db_url or "mysql" not in db_url:
+            issues.append(ValidationIssue(
+                "CRITICAL",
+                f"WORKERS={workers} requires MariaDB (DATABASE_URL=mysql+aiomysql://...). "
+                "SQLite does not support safe concurrent writes from multiple processes.",
+                "Set DATABASE_URL to a MariaDB connection string, or keep WORKERS=1.",
+            ))
+        if lock_backend != "mariadb":
+            issues.append(ValidationIssue(
+                "CRITICAL",
+                f"WORKERS={workers} requires HYGIE_LOCK_BACKEND=mariadb. "
+                "Without it, scan and deletion jobs will run simultaneously in every worker, "
+                "causing duplicate queue entries and data corruption.",
+                "Set HYGIE_LOCK_BACKEND=mariadb in your environment.",
+            ))
 
     async def _check_mariadb_defaults(self, issues: list) -> None:
         """Warn if DATABASE_URL contains well-known default passwords."""

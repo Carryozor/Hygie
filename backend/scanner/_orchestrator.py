@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from .._job_state import _scan_lock
+from .._lock_backend import LockNotAvailable
 from ..db.engine import get_db
 from ..db.settings_store import get_setting, get_bool_setting
 from ..db.media_servers import get_media_servers
@@ -323,19 +324,22 @@ async def run_scan() -> None:
         await add_log("WARN", lm("scan.already_running"), "job")
         return
 
-    async with _scan_lock:
-        run_id    = await add_job_run("scan")
-        ctx_token = set_job_context(run_id)
-        status, msg = "error", ""
-        try:
-            status, msg = await asyncio.wait_for(_run_scan_body(run_id), timeout=7200)
-        except asyncio.TimeoutError:
-            logger.error("run_scan exceeded 2-hour timeout — forcing exit")
-            await add_log("ERROR", "Scan timeout (2h) — forcibly terminated", "job")
-            msg = "timeout"
-        finally:
-            _current_job_id.reset(ctx_token)
-            await finish_job_run(run_id, status, msg)
+    try:
+        async with _scan_lock:
+            run_id    = await add_job_run("scan")
+            ctx_token = set_job_context(run_id)
+            status, msg = "error", ""
+            try:
+                status, msg = await asyncio.wait_for(_run_scan_body(run_id), timeout=7200)
+            except asyncio.TimeoutError:
+                logger.error("run_scan exceeded 2-hour timeout — forcing exit")
+                await add_log("ERROR", "Scan timeout (2h) — forcibly terminated", "job")
+                msg = "timeout"
+            finally:
+                _current_job_id.reset(ctx_token)
+                await finish_job_run(run_id, status, msg)
+    except LockNotAvailable:
+        logger.debug("run_scan: another worker holds the scan lock — skipping this cycle")
 
 
 async def run_scan_library(library_id: str) -> None:
@@ -344,21 +348,24 @@ async def run_scan_library(library_id: str) -> None:
         await add_log("WARN", lm("scan.already_running"), "job")
         return
 
-    async with _scan_lock:
-        run_id    = await add_job_run("scan_library")
-        ctx_token = set_job_context(run_id)
-        status, msg = "error", ""
-        try:
-            status, msg, _ = await _do_scan_one_library(library_id)
-        except Exception as e:
-            logger.exception("Scan library error")
-            await add_log("ERROR", lm("scan.error", detail=e), "job")
-            msg = str(e)
-        finally:
-            _current_job_id.reset(ctx_token)
-            await finish_job_run(run_id, status, msg)
-        await sync_emby_collection()
-        await _send_pending_notifications()
+    try:
+        async with _scan_lock:
+            run_id    = await add_job_run("scan_library")
+            ctx_token = set_job_context(run_id)
+            status, msg = "error", ""
+            try:
+                status, msg, _ = await _do_scan_one_library(library_id)
+            except Exception as e:
+                logger.exception("Scan library error")
+                await add_log("ERROR", lm("scan.error", detail=e), "job")
+                msg = str(e)
+            finally:
+                _current_job_id.reset(ctx_token)
+                await finish_job_run(run_id, status, msg)
+            await sync_emby_collection()
+            await _send_pending_notifications()
+    except LockNotAvailable:
+        logger.debug("run_scan_library: another worker holds the scan lock — skipping")
 
 
 async def run_scan_libraries(library_ids: list[str]) -> None:
@@ -375,31 +382,34 @@ async def run_scan_libraries(library_ids: list[str]) -> None:
         await add_log("WARN", lm("scan.already_running"), "job")
         return
 
-    async with _scan_lock:
-        try:
-            seerr_cache, radarr_cache, sonarr_cache = await _build_shared_caches()
-            for library_id in library_ids:
-                run_id    = await add_job_run("scan_library")
-                ctx_token = set_job_context(run_id)
-                status, msg = "error", ""
-                try:
-                    status, msg, _ = await _do_scan_one_library(
-                        library_id,
-                        seerr_cache=seerr_cache,
-                        radarr_cache=radarr_cache,
-                        sonarr_cache=sonarr_cache,
-                    )
-                except Exception as e:
-                    logger.exception("Scan library error (%s)", library_id)
-                    await add_log("ERROR", lm("scan.error", detail=e), "job")
-                    msg = str(e)
-                finally:
-                    _current_job_id.reset(ctx_token)
-                    await finish_job_run(run_id, status, msg)
-        except Exception as e:
-            logger.exception("run_scan_libraries: cache build failed")
-            await add_log("ERROR", lm("scan.error", detail=e), "scan")
-        finally:
-            # Always run post-scan operations, even if caches or a library fail
-            await sync_emby_collection()
-            await _send_pending_notifications()
+    try:
+        async with _scan_lock:
+            try:
+                seerr_cache, radarr_cache, sonarr_cache = await _build_shared_caches()
+                for library_id in library_ids:
+                    run_id    = await add_job_run("scan_library")
+                    ctx_token = set_job_context(run_id)
+                    status, msg = "error", ""
+                    try:
+                        status, msg, _ = await _do_scan_one_library(
+                            library_id,
+                            seerr_cache=seerr_cache,
+                            radarr_cache=radarr_cache,
+                            sonarr_cache=sonarr_cache,
+                        )
+                    except Exception as e:
+                        logger.exception("Scan library error (%s)", library_id)
+                        await add_log("ERROR", lm("scan.error", detail=e), "job")
+                        msg = str(e)
+                    finally:
+                        _current_job_id.reset(ctx_token)
+                        await finish_job_run(run_id, status, msg)
+            except Exception as e:
+                logger.exception("run_scan_libraries: cache build failed")
+                await add_log("ERROR", lm("scan.error", detail=e), "scan")
+            finally:
+                # Always run post-scan operations, even if caches or a library fail
+                await sync_emby_collection()
+                await _send_pending_notifications()
+    except LockNotAvailable:
+        logger.debug("run_scan_libraries: another worker holds the scan lock — skipping")

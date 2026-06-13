@@ -34,6 +34,7 @@ from .db.websocket import register_ws, unregister_ws
 from .auth import verify_token
 from .scheduler import (
     run_deletion,
+    _run_deletion_guarded,
     run_ignored_cleanup,
     run_scan,
     sync_emby_collection,
@@ -174,9 +175,7 @@ async def lifespan(app: FastAPI):
     if not _can_start:
         logger.critical(
             "Hygie startup aborted due to CRITICAL configuration issues. "
-            "Running with WORKERS>1 would cause asyncio.Lock() to not cross OS process "
-            "boundaries, leading to concurrent scans, duplicate queue entries, and data "
-            "corruption. Fix the configuration and restart."
+            "Fix the issues reported above and restart."
         )
         import sys
         sys.exit(1)
@@ -195,7 +194,7 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(run_scan, "interval", minutes=scan_min, id="scan_job",
                       next_run_time=scan_next, replace_existing=True)
-    scheduler.add_job(run_deletion, "interval", minutes=del_min, id="deletion_job",
+    scheduler.add_job(_run_deletion_guarded, "interval", minutes=del_min, id="deletion_job",
                       next_run_time=del_next, replace_existing=True)
     # internal_cleanup runs once daily at 3am (no job_history entries).
     # Previously double-scheduled (12h interval + cron 3am) which could overlap.
@@ -348,7 +347,33 @@ app.mount(
 )
 templates = Jinja2Templates(directory=os.path.join(_ROOT, "frontend", "templates"))
 
-# ─── WebSocket — log stream ───────────────────────────────────────────────────
+# ─── WebSocket — log stream (DB-poll) ────────────────────────────────────────
+async def _ws_max_log_id() -> int:
+    """Return the current max log id (0 if empty). Used to anchor the poll cursor."""
+    try:
+        from .db.engine import get_db
+        async with get_db() as db:
+            row = await db.fetch_one("SELECT MAX(id) AS m FROM logs")
+            return int(row["m"] or 0) if row else 0
+    except Exception:
+        return 0
+
+
+async def _ws_fetch_logs_since(cursor: int) -> list[dict]:
+    """Fetch log rows with id > cursor, ordered oldest-first, max 200 per poll."""
+    try:
+        from .db.engine import get_db
+        async with get_db() as db:
+            rows = await db.fetch_all(
+                "SELECT id, ts, level, source, message, job_id "
+                "FROM logs WHERE id > ? ORDER BY id ASC LIMIT 200",
+                (cursor,),
+            )
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     # Reject cross-origin WebSocket connections before accepting to prevent
@@ -376,10 +401,27 @@ async def websocket_endpoint(ws: WebSocket):
         return
 
     register_ws(ws)
+    # Anchor cursor to current max id so the client only receives new logs —
+    # historical logs are loaded separately via GET /api/logs.
+    cursor = await _ws_max_log_id()
     try:
         await ws.send_json({"type": "hello", "version": VERSION})
         while True:
-            await ws.receive_text()
+            # DB-poll every 1 second — works across all workers since the DB is shared.
+            new_logs = await _ws_fetch_logs_since(cursor)
+            for entry in new_logs:
+                payload: dict = {
+                    "type": "log",
+                    "ts": entry["ts"],
+                    "level": entry["level"],
+                    "source": entry["source"],
+                    "message": entry["message"],
+                }
+                if entry.get("job_id") is not None:
+                    payload["job_id"] = entry["job_id"]
+                await ws.send_json(payload)
+                cursor = max(cursor, entry["id"])
+            await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         pass
     except Exception:

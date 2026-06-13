@@ -29,6 +29,7 @@ from .discord_client import send_alert, send_notification
 from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock
+from ._lock_backend import LockNotAvailable
 from .logmsg import lm
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,14 @@ async def run_deletion() -> None:
         finally:
             _current_job_id.reset(ctx_token)
             await finish_job_run(run_id, _dl_status, _dl_msg)
+
+
+async def _run_deletion_guarded() -> None:
+    """Thin wrapper that silences LockNotAvailable in multi-worker mode."""
+    try:
+        await run_deletion()
+    except LockNotAvailable:
+        logger.debug("run_deletion: another worker holds the deletion lock — skipping")
 
 
 async def reset_stale_deleting() -> int:

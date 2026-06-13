@@ -148,12 +148,13 @@ EOF
 fi
 
 #── Démarrage de Hygie ─────────────────────────────────────────────────────────
-# IMPORTANT: --workers 1 is mandatory.
-# Hygie uses asyncio.Lock() objects for scan/deletion job exclusivity.
-# These locks exist only within a single Python process. Running multiple workers
-# WILL cause concurrent scans, duplicate queue entries, and data corruption.
-# See ARCHITECTURE.md for the full explanation.
+# WORKERS=1 (default): single-process, SQLite or MariaDB.
+# WORKERS=N (N>1): multi-worker mode — requires MariaDB + HYGIE_LOCK_BACKEND=mariadb.
+#   Scan/deletion jobs are protected by MariaDB advisory locks (only one worker
+#   runs each job per cycle). WS log streaming uses DB polling (cross-worker safe).
+WORKERS="${WORKERS:-1}"
+
 exec uvicorn backend.main:app \
     --host 0.0.0.0 \
     --port 8000 \
-    --workers 1
+    --workers "${WORKERS}"

@@ -34,7 +34,12 @@ from ..rules.legacy_conditions import (
 from ..collection import sync_emby_collection
 from ._queue_entry import _build_queue_entry, _insert_queue_entry
 from ._expert_rules import _build_item_data, _evaluate_expert_rules
-from ..db.repositories import get_expert_rules as _get_expert_rules
+from ..db.repositories import (
+    get_expert_rules as _get_expert_rules,
+    get_pending_by_library,
+    update_activity_log_batch,
+    delete_by_id as _delete_queue_item,
+)
 from ._consolidation import _consolidate_and_insert
 from ..rules.models import RuleAction as _RuleAction
 
@@ -101,20 +106,8 @@ async def _scan_library(
     # display is correct even if the conditions check short-circuits the update path.
     if activity_log:
         try:
-            params = [
-                (_date, _eid, _date)
-                for _eid, _date in activity_log.items()
-                if _date
-            ]
-            if params:
-                async with get_db() as _db:
-                    await _db.executemany(
-                        "UPDATE media_queue SET last_played=?, view_count=MAX(COALESCE(view_count,0),1) "
-                        "WHERE emby_id=? AND status='pending' "
-                        "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
-                        params,
-                    )
-                    await _db.commit()
+            params = [(_date, _eid, _date) for _eid, _date in activity_log.items() if _date]
+            await update_activity_log_batch(params)
         except Exception as _upd_err:
             logger.warning("activity log DB update failed: %s", _upd_err)
 
@@ -247,11 +240,8 @@ async def reevaluate_library_queue(library_id: str) -> int:
         lib = await db.fetch_one("SELECT * FROM libraries WHERE id=?", (library_id,))
         if not lib:
             return 0
-        pending = await db.fetch_all(
-            "SELECT * FROM media_queue WHERE library_id=? AND status='pending'",
-            (library_id,),
-        )
 
+    pending = await get_pending_by_library(library_id)
     if not pending:
         return 0
 
@@ -307,9 +297,7 @@ async def reevaluate_library_queue(library_id: str) -> int:
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")
 
-            async with get_db() as db:
-                await db.execute("DELETE FROM media_queue WHERE id=?", (row["id"],))
-                await db.commit()
+            await _delete_queue_item(row["id"])
             removed += 1
             await add_log("INFO", lm("scan.removed_conditions", title=row['title']), "scan")
 

@@ -11,6 +11,12 @@ from ..db.utils import STATUS_PENDING, STATUS_DELETING, STATUS_DELETED, STATUS_E
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
+from ..db.repositories import (
+    get_by_id, claim_for_deletion, update_queue_status,
+    delete_by_id, delete_by_ids, purge_by_status,
+    get_status_counts, get_all_for_enrichment, update_enrichment_fields,
+    get_pending_for_poster_regen, update_poster,
+)
 from ..deletion import _delete_media
 from ..rules.legacy_conditions import _get_poster_url
 from ..arr_clients import seerr_find_request_by_tmdb
@@ -44,9 +50,7 @@ class BulkAction(BaseModel):
 
 @router.get("/stats")
 async def stats(user: str = Depends(require_auth)):
-    async with get_db() as db:
-        rows = await db.fetch_all("SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status")
-    counts = {r["status"]: r["cnt"] for r in rows}
+    counts = await get_status_counts()
     return {
         "pending": counts.get(STATUS_PENDING, 0),
         "deleted": counts.get(STATUS_DELETED, 0),
@@ -117,44 +121,19 @@ async def delete_now(
     # 'deleted' here would remove it from the pipeline without deleting files.
     dry_run = (await get_setting("dry_run") or "false").lower() == "true"
     if dry_run:
-        async with get_db() as db:
-            row = await db.fetch_one(
-                "SELECT * FROM media_queue WHERE id=? AND status=?",
-                (media_id, STATUS_PENDING),
-            )
-        if not row:
+        row = await get_by_id(media_id)
+        if not row or row["status"] != STATUS_PENDING:
             raise HTTPException(404, "Média introuvable ou déjà supprimé")
         await _delete_media(row, True)
         return {"status": "dry_run"}
 
     # Atomically claim the item by updating status to 'deleting' — prevents double-delete race
-    async with get_db() as db:
-        claimed = await db.execute_write(
-            "UPDATE media_queue SET status=? WHERE id=? AND status=?",
-            (STATUS_DELETING, media_id, STATUS_PENDING),
-        )
-        if not claimed:
-            raise HTTPException(404, "Média introuvable ou déjà supprimé")
-        await db.commit()
-        row = await db.fetch_one("SELECT * FROM media_queue WHERE id=?", (media_id,))
+    if not await claim_for_deletion(media_id):
+        raise HTTPException(404, "Média introuvable ou déjà supprimé")
+    row = await get_by_id(media_id)
 
     ok = await _delete_media(row, False)
-
-    async with get_db() as db:
-        if ok:
-            await db.execute(
-                "UPDATE media_queue SET status=? WHERE id=?", (STATUS_DELETED, media_id)
-            )
-            await db.execute(
-                "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
-                (media_id, "now"),
-            )
-        else:
-            await db.execute(
-                "UPDATE media_queue SET status=? WHERE id=?", (STATUS_PENDING, media_id)
-            )
-        await db.commit()
-
+    await update_queue_status(media_id, STATUS_DELETED if ok else STATUS_PENDING)
     if ok:
         return {"status": "deleted"}
     raise HTTPException(500, "Suppression échouée")
@@ -224,16 +203,7 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
             )
         for row in rows:
             if await _delete_media(row, dry_run):
-                async with get_db() as db:
-                    await db.execute(
-                        "UPDATE media_queue SET status='deleted' WHERE id=?",
-                        (row["id"],),
-                    )
-                    await db.execute(
-                        "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
-                        (row["id"], "now"),
-                    )
-                    await db.commit()
+                await update_queue_status(row["id"], STATUS_DELETED)
                 success += 1
         return {"affected": success}
 
@@ -252,12 +222,10 @@ async def ignore_one(
     if expire_days and expire_days > 0:
         expire_at = (datetime.now(timezone.utc) + timedelta(days=expire_days)).isoformat()
 
+    row = await get_by_id(media_id)
+    if not row:
+        raise HTTPException(404, "Média introuvable")
     async with get_db() as db:
-        row = await db.fetch_one(
-            "SELECT * FROM media_queue WHERE id=?", (media_id,)
-        )
-        if not row:
-            raise HTTPException(404, "Média introuvable")
         await db.execute(
             _UPSERT_IGNORED_SQL,
             _upsert_ignored_params(row, reason or "", datetime.now(timezone.utc).isoformat(), expire_at),
@@ -270,13 +238,7 @@ async def ignore_one(
 @router.delete("/purge/deleted")
 async def purge_deleted(user: str = Depends(require_auth)):
     """Remove all entries with status='deleted' from the queue."""
-    async with get_db() as db:
-        count_row = await db.fetch_one(
-            "SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'"
-        )
-        count = count_row["cnt"] if count_row else 0
-        await db.execute("DELETE FROM media_queue WHERE status='deleted'")
-        await db.commit()
+    count = await purge_by_status(STATUS_DELETED)
     await add_log("INFO", f"Purgé : {count} entrée(s) supprimée(s)", "system")
     return {"purged": count}
 
@@ -287,18 +249,10 @@ async def enrich_seerr(
 ):
     """Re-fetch Seerr requester info AND regenerate poster URLs for all items."""
     async def _enrich():
-        async with get_db() as db:
-            rows = await db.fetch_all(
-                "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id, "
-                "seerr_username FROM media_queue"
-            )
-
+        rows = await get_all_for_enrichment()
         enriched = 0
-        pending_updates: list = []
         for row in rows:
             updates = {}
-
-            # Refresh poster URL
             new_url = await _get_poster_url(
                 row["emby_id"],
                 tmdb_id=row.get("tmdb_id") or "",
@@ -308,8 +262,6 @@ async def enrich_seerr(
             )
             if new_url:
                 updates["poster_url"] = new_url
-
-            # Refresh Seerr requester
             if row.get("tmdb_id") and not row.get("seerr_username"):
                 seerr_data = await seerr_find_request_by_tmdb(row["tmdb_id"])
                 if seerr_data:
@@ -319,30 +271,10 @@ async def enrich_seerr(
                     ext = await get_setting("seerr_external_url")
                     if ext:
                         path = "movie" if row.get("media_type") == "Movie" else "tv"
-                        updates["seerr_request_url"] = (
-                            f"{ext.rstrip('/')}/{path}/{row['tmdb_id']}"
-                        )
-
+                        updates["seerr_request_url"] = f"{ext.rstrip('/')}/{path}/{row['tmdb_id']}"
             if updates:
-                _ALLOWED_ENRICH_COLS = frozenset({
-                    "poster_url", "seerr_id", "seerr_user_id",
-                    "seerr_username", "seerr_request_url",
-                })
-                safe = {k: v for k, v in updates.items() if k in _ALLOWED_ENRICH_COLS}
-                if safe:
-                    pending_updates.append((safe, row["id"]))
+                await update_enrichment_fields(row["id"], updates)
                 enriched += 1
-
-        if pending_updates:
-            async with get_db() as db:
-                for safe, row_id in pending_updates:
-                    set_clause = ", ".join(f"{k}=?" for k in safe.keys())
-                    await db.execute(
-                        f"UPDATE media_queue SET {set_clause} WHERE id=?",
-                        list(safe.values()) + [row_id],
-                    )
-                await db.commit()
-
         await add_log(
             "INFO", f"Enrichissement terminé : {enriched}/{len(rows)} entrées", "system"
         )
@@ -360,17 +292,11 @@ async def regenerate_posters(
 ):
     """Regenerate poster URLs for pending queue items (Radarr/Sonarr TMDB), in batches."""
     async def _regen():
-        async with get_db() as db:
-            rows = await db.fetch_all(
-                "SELECT id, emby_id, tmdb_id, media_type, radarr_id, sonarr_id "
-                "FROM media_queue WHERE status='pending'"
-            )
-
+        rows = await get_pending_for_poster_regen()
         total = len(rows)
         updated = 0
         for batch_start in range(0, total, _REGEN_BATCH):
             batch = rows[batch_start : batch_start + _REGEN_BATCH]
-            poster_updates: list = []
             for row in batch:
                 new_url = await _get_poster_url(
                     row["emby_id"],
@@ -380,16 +306,8 @@ async def regenerate_posters(
                     sonarr_id=row.get("sonarr_id"),
                 )
                 if new_url:
-                    poster_updates.append((new_url, row["id"]))
+                    await update_poster(row["id"], new_url)
                     updated += 1
-            if poster_updates:
-                async with get_db() as db:
-                    for new_url, row_id in poster_updates:
-                        await db.execute(
-                            "UPDATE media_queue SET poster_url=? WHERE id=?",
-                            (new_url, row_id),
-                        )
-                    await db.commit()
 
         await add_log("INFO", f"Affiches régénérées : {updated}/{total}", "system")
 
@@ -401,7 +319,5 @@ async def regenerate_posters(
 @router.delete("/{media_id}")
 async def remove_from_queue(media_id: int, user: str = Depends(require_auth)):
     """Remove an entry from the queue without deleting the media itself."""
-    async with get_db() as db:
-        await db.execute("DELETE FROM media_queue WHERE id=?", (media_id,))
-        await db.commit()
+    await delete_by_id(media_id)
     return {"status": "removed"}

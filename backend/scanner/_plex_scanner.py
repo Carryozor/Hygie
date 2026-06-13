@@ -6,7 +6,11 @@ from datetime import timedelta
 from ..plex_client import build_plex_client
 from ..db.engine import get_db
 from ..db.utils import now_utc
-from ..db.repositories import insert_queue_entry
+from ..db.repositories import (
+    insert_queue_entry,
+    get_queued_ids_for_server,
+    get_pending_with_tmdb,
+)
 from ..db.logs import add_log
 from ..logmsg import lm
 from ._expert_rules import _build_plex_item_data, _evaluate_expert_rules
@@ -54,49 +58,39 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
     added  = 0
 
     plex_server_id = str(server.get("id", ""))
+    # IMPORTANT: only include IDs from THIS Plex server's libraries.
+    # Emby item IDs and Plex rating keys are both sequential integers
+    # (range 1-2000+) and collide heavily. Using a global queued_ids set
+    # would incorrectly filter out Plex items whose rating key matches
+    # an Emby item ID, causing the scanner to find 0 results.
+    queued_ids = await get_queued_ids_for_server(plex_server_id)
+
     async with get_db() as db:
-        # IMPORTANT: only include IDs from THIS Plex server's libraries.
-        # Emby item IDs and Plex rating keys are both sequential integers
-        # (range 1-2000+) and collide heavily. Using a global queued_ids set
-        # would incorrectly filter out Plex items whose rating key matches
-        # an Emby item ID, causing the scanner to find 0 results.
-        queued_rows  = await db.fetch_all(
-            """SELECT mq.emby_id FROM media_queue mq
-               JOIN libraries l ON mq.library_id = l.id
-               WHERE l.server_id = ?""",
-            (plex_server_id,),
-        )
-        queued_ids   = {r["emby_id"] for r in queued_rows}
-
         # Filter ignored_media to THIS server only — same integer collision risk as queued_ids.
-        # Items ignored on other servers have different numeric IDs that could collide.
         ignored_rows = await db.fetch_all(
-            """SELECT DISTINCT im.emby_id FROM ignored_media im
-               JOIN libraries l ON im.library_id = l.id
-               WHERE l.server_id = ?""",
+            "SELECT DISTINCT im.emby_id FROM ignored_media im "
+            "JOIN libraries l ON im.library_id = l.id "
+            "WHERE l.server_id = ?",
             (plex_server_id,),
         )
-        ignored_ids  = {r["emby_id"] for r in ignored_rows}
-
-        # TMDB cross-reference — keyed as "{type}_{tmdb_id}" to avoid collisions
-        # (TMDB uses separate ID spaces for movies and TV shows: movie:1402 ≠ tv:1402)
-        tmdb_rows    = await db.fetch_all(
-            "SELECT tmdb_id, media_type FROM media_queue WHERE status='pending' AND tmdb_id != '' AND tmdb_id IS NOT NULL"
-        )
-        queued_tmdb  = {
-            _tmdb_key(str(r["tmdb_id"]), str(r["media_type"] or ""))
-            for r in tmdb_rows if r["tmdb_id"]
-        }
+        ignored_ids = {r["emby_id"] for r in ignored_rows}
 
         # Cross-server TMDB ignore: if this content is ignored on any server by TMDB ID,
         # skip it on Plex too (e.g. content ignored via Emby should not reappear via Plex).
         ign_tmdb_rows = await db.fetch_all(
             "SELECT tmdb_id, media_type FROM ignored_media WHERE tmdb_id != '' AND tmdb_id IS NOT NULL"
         )
-        ignored_tmdb  = {
+        ignored_tmdb = {
             _tmdb_key(str(r["tmdb_id"]), str(r["media_type"] or ""))
             for r in ign_tmdb_rows if r["tmdb_id"]
         }
+
+    # TMDB cross-reference — keyed as "{type}_{tmdb_id}" to avoid collisions
+    tmdb_rows = await get_pending_with_tmdb()
+    queued_tmdb = {
+        _tmdb_key(str(r["tmdb_id"]), str(r["media_type"] or ""))
+        for r in tmdb_rows if r["tmdb_id"]
+    }
 
     for item in items:
         plex_id = item.get("plex_id")

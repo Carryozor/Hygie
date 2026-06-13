@@ -11,7 +11,11 @@ from .db.utils import (
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
-from .db.repositories import get_pending_queue, update_queue_status
+from .db.repositories import (
+    get_pending_queue, update_queue_status,
+    reset_deleting_to_pending, claim_for_deletion,
+    delete_stale_deleted,
+)
 from .emby_client import delete_item, get_client
 from .arr_clients import (
     radarr_delete, radarr_find_by_path, radarr_get, radarr_get_torrent_hash,
@@ -154,36 +158,16 @@ async def run_deletion() -> None:
 
 
 async def reset_stale_deleting() -> int:
-    """Recover items stuck in 'deleting' after a crash mid-deletion.
-
-    Called at startup: with a single process, any 'deleting' row at boot is
-    stale by definition (the claim holder died before finishing). Without this
-    reset the items are invisible to get_pending_queue() forever.
-    """
-    async with get_db() as db:
-        n = await db.execute_write(
-            "UPDATE media_queue SET status=? WHERE status=?",
-            (STATUS_PENDING, STATUS_DELETING),
-        )
-        await db.commit()
+    """Recover items stuck in 'deleting' after a crash mid-deletion."""
+    n = await reset_deleting_to_pending()
     if n:
         logger.warning("Recovered %d item(s) stuck in 'deleting' status (crash recovery)", n)
     return n
 
 
 async def _claim_pending(item_id: int) -> bool:
-    """Atomically claim a queue item (pending → deleting).
-
-    Returns False if the item was already claimed (e.g. by the delete-now
-    endpoint) — the caller must then skip it to avoid a double deletion.
-    """
-    async with get_db() as db:
-        claimed = await db.execute_write(
-            "UPDATE media_queue SET status=? WHERE id=? AND status=?",
-            (STATUS_DELETING, item_id, STATUS_PENDING),
-        )
-        await db.commit()
-    return bool(claimed)
+    """Atomically claim a queue item (pending → deleting)."""
+    return await claim_for_deletion(item_id)
 
 
 async def _find_torrent_hash(row: dict) -> Optional[str]:
@@ -337,21 +321,10 @@ async def run_ignored_cleanup():
         retention_days = await get_int_setting("deleted_retention_days", 90)
         if retention_days > 0:
             cutoff = (now_utc() - timedelta(days=retention_days)).isoformat()
-            async with get_db() as db:
-                row = await db.fetch_one(
-                    "SELECT COUNT(*) AS cnt FROM media_queue "
-                    "WHERE status='deleted' AND detected_at < ?",
-                    (cutoff,),
-                )
-                count = row["cnt"] if row else 0
-                if count:
-                    await db.execute(
-                        "DELETE FROM media_queue WHERE status='deleted' AND detected_at < ?",
-                        (cutoff,),
-                    )
-                    await db.commit()
-                    purged_rows += count
-                    await add_log("INFO", lm("cleanup.retention", n=count, days=retention_days), "system")
+            count = await delete_stale_deleted(cutoff)
+            if count:
+                purged_rows += count
+                await add_log("INFO", lm("cleanup.retention", n=count, days=retention_days), "system")
     except Exception as e:
         logger.debug(f"Purge retention: {e}")
 

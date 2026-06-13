@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Query, Response
 
-from ..db.engine import get_db
+from ..db.repositories import update_last_played_scrobble
 from ..db.settings_store import get_setting
 
 logger = logging.getLogger(__name__)
@@ -64,10 +64,5 @@ async def _handle_scrobble(rating_key: str, metadata: dict) -> None:
     else:
         last_played = datetime.now(timezone.utc).isoformat()
 
-    async with get_db() as db:
-        await db.execute_write(
-            "UPDATE media_queue SET last_played=?, status='pending' WHERE emby_id=?",
-            (last_played, rating_key),
-        )
-        await db.commit()
+    await update_last_played_scrobble(rating_key, last_played)
     logger.debug("Plex scrobble: updated last_played for ratingKey=%s", rating_key)

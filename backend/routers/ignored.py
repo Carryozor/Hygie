@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.repositories import get_by_emby_id, delete_by_emby_id
 from ..db.utils import escape_like
 
 router = APIRouter(prefix="/api/ignored", tags=["ignored"])
@@ -74,11 +75,9 @@ async def add_ignored(
                 expire_at,
             ),
         )
-        # Also remove from queue if present
-        await db.execute(
-            "DELETE FROM media_queue WHERE emby_id=?", (body.emby_id,)
-        )
         await db.commit()
+    # Also remove from queue if present
+    await delete_by_emby_id(body.emby_id)
 
     # Resync Emby collection in background
     from ..scheduler import sync_emby_collection
@@ -112,9 +111,7 @@ async def requeue_ignored(ignored_id: int, user: str = Depends(require_auth)):
             raise HTTPException(404, "Entrée introuvable")
 
         # Check if already in queue (by emby_id)
-        existing = await db.fetch_one(
-            "SELECT id FROM media_queue WHERE emby_id=?", (item["emby_id"],)
-        )
+        existing = await get_by_emby_id(item["emby_id"])
 
         if existing:
             # Just remove from ignored, already in queue

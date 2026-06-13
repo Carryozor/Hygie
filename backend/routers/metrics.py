@@ -8,7 +8,9 @@ from fastapi.responses import PlainTextResponse, Response
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.repositories import get_status_counts
 from ..db.settings_store import get_setting
+from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
 
 router = APIRouter(tags=["metrics"])
 
@@ -21,16 +23,11 @@ async def prometheus_metrics(authorization: Optional[str] = Header(default=None)
             return Response(status_code=401)
         if not hmac.compare_digest(authorization[7:].encode(), token.encode()):
             return Response(status_code=403)
+    counts = await get_status_counts()
+    pending = counts.get(STATUS_PENDING, 0)
+    deleted = counts.get(STATUS_DELETED, 0)
+    errors  = counts.get(STATUS_ERROR, 0)
     async with get_db() as db:
-        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='pending'")
-        pending = row["cnt"] if row else 0
-
-        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'")
-        deleted = row["cnt"] if row else 0
-
-        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='error'")
-        errors = row["cnt"] if row else 0
-
         row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
         ignored = row["cnt"] if row else 0
 

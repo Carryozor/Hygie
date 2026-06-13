@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import require_auth
-from ..db.engine import get_db
+from ..db.repositories import get_radarr_ids, get_sonarr_ids
 from ..db.settings_store import get_setting
 from ..arr_clients.shared import _arr_auth
 from ..db.logs import add_log
@@ -32,19 +32,10 @@ async def list_unmonitored(
     sonarr_url = (await get_setting("sonarr_url") or "").rstrip("/")
     sonarr_key = await get_setting("sonarr_api_key") or ""
 
-    # Get list of emby_ids already in queue or ignored (to skip)
-    tracked: set = set()
-    async with get_db() as db:
-        radarr_rows = await db.fetch_all(
-            "SELECT radarr_id FROM media_queue WHERE radarr_id IS NOT NULL"
-        )
-        for row in radarr_rows:
-            tracked.add(("movie", row["radarr_id"]))
-        sonarr_rows = await db.fetch_all(
-            "SELECT sonarr_id FROM media_queue WHERE sonarr_id IS NOT NULL"
-        )
-        for row in sonarr_rows:
-            tracked.add(("series", row["sonarr_id"]))
+    tracked: set = (
+        {("movie", rid) for rid in await get_radarr_ids()} |
+        {("series", sid) for sid in await get_sonarr_ids()}
+    )
 
     movies = []
     series = []

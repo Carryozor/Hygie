@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
 from ..db.engine import get_db
+from ..db.repositories import get_status_counts
+from ..db.utils import STATUS_DELETED
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -10,13 +12,12 @@ router = APIRouter(prefix="/api/stats", tags=["stats"])
 @router.get("/global")
 async def global_stats(user: str = Depends(require_auth)):
     """Global lifetime statistics for the dashboard."""
+    queue_counts = await get_status_counts()
     async with get_db() as db:
         row = await db.fetch_one("SELECT COALESCE(SUM(total_deleted),0) AS s FROM stats_history")
         from_history = row["s"] if row else 0
 
-        row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM media_queue WHERE status='deleted'")
-        in_queue = row["cnt"] if row else 0
-
+        in_queue = queue_counts.get(STATUS_DELETED, 0)
         total_deleted = max(from_history, in_queue)
 
         by_month_rows = await db.fetch_all(
@@ -24,9 +25,6 @@ async def global_stats(user: str = Depends(require_auth)):
             "GROUP BY month ORDER BY month DESC LIMIT 12"
         )
         by_month = [{"month": r["month"], "deleted": r["deleted"]} for r in by_month_rows]
-
-        queue_rows = await db.fetch_all("SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status")
-        queue_counts = {r["status"]: r["cnt"] for r in queue_rows}
 
         row = await db.fetch_one(
             "SELECT COUNT(*) AS cnt FROM job_history WHERE job_type IN ('scan','scan_library')"

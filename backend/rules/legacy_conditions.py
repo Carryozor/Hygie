@@ -19,6 +19,11 @@ from typing import Optional
 from ..db.utils import now_utc, parse_iso_dt
 from ..db.engine import get_db
 from ..db.logs import add_log
+from ..db.repositories import (
+    get_pending_item_by_emby_id,
+    get_by_emby_id as _get_queue_row_by_emby_id,
+    update_queue_item_dates,
+)
 from ..types import QueueEntry
 from ..arr_clients import (
     radarr_find_by_path,
@@ -208,40 +213,27 @@ async def _update_delete_at_if_pending(
     originally queued (previously the snapshot was frozen at insertion time).
     """
     try:
-        async with get_db() as db:
-            row = await db.fetch_one(
-                "SELECT id, detected_at, seerr_user_id, delete_at FROM media_queue "
-                "WHERE emby_id=? AND status='pending'",
-                (emby_id,),
-            )
-            if row:
-                row_id = row["id"]
-                row_detected_at = row["detected_at"]
-                row_seerr_user_id = row["seerr_user_id"]
-                row_delete_at = row["delete_at"]
-                detected_at_dt = parse_iso_dt(row_detected_at) if row_detected_at else None
-                if detected_at_dt:
-                    effective_grace = await _get_seerr_grace(row_seerr_user_id, lib["id"], grace_days)
-                    new_delete_at = detected_at_dt + timedelta(days=effective_grace)
-                    old_dt = parse_iso_dt(row_delete_at) if row_delete_at else None
-                    changed = old_dt is None or abs((new_delete_at - old_dt).total_seconds()) > 3600
-                    lp_iso = last_played.isoformat() if last_played else None
-                    await db.execute(
-                        "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
-                        (new_delete_at.isoformat(), lp_iso, play_count, row_id),
-                    )
-                    if changed:
-                        # Reset threshold notifications so they fire again at the new deadline
+        row = await get_pending_item_by_emby_id(emby_id)
+        if row:
+            detected_at_dt = parse_iso_dt(row["detected_at"]) if row["detected_at"] else None
+            if detected_at_dt:
+                effective_grace = await _get_seerr_grace(row["seerr_user_id"], lib["id"], grace_days)
+                new_delete_at = detected_at_dt + timedelta(days=effective_grace)
+                old_dt = parse_iso_dt(row["delete_at"]) if row["delete_at"] else None
+                changed = old_dt is None or abs((new_delete_at - old_dt).total_seconds()) > 3600
+                lp_iso = last_played.isoformat() if last_played else None
+                await update_queue_item_dates(row["id"], new_delete_at.isoformat(), lp_iso, play_count)
+                if changed:
+                    async with get_db() as db:
                         await db.execute(
                             "DELETE FROM notifications WHERE media_id=? AND threshold NOT IN ('detected','now')",
-                            (row_id,),
+                            (row["id"],),
                         )
-                    await db.commit()
-                    if changed:
-                        logger.debug(
-                            f"delete_at recalculé ({effective_grace}j) : {title} "
-                            f"→ {new_delete_at.strftime('%d/%m/%Y')} (notifs réinitialisées)"
-                        )
+                        await db.commit()
+                    logger.debug(
+                        f"delete_at recalculé ({effective_grace}j) : {title} "
+                        f"→ {new_delete_at.strftime('%d/%m/%Y')} (notifs réinitialisées)"
+                    )
     except Exception as e:
         logger.error(f"Erreur recalcul delete_at pour {title}: {e}")
 
@@ -375,12 +367,7 @@ async def _update_queued_item_if_pending(
         effective_grace = await _get_seerr_grace(existing["seerr_user_id"], lib["id"], grace_days)
         new_delete_at = detected_at_dt + timedelta(days=effective_grace)
         lp_iso = last_played.isoformat() if last_played else None
-        async with get_db() as db:
-            await db.execute(
-                "UPDATE media_queue SET delete_at=?, last_played=?, view_count=? WHERE id=?",
-                (new_delete_at.isoformat(), lp_iso, play_count, existing["id"]),
-            )
-            await db.commit()
+        await update_queue_item_dates(existing["id"], new_delete_at.isoformat(), lp_iso, play_count)
     except Exception as e:
         logger.error("Erreur recalcul delete_at pour %s: %s", title, e)
 
@@ -404,11 +391,7 @@ async def _is_already_queued(
         )
         return True
     # No pre-fetched set — fall back to DB lookup
-    async with get_db() as db:
-        existing = await db.fetch_one(
-            "SELECT id, status, detected_at, seerr_user_id FROM media_queue WHERE emby_id=?",
-            (emby_id,),
-        )
+    existing = await _get_queue_row_by_emby_id(emby_id)
     if not existing:
         return False
     await _update_queued_item_if_pending(existing, lib, grace_days, title, last_played, play_count)

@@ -309,33 +309,17 @@ async def delete_media_server(server_id: str, user: str = Depends(require_auth))
 
 
 async def _purge_server_queue(server_id: str) -> int:
-    """Delete pending media_queue entries from all libraries of a given server.
-
-    Called when a server is disabled or removed. Returns the number of rows deleted.
-    """
-    from ..db.engine import get_db
+    """Delete pending media_queue entries from all libraries of a given server."""
+    from ..db.repositories import delete_pending_by_server
     from ..db.logs import add_log
-    async with get_db() as db:
-        rows = await db.fetch_all(
-            "SELECT mq.id FROM media_queue mq "
-            "JOIN libraries l ON mq.library_id = l.id "
-            "WHERE l.server_id = ? AND mq.status = 'pending'",
-            (server_id,),
+    n = await delete_pending_by_server(server_id)
+    if n:
+        await add_log(
+            "INFO",
+            f"Serveur {server_id} désactivé/supprimé : {n} entrée(s) retirée(s) de la file d'attente",
+            "system",
         )
-        if not rows:
-            return 0
-        ids = [r["id"] for r in rows]
-        ph  = ",".join("?" * len(ids))
-        await db.execute_write(
-            f"DELETE FROM media_queue WHERE id IN ({ph})", tuple(ids)
-        )
-        await db.commit()
-    await add_log(
-        "INFO",
-        f"Serveur {server_id} désactivé/supprimé : {len(ids)} entrée(s) retirée(s) de la file d'attente",
-        "system",
-    )
-    return len(ids)
+    return n
 
 
 @router.post("/media-servers/{server_id}/purge-queue")

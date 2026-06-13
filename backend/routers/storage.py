@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends
 from ..auth import require_auth
 from ..db.utils import TIMEOUT_MEDIUM
 from ..db.engine import get_db
+from ..db.repositories import get_status_counts, get_radarr_ids
 from ..db.settings_store import get_setting
 from ..arr_clients.shared import _arr_auth
+from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
@@ -130,39 +132,29 @@ async def _fetch_storage_data() -> dict:
         "reclaimable_count": 0,
     }
     try:
-        async with get_db() as db:
-            # Status counts
-            status_rows = await db.fetch_all(
-                "SELECT status, COUNT(*) AS cnt FROM media_queue GROUP BY status"
-            )
-            for r in status_rows:
-                if r["status"] in queue:
-                    queue[r["status"]] = r["cnt"]
+        status_counts = await get_status_counts()
+        for s in (STATUS_PENDING, STATUS_DELETED, STATUS_ERROR):
+            queue[s] = status_counts.get(s, 0)
 
+        async with get_db() as db:
             # Excluded (ignored)
             excl_row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
             queue["excluded"] = excl_row["cnt"] if excl_row else 0
 
-            # Reclaimable: sum sizeOnDisk for pending movies still in Radarr
-            if radarr_movies_by_id:
-                radarr_rows = await db.fetch_all(
-                    "SELECT radarr_id FROM media_queue "
-                    "WHERE status='pending' AND radarr_id IS NOT NULL"
-                )
-                pending_radarr_ids = [r["radarr_id"] for r in radarr_rows]
-
-                reclaimable = 0
-                count_reclaimable = 0
-                for rid in pending_radarr_ids:
-                    movie = radarr_movies_by_id.get(rid)
-                    if movie:
-                        reclaimable += movie.get("sizeOnDisk", 0) or 0
-                        count_reclaimable += 1
-                queue["reclaimable_size"] = reclaimable
-                queue["reclaimable_count"] = count_reclaimable
-            else:
-                # Fallback: use pending count as reclaimable count
-                queue["reclaimable_count"] = queue["pending"]
+        # Reclaimable: sum sizeOnDisk for pending movies still in Radarr
+        if radarr_movies_by_id:
+            pending_radarr_ids = await get_radarr_ids(status=STATUS_PENDING)
+            reclaimable = 0
+            count_reclaimable = 0
+            for rid in pending_radarr_ids:
+                movie = radarr_movies_by_id.get(rid)
+                if movie:
+                    reclaimable += movie.get("sizeOnDisk", 0) or 0
+                    count_reclaimable += 1
+            queue["reclaimable_size"] = reclaimable
+            queue["reclaimable_count"] = count_reclaimable
+            if not pending_radarr_ids:
+                queue["reclaimable_count"] = queue[STATUS_PENDING]
 
     except Exception as e:
         logger.warning(f"Queue stats: {e}")

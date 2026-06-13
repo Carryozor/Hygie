@@ -8,7 +8,10 @@ from ..db.engine import get_db
 from ..db.settings_store import get_setting, get_bool_setting
 from ..db.media_servers import get_media_servers
 from ..db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
-from ..db.repositories import get_enabled_libraries, get_queued_and_ignored_ids
+from ..db.repositories import (
+    get_enabled_libraries, get_queued_and_ignored_ids,
+    get_all_emby_ids, delete_stale_pending_no_seerr,
+)
 from ..emby_client import get_users, ensure_server_uid
 from ..arr_clients import (
     build_radarr_path_cache,
@@ -76,19 +79,9 @@ async def _purge_stale_seerr_items() -> None:
         if not libraries_requiring_seerr:
             return
 
-        from ..db.engine import get_db
-        async with get_db() as db:
-            # Remove pending items with no seerr_user_id in targeted libraries
-            placeholders = ",".join("?" * len(libraries_requiring_seerr))
-            result = await db.execute_write(
-                f"DELETE FROM media_queue WHERE status='pending' "
-                f"AND (seerr_user_id IS NULL OR seerr_user_id = 0) "
-                f"AND library_id IN ({placeholders})",
-                list(libraries_requiring_seerr),
-            )
-            await db.commit()
-            if result:
-                await add_log("INFO", lm("scan.seerr_cleanup", n=result), "scan")
+        result = await delete_stale_pending_no_seerr(list(libraries_requiring_seerr))
+        if result:
+            await add_log("INFO", lm("scan.seerr_cleanup", n=result), "scan")
     except Exception as e:
         logger.warning("_purge_stale_seerr_items: %s", e)
 
@@ -162,11 +155,7 @@ async def _do_scan_one_library(
     if sonarr_cache is None:
         sonarr_cache = await build_sonarr_path_cache()
 
-    async with get_db() as _db:
-        _qrows      = await _db.fetch_all("SELECT emby_id FROM media_queue")
-        queued_ids  = {r["emby_id"] for r in _qrows}
-        _irows      = await _db.fetch_all("SELECT emby_id FROM ignored_media")
-        ignored_ids = {r["emby_id"] for r in _irows}
+    queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 
     # Fetch activity log once per single-library scan (same as per-server optimization
     # in _run_scan_body). Passing activity_log=None would cause _scan_library to fetch

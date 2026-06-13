@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_auth
 from ..db.utils import parse_iso_dt, now_utc
-from ..db.engine import get_db
+from ..db.repositories import get_pending_before
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -17,14 +17,7 @@ async def calendar(
 ):
     """Return pending deletions grouped by day, up to days_ahead days from now."""
     cutoff_str = (now_utc() + timedelta(days=days_ahead)).isoformat()
-
-    async with get_db() as db:
-        rows = await db.fetch_all(
-            "SELECT id, title, media_type, library_name, delete_at, poster_url, "
-            "seerr_username FROM media_queue WHERE status='pending' "
-            "AND delete_at <= ? ORDER BY delete_at ASC",
-            (cutoff_str,),
-        )
+    rows = await get_pending_before(cutoff_str)
 
     grouped: dict = defaultdict(list)
     for d in rows:

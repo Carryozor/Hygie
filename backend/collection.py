@@ -13,6 +13,7 @@ import httpx
 
 from .db.utils import now_utc, parse_iso_dt
 from .db.engine import get_db
+from .db.repositories import get_poster_url_by_emby_id, get_pending_before_for_server
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_log
@@ -121,30 +122,26 @@ async def _restore_posters_for_removed(
     """Restore original TMDB poster for items removed from the collection."""
     if not removed_ids:
         return
-    async with get_db() as db:
-        for emby_id in removed_ids:
-            try:
-                row = await db.fetch_one(
-                    "SELECT poster_url FROM media_queue WHERE emby_id=?", (emby_id,)
-                )
-                poster_url = row["poster_url"] if row else ""
-                if not poster_url or not poster_url.startswith("http"):
-                    continue
-                pr = await client.get(poster_url, follow_redirects=True)
-                if pr.status_code != 200 or not pr.headers.get("content-type", "").startswith("image"):
-                    continue
-                resp = await client.post(
-                    f"{emby_url}/Items/{emby_id}/Images/Primary",
-                    headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                    content=pr.content,
-                )
-                if resp.status_code in (200, 204):
-                    _invalidate_overlay_cache(emby_id)
-                    await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
-                else:
-                    logger.warning(f"Restore poster HTTP {resp.status_code} for {emby_id}")
-            except Exception as e:
-                logger.warning(f"Restore poster error for {emby_id}: {e}")
+    for emby_id in removed_ids:
+        try:
+            poster_url = await get_poster_url_by_emby_id(emby_id) or ""
+            if not poster_url or not poster_url.startswith("http"):
+                continue
+            pr = await client.get(poster_url, follow_redirects=True)
+            if pr.status_code != 200 or not pr.headers.get("content-type", "").startswith("image"):
+                continue
+            resp = await client.post(
+                f"{emby_url}/Items/{emby_id}/Images/Primary",
+                headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
+                content=pr.content,
+            )
+            if resp.status_code in (200, 204):
+                _invalidate_overlay_cache(emby_id)
+                await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
+            else:
+                logger.warning(f"Restore poster HTTP {resp.status_code} for {emby_id}")
+        except Exception as e:
+            logger.warning(f"Restore poster error for {emby_id}: {e}")
 
 
 async def _apply_overlays(
@@ -247,18 +244,10 @@ async def sync_emby_collection():
 
     cutoff = now_utc() + timedelta(days=days)
 
-    async with get_db() as db:
-        # CRITICAL: only fetch items from the Emby/Jellyfin server being synced.
-        # Plex items store Plex rating keys as emby_id; if included, overlay would
-        # corrupt Emby items whose numeric IDs happen to match those rating keys.
-        wanted = await db.fetch_all(
-            """SELECT mq.emby_id, mq.title, mq.delete_at, mq.poster_url
-               FROM media_queue mq
-               JOIN libraries l ON mq.library_id = l.id
-               WHERE mq.status='pending' AND mq.delete_at <= ?
-               AND l.server_id = ?""",
-            (cutoff.isoformat(), sync_server_id),
-        )
+    # CRITICAL: only fetch items from the Emby/Jellyfin server being synced.
+    # Plex items store Plex rating keys as emby_id; if included, overlay would
+    # corrupt Emby items whose numeric IDs happen to match those rating keys.
+    wanted = await get_pending_before_for_server(cutoff.isoformat(), sync_server_id)
 
     wanted_ids = {w["emby_id"] for w in wanted}
 

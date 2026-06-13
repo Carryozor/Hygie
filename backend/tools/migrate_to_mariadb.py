@@ -84,7 +84,9 @@ async def _write_mariadb_table(db_url: str, table: str, rows: list[dict]) -> Non
 
         placeholders = ", ".join(["%s"] * len(cols))
         col_names = ", ".join(f"`{c}`" for c in cols)
-        sql = f"INSERT IGNORE INTO `{table}` ({col_names}) VALUES ({placeholders})"
+        # REPLACE INTO (not INSERT IGNORE) so that SQLite values always win,
+        # even if Hygie already inserted empty defaults at first startup.
+        sql = f"REPLACE INTO `{table}` ({col_names}) VALUES ({placeholders})"
         for i in range(0, len(rows), BATCH_SIZE):
             batch = rows[i:i + BATCH_SIZE]
             values = [tuple(r[c] for c in cols) for r in batch]

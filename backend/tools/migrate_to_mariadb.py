@@ -50,20 +50,41 @@ async def read_sqlite_table(sqlite_path: str, table: str) -> list[dict]:
             return await cur.fetchall()
 
 
+async def _mariadb_columns(conn, table: str) -> set[str]:
+    """Return the set of column names that exist in the MariaDB target table."""
+    async with conn.cursor() as cur:
+        await cur.execute(f"SHOW COLUMNS FROM `{table}`")
+        rows = await cur.fetchall()
+    return {r[0] for r in rows}
+
+
 async def _write_mariadb_table(db_url: str, table: str, rows: list[dict]) -> None:
-    """Insert rows into a MariaDB table in batches."""
+    """Insert rows into a MariaDB table in batches.
+
+    Columns present in the SQLite source but absent from the MariaDB target
+    (e.g. deprecated fields removed by schema migrations) are silently dropped.
+    This makes the migration resilient to schema divergence between SQLite
+    databases created at older Hygie versions and the current MariaDB schema.
+    """
     if not rows:
         logger.info("  %s: 0 rows (skipped)", table)
         return
     import aiomysql
     from backend.db.engine import _parse_mariadb_url
     kwargs = _parse_mariadb_url(db_url)
-    cols = list(rows[0].keys())
-    placeholders = ", ".join(["%s"] * len(cols))
-    col_names = ", ".join(f"`{c}`" for c in cols)
-    sql = f"INSERT IGNORE INTO `{table}` ({col_names}) VALUES ({placeholders})"
     conn = await aiomysql.connect(**kwargs, autocommit=False, charset="utf8mb4")
     try:
+        # Intersect SQLite columns with MariaDB columns — drop deprecated fields
+        target_cols = await _mariadb_columns(conn, table)
+        source_cols = list(rows[0].keys())
+        cols = [c for c in source_cols if c in target_cols]
+        dropped = set(source_cols) - set(cols)
+        if dropped:
+            logger.info("  %s: dropping legacy columns not in MariaDB schema: %s", table, sorted(dropped))
+
+        placeholders = ", ".join(["%s"] * len(cols))
+        col_names = ", ".join(f"`{c}`" for c in cols)
+        sql = f"INSERT IGNORE INTO `{table}` ({col_names}) VALUES ({placeholders})"
         for i in range(0, len(rows), BATCH_SIZE):
             batch = rows[i:i + BATCH_SIZE]
             values = [tuple(r[c] for c in cols) for r in batch]

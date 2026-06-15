@@ -152,6 +152,16 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         except Exception:
             pass
 
+    # Validate backup_path before persisting — prevent writes to system dirs
+    if "backup_path" in incoming:
+        bp = (incoming["backup_path"] or "").strip()
+        if bp:
+            from ..backup import _validate_backup_path
+            try:
+                _validate_backup_path(bp)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=f"backup_path: {e}")
+
     updated = []
     for key, value in incoming.items():
         # Skip masked values — user didn't change the field

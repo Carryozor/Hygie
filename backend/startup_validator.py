@@ -42,6 +42,7 @@ class StartupValidator:
         await self._check_worker_count(issues)
         await self._check_encryption(issues)
         await self._check_secret_key(issues)
+        await self._check_proxy_trust(issues)
         await self._check_intervals(issues)
         # If the DB pool already failed to initialize, report it immediately
         # instead of re-running a connectivity check that will also fail.
@@ -102,6 +103,31 @@ class StartupValidator:
                     "Set DB_MARIADB_PASSWORD to a strong random password in your .env file.",
                 ))
                 break
+
+    async def _check_proxy_trust(self, issues: list) -> None:
+        """Warn if a public origin is configured but HYGIE_TRUST_PROXY is not set.
+
+        When behind a reverse proxy (Cloudflare, Nginx, Traefik) without
+        HYGIE_TRUST_PROXY=1, rate limiting uses the proxy IP — shared by all
+        users — instead of the real client IP. Five failed logins from any
+        user will lock out everyone for 5 minutes.
+        """
+        origins = os.environ.get("HYGIE_ALLOWED_ORIGINS", "")
+        trust_proxy = os.environ.get("HYGIE_TRUST_PROXY", "0").strip()
+        if trust_proxy in ("1", "true", "yes"):
+            return
+        has_public_origin = any(
+            "localhost" not in o and "127.0.0.1" not in o
+            for o in origins.split(",")
+            if o.strip()
+        )
+        if has_public_origin:
+            issues.append(ValidationIssue(
+                "WARN",
+                "HYGIE_ALLOWED_ORIGINS contains a public domain but HYGIE_TRUST_PROXY is not set. "
+                "Rate limiting uses the proxy IP (shared by all users) instead of real client IPs.",
+                "Set HYGIE_TRUST_PROXY=1 when behind a trusted reverse proxy (Cloudflare, Nginx, Traefik).",
+            ))
 
     async def _check_encryption(self, issues: list) -> None:
         if not os.environ.get("HYGIE_ENCRYPTION_KEY"):

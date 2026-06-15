@@ -2,8 +2,8 @@
 
 The access token stays in memory/localStorage (short-lived, 1h) but the
 30-day refresh token must not be reachable from JavaScript — it is set as
-an httpOnly cookie scoped to /api/auth. The JSON body field is kept one
-release for backward compatibility.
+an httpOnly cookie scoped to /api/auth only. The JSON body no longer
+exposes the refresh token to prevent XSS exfiltration.
 """
 import os
 import pytest
@@ -73,9 +73,20 @@ async def test_refresh_works_with_cookie_only(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_refresh_still_accepts_body_token(auth_client):
+async def test_login_does_not_expose_refresh_token_in_body(auth_client):
+    """refresh_token must not be in the JSON body — it lives only in the httpOnly cookie."""
     r = await _login(auth_client)
-    raw = r.json()["refresh_token"]
+    assert "refresh_token" not in r.json(), (
+        "refresh_token must not be in the JSON body (XSS exfiltration vector)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_refresh_still_accepts_body_token(auth_client):
+    await _login(auth_client)
+    # Extract raw token from the cookie set during login (not from body)
+    raw = auth_client.cookies.get(COOKIE)
+    assert raw, "cookie must be set after login"
     auth_client.cookies.clear()
     r2 = await auth_client.post("/api/auth/refresh", json={"refresh_token": raw})
     assert r2.status_code == 200
@@ -85,7 +96,7 @@ async def test_refresh_still_accepts_body_token(auth_client):
 @pytest.mark.asyncio
 async def test_logout_revokes_and_clears_cookie(auth_client):
     r = await _login(auth_client)
-    raw = r.json()["refresh_token"]
+    raw = auth_client.cookies.get(COOKIE)  # token is in cookie, not body
     access = r.json()["access_token"]
 
     r2 = await auth_client.post(
@@ -113,8 +124,9 @@ async def test_refresh_without_cookie_or_body_is_401(auth_client):
 @pytest.mark.asyncio
 async def test_refresh_rotates_the_cookie_token(auth_client):
     """Each refresh issues a new cookie token; the old one is retired shortly after."""
-    r = await _login(auth_client)
-    old_raw = r.json()["refresh_token"]
+    await _login(auth_client)
+    old_raw = auth_client.cookies.get(COOKIE)  # token is in cookie, not body
+    assert old_raw
 
     r2 = await auth_client.post("/api/auth/refresh", json={})
     assert r2.status_code == 200

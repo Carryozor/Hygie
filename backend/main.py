@@ -296,6 +296,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # HSTS: enforce HTTPS for 2 years. Cloudflare/nginx also sets this but the
+    # app should be self-sufficient so direct access is covered too.
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     # CSP: disallow inline scripts (reduce XSS surface). The Vue SPA uses
     # compiled JS assets — no inline scripts needed. Adjust script-src if
     # third-party CDN scripts are added in the future.

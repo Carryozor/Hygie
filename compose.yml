@@ -59,7 +59,9 @@ services:
     depends_on:
        - gluetun
     healthcheck:
-      test: ["CMD-SHELL", "curl -s --max-time 8 -u admin:${QB_PASSWORD} http://127.0.0.1:8080/api/v2/app/version || exit 1"]
+      # Check that the WebUI responds without embedding credentials in the
+      # command — credentials in CMD-SHELL are visible via `docker inspect`.
+      test: ["CMD-SHELL", "curl -f -s --max-time 8 http://127.0.0.1:8080/ || exit 1"]
       interval: 45s
       timeout: 15s
       retries: 8

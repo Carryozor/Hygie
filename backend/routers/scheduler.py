@@ -1,7 +1,7 @@
 """Scheduler control, scan/deletion triggers, job history."""
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import JSONResponse
 
 from ..auth import require_auth
@@ -106,7 +106,7 @@ async def emby_collection_sync(
 
 
 @router.get("/api/jobs/history")
-async def jobs_history(user: str = Depends(require_auth), limit: int = 100):
+async def jobs_history(user: str = Depends(require_auth), limit: int = Query(default=100, ge=1, le=1000)):
     """Recent job history, deduplicated."""
     async with get_db() as db:
         rows = await db.fetch_all(

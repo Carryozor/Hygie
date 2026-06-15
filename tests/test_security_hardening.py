@@ -354,3 +354,93 @@ def test_escape_like_escapes_wildcards():
     assert escape_like("a_b") == "a!_b"
     assert escape_like("yes!") == "yes!!"
     assert escape_like("plain") == "plain"
+
+
+# ─── Plex webhook: path-based endpoint ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_webhook_path_accepted_with_correct_secret(wh_client):
+    from backend.db.settings_store import set_setting
+    await set_setting("plex_webhook_secret", "path-secret")
+    resp = await wh_client.post(
+        "/api/plex/webhook/path-secret", data={"payload": _scrobble_payload()}
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_webhook_path_rejected_with_wrong_secret(wh_client):
+    from backend.db.settings_store import set_setting
+    await set_setting("plex_webhook_secret", "path-secret")
+    resp = await wh_client.post(
+        "/api/plex/webhook/wrong-secret", data={"payload": _scrobble_payload()}
+    )
+    assert resp.status_code == 403
+
+
+# ─── Backup path validation ───────────────────────────────────────────────────
+
+def test_backup_path_rejects_etc():
+    from backend.backup import _validate_backup_path
+    with pytest.raises(ValueError, match="system directory"):
+        _validate_backup_path("/etc/cron.d")
+
+
+def test_backup_path_rejects_root():
+    from backend.backup import _validate_backup_path
+    with pytest.raises(ValueError, match="system directory"):
+        _validate_backup_path("/root/.ssh")
+
+
+def test_backup_path_rejects_traversal():
+    from backend.backup import _validate_backup_path
+    with pytest.raises(ValueError, match="\\.\\."):
+        _validate_backup_path("/app/data/../../../etc")
+
+
+def test_backup_path_accepts_data_dir():
+    from backend.backup import _validate_backup_path
+    _validate_backup_path("/app/data/backups")  # must not raise
+
+
+def test_backup_path_accepts_custom_dir():
+    from backend.backup import _validate_backup_path
+    _validate_backup_path("/backup/hygie")  # must not raise
+
+
+# ─── jobs/history limit is bounded ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_jobs_history_limit_is_bounded(tmp_path):
+    """GET /api/jobs/history?limit=9999999 must be rejected with 422."""
+    import backend.db.engine as _eng
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _ss
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+
+    db_path = str(tmp_path / "sched.db")
+    orig_engine, orig_utils = _eng.SQLITE_PATH, _db_utils.DB_PATH
+    _eng.SQLITE_PATH = db_path
+    _db_utils.DB_PATH = db_path
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+
+    from backend.db.schema import init_db
+    await init_db()
+
+    from backend.routers import scheduler as sched_router
+    app = FastAPI()
+    app.include_router(sched_router.router)
+    app.dependency_overrides[sched_router.require_auth] = lambda: "testuser"
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get("/api/jobs/history?limit=9999999")
+
+    _eng.SQLITE_PATH = orig_engine
+    _db_utils.DB_PATH = orig_utils
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+
+    assert resp.status_code == 422, f"Expected 422 for out-of-range limit, got {resp.status_code}"

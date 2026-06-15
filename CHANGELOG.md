@@ -4,6 +4,21 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.0.5] — 2026-06-15
+
+### Security
+
+- **HSTS header added** — `Strict-Transport-Security: max-age=63072000; includeSubDomains` is now sent by the application layer so that direct access (without Cloudflare/Nginx in front) is also protected.
+- **Public dashboard: password no longer accepted via query parameter** — the `?password=` query param was leaking the credential in reverse-proxy and Cloudflare access logs. Password must now be supplied via the `X-Dashboard-Password` HTTP header.
+- **Plex webhook: path-based endpoint added** — a new `POST /api/plex/webhook/{token}` endpoint is available as the recommended URL for new Plex webhook installations. The legacy `?secret=` form remains for backward compatibility. Both still appear in access logs — use HTTPS (Cloudflare tunnel) and restrict log access.
+- **Refresh token removed from JSON response body** — `login`, `setup`, and `change-password` no longer return `refresh_token` in the JSON body. The token is delivered exclusively via the httpOnly cookie (`hygie_refresh`), preventing XSS exfiltration from JavaScript. The `/api/auth/refresh` endpoint still accepts a body token as fallback for programmatic clients.
+- **Backup path validation** — `backup_path` in settings now rejects paths targeting system directories (`/etc`, `/root`, `/proc`, `/sys`, `/dev`, etc.) to prevent an authenticated admin from using the backup write path as a filesystem primitive.
+- **jobs/history limit bounded** — `GET /api/jobs/history?limit=` is now capped at 1 000 (was unbounded); requests with higher values return 422.
+- **Startup warning: HYGIE_TRUST_PROXY not set with public origins** — Hygie now logs a WARN at startup when `HYGIE_ALLOWED_ORIGINS` contains a non-localhost domain but `HYGIE_TRUST_PROXY` is not enabled. Without this, rate limiting uses the shared proxy IP instead of real client IPs.
+- **qBittorrent compose healthcheck** — the Docker Compose healthcheck for the `qbittorrent` service no longer embeds `${QB_PASSWORD}` in the command (visible via `docker inspect`); replaced with a credential-free HTTP connectivity check.
+
+---
+
 ## [3.6.3] — 2026-06-11
 
 ### Fixed

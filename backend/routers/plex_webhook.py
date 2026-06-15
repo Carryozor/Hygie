@@ -16,15 +16,11 @@ router = APIRouter(prefix="/api/plex", tags=["plex"])
 _HANDLED_EVENTS = {"media.scrobble", "media.play", "media.pause", "media.resume", "media.stop"}
 
 
-@router.post("/webhook")
-async def plex_webhook(
-    payload: str = Form(...),
-    secret: str = Query(default=""),
-) -> Response:
-    """Receive a Plex webhook event (multipart/form-data, payload field = JSON)."""
+async def _process_webhook(payload: str, secret: str) -> Response:
+    """Shared implementation for both webhook endpoints."""
+    configured_secret = await get_setting("plex_webhook_secret") or ""
     # Fail closed: without a configured secret anyone could forge scrobble
     # events and shift last_played, delaying or preventing deletions.
-    configured_secret = await get_setting("plex_webhook_secret") or ""
     if not configured_secret:
         raise HTTPException(
             status_code=403,
@@ -55,6 +51,36 @@ async def plex_webhook(
         await _handle_scrobble(rating_key, metadata)
 
     return Response(status_code=200)
+
+
+@router.post("/webhook/{secret_token}")
+async def plex_webhook_path(
+    secret_token: str,
+    payload: str = Form(...),
+) -> Response:
+    """Receive a Plex webhook event — secret embedded in URL path (recommended).
+
+    Configure your Plex Media Server webhook URL as:
+        http://<host>:8000/api/plex/webhook/<your-secret>
+
+    The path-based approach is preferred over the query-param form because
+    some reverse proxy log configurations redact query strings while keeping
+    the path, and some tools (WAFs, log shippers) treat them differently.
+    The secret still appears in access logs under HTTPS — restrict log access.
+    """
+    return await _process_webhook(payload, secret_token)
+
+
+@router.post("/webhook")
+async def plex_webhook(
+    payload: str = Form(...),
+    secret: str = Query(default=""),
+) -> Response:
+    """Receive a Plex webhook event — secret as query parameter (legacy).
+
+    Prefer /api/plex/webhook/{secret} (path-based) for new installations.
+    """
+    return await _process_webhook(payload, secret)
 
 
 async def _handle_scrobble(rating_key: str, metadata: dict) -> None:

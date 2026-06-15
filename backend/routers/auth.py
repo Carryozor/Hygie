@@ -94,10 +94,9 @@ async def setup(body: SetupRequest, request: Request, response: Response):
     refresh_token = await create_refresh_token(body.username)
     _set_refresh_cookie(response, request, refresh_token)
     return {
-        "token":         access_token,
-        "access_token":  access_token,
-        "refresh_token": refresh_token,
-        "username":      body.username,
+        "token":        access_token,
+        "access_token": access_token,
+        "username":     body.username,
     }
 
 
@@ -133,10 +132,9 @@ async def login(body: LoginRequest, request: Request, response: Response):
     refresh_token = await create_refresh_token(user["username"])
     _set_refresh_cookie(response, request, refresh_token)
     return {
-        "token":         access_token,
-        "access_token":  access_token,
-        "refresh_token": refresh_token,
-        "username":      user["username"],
+        "token":        access_token,
+        "access_token": access_token,
+        "username":     user["username"],
     }
 
 
@@ -213,9 +211,8 @@ async def change_password(
     refresh_token = await create_refresh_token(username)
     _set_refresh_cookie(response, request, refresh_token)
     return {
-        "status":        "ok",
-        "access_token":  access_token,
-        "refresh_token": refresh_token,
+        "status":       "ok",
+        "access_token": access_token,
     }
 
 

@@ -27,14 +27,14 @@ def _clean_url(raw: str) -> str:
 async def public_upcoming(
     request: Request,
     slug: str = "",
-    password: str = "",
     authorization: Optional[str] = Header(default=None),
     x_dashboard_password: Optional[str] = Header(default=None),
 ):
     """No-auth endpoint — returns upcoming deletions if public_dashboard_enabled=true.
 
     Authenticated admins (valid Bearer token) bypass the public dashboard password.
-    Anonymous visitors must supply the configured password if one is set.
+    Anonymous visitors must supply the password via X-Dashboard-Password header.
+    Note: query-param passwords were removed to avoid leaking credentials in access logs.
     """
     ip = get_client_ip(request)
     if await asyncio.to_thread(rate_limit, f"public_upcoming:{ip}"):
@@ -55,7 +55,7 @@ async def public_upcoming(
 
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
     if cfg_pwd and not is_admin:
-        provided = password or x_dashboard_password or ""
+        provided = x_dashboard_password or ""
         if not provided:
             return JSONResponse({"error": "password_required"}, status_code=401)
         if not hmac.compare_digest(provided.encode(), cfg_pwd.encode()):

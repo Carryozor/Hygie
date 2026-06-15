@@ -25,6 +25,25 @@ _DEFAULT_PATH           = "/app/data/backups"
 _DEFAULT_RETENTION      = 7
 _DEFAULT_INTERVAL_HOURS = 24
 
+# System directories that must never be used as backup destinations.
+# An authenticated admin can set backup_path via the settings API — without
+# this check, they could write files to /etc/, /root/, /proc/, etc.
+_FORBIDDEN_BACKUP_PREFIXES = (
+    "/etc", "/root", "/proc", "/sys", "/dev", "/run", "/boot", "/bin",
+    "/sbin", "/usr/bin", "/usr/sbin",
+)
+
+
+def _validate_backup_path(path: str) -> None:
+    """Raise ValueError if path targets a sensitive system directory."""
+    if ".." in path:
+        raise ValueError("Backup path must not contain '..'")
+    from pathlib import PurePosixPath
+    resolved = str(PurePosixPath(path))
+    for forbidden in _FORBIDDEN_BACKUP_PREFIXES:
+        if resolved == forbidden or resolved.startswith(forbidden + "/"):
+            raise ValueError(f"Backup path cannot target system directory: {forbidden}")
+
 
 async def _backup_settings() -> tuple[str, int, int]:
     """Return (backup_dir, interval_hours, retention_count)."""
@@ -138,6 +157,13 @@ async def run_backup(force: bool = False) -> Optional[str]:
 
     backup_dir, interval, retention = await _backup_settings()
     if not force and (not await get_bool_setting("backup_enabled") or interval == 0):
+        return None
+
+    try:
+        _validate_backup_path(backup_dir)
+    except ValueError as e:
+        logger.error("Backup aborted — invalid backup_path: %s", e)
+        await add_log("ERROR", f"Backup aborted: {e}", "system")
         return None
 
     Path(backup_dir).mkdir(parents=True, exist_ok=True)

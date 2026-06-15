@@ -132,9 +132,10 @@ async def create_refresh_token(username: str) -> str:
         user = await db.fetch_one("SELECT id FROM users WHERE username=?", (username,))
         if not user:
             raise ValueError(f"User {username!r} not found")
+        created = datetime.now(timezone.utc).isoformat()
         await db.execute(
-            "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
-            (user["id"], hashed, expires),
+            "INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            (user["id"], hashed, expires, created),
         )
         await db.commit()
     return raw

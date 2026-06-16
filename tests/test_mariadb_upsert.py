@@ -21,10 +21,13 @@ def _mariadb_conn():
     return DbConn(None, "mariadb")
 
 
-def test_insert_or_replace_becomes_replace():
+def test_insert_or_replace_becomes_upsert():
     sql = _mariadb_conn()._q("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
     assert "OR REPLACE" not in sql
-    assert sql.startswith("REPLACE INTO settings")
+    assert "REPLACE INTO" not in sql
+    assert sql.startswith("INSERT INTO settings")
+    assert "ON DUPLICATE KEY UPDATE" in sql
+    assert "value=VALUES(value)" in sql
     assert "%s" in sql
 
 

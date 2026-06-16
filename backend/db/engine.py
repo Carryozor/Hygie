@@ -28,6 +28,31 @@ _LIMIT_KW_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
 _OR_REPLACE_RE = re.compile(r"^\s*INSERT\s+OR\s+REPLACE\s+INTO\b", re.IGNORECASE)
 _OR_IGNORE_RE  = re.compile(r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE)
 
+# Matches REPLACE INTO <table> (col1, col2, ...) VALUES so we can rewrite it
+# to INSERT ... ON DUPLICATE KEY UPDATE. REPLACE INTO does DELETE+INSERT
+# internally, which causes error 1020 (ER_READ_CHANGED_ROW) under concurrent
+# transactions with REPEATABLE-READ — INSERT ... ON DUPLICATE KEY UPDATE is
+# atomic and avoids this entirely.
+_REPLACE_INTO_RE = re.compile(
+    r"^(\s*REPLACE\s+INTO\s+`?[\w]+`?\s*)(\(([^)]+)\))(\s*VALUES\b)",
+    re.IGNORECASE,
+)
+
+
+def _replace_into_upsert(sql: str) -> str:
+    """Rewrite REPLACE INTO tbl (cols) VALUES (...) → INSERT INTO ... ON DUPLICATE KEY UPDATE."""
+    m = _REPLACE_INTO_RE.match(sql)
+    if not m:
+        return sql
+    prefix, cols_expr, cols_str, values_kw = m.group(1), m.group(2), m.group(3), m.group(4)
+    suffix = sql[m.end():]
+    cols = [c.strip() for c in cols_str.split(",")]
+    if len(cols) < 2:
+        return sql
+    update_clause = ", ".join(f"{c}=VALUES({c})" for c in cols[1:])
+    insert_prefix = re.sub(r"\bREPLACE\b", "INSERT", prefix, count=1, flags=re.IGNORECASE)
+    return f"{insert_prefix}{cols_expr}{values_kw}{suffix} ON DUPLICATE KEY UPDATE {update_clause}"
+
 logger = logging.getLogger(__name__)
 
 DATABASE_URL: str = os.environ.get("DATABASE_URL", "").strip()
@@ -126,6 +151,7 @@ class DbConn:
             return sql
         sql = _OR_REPLACE_RE.sub("REPLACE INTO", sql)
         sql = _OR_IGNORE_RE.sub("INSERT IGNORE INTO", sql)
+        sql = _replace_into_upsert(sql)
         # aiomysql/pymysql treats the query as a printf-style format string
         # (query % args), so any literal % (e.g. LIKE wildcards baked into the
         # SQL) must be doubled. Escape first, THEN emit %s placeholders so the
@@ -241,4 +267,8 @@ async def get_db():
             raise RuntimeError("MariaDB pool not initialized — call init_db_pool() at startup")
         async with _pool.acquire() as raw:
             await raw.autocommit(False)
-            yield DbConn(raw, "mariadb")
+            try:
+                yield DbConn(raw, "mariadb")
+            except Exception:
+                await raw.rollback()
+                raise

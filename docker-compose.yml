@@ -14,6 +14,9 @@ services:
       # 2. Generate a key: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       # Never hardcode the key here — use the .env file instead.
       - HYGIE_ENCRYPTION_KEY=${HYGIE_ENCRYPTION_KEY:-}
+      # JWT signing key — auto-generated if not set, but sessions are lost on every restart.
+      # Generate: python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+      - SECRET_KEY=${SECRET_KEY:-}
       # ── Base de données ──
       # SQLite (défaut)   : laisser DATABASE_URL vide
       # MariaDB embarquée : utiliser docker-compose.embedded-mariadb.yml
@@ -40,6 +43,14 @@ services:
     image: mariadb:11
     profiles: [mariadb]
     restart: unless-stopped
+    # Give MariaDB 60 s to flush and shut down before Docker sends SIGKILL (default = 10 s).
+    # Without this, abrupt kills corrupt tc.log and the container refuses to start until
+    # tc.log is deleted manually. Hygie does not use XA transactions and runs with
+    # log_bin=OFF, so tc.log holds nothing recoverable. The entrypoint wrapper below
+    # deletes it before each start as a second safeguard for unexpected crashes (OOM,
+    # power loss, host reboot).
+    stop_grace_period: 60s
+    entrypoint: ["bash", "-c", "rm -f /var/lib/mysql/tc.log && exec docker-entrypoint.sh mariadbd"]
     environment:
       MYSQL_DATABASE: hygie
       MYSQL_USER: hygie

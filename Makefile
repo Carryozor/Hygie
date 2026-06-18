@@ -14,10 +14,10 @@ help:
 	@echo "  deploy           Build frontend + deploy all files to container + health-check"
 	@echo "  deploy-backend   Copy backend .py files to container + restart"
 	@echo "  deploy-frontend  Build frontend + copy dist to container"
-	@echo "  check-schema     Validate OpenAPI schema (scripts/check-schema.py)
-  lint-frontend    Run ESLint on frontend/vue
-  lint-all         Run lint + lint-frontend
-  test-all         Run test + frontend unit tests"
+	@echo "  check-schema     Validate OpenAPI schema (scripts/check-schema.py)"
+	@echo "  lint-frontend    Run ESLint on frontend/vue"
+	@echo "  lint-all         Run lint + lint-frontend"
+	@echo "  test-all         Run test + frontend unit tests"
 
 install:
 	pip install -r requirements.txt -r requirements-dev.txt

@@ -109,7 +109,7 @@
             <div class="flex-1 min-w-0">
               <a
                 v-if="item.seerr_request_url"
-                :href="item.seerr_request_url"
+                :href="safeUrl(item.seerr_request_url)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="font-medium text-sm truncate hover:text-[var(--accent)] transition-colors block"
@@ -140,6 +140,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
+import { safeUrl } from '@/utils/safeUrl'
 
 const { t, locale } = useI18n()
 

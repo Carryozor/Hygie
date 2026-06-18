@@ -24,7 +24,7 @@
     <td class="px-4 py-2 max-w-[180px] xl:max-w-xs">
       <a
         v-if="item.seerr_request_url"
-        :href="item.seerr_request_url"
+        :href="safeUrl(item.seerr_request_url)"
         target="_blank"
         class="font-medium truncate block hover:text-[var(--accent)] transition-colors"
         :title="item.title"
@@ -61,7 +61,7 @@
     <td class="px-4 py-2 hidden lg:table-cell">
       <a
         v-if="item.seerr_user_id && seerrExternalUrl"
-        :href="`${seerrExternalUrl}/users/${item.seerr_user_id}`"
+        :href="safeUrl(`${seerrExternalUrl}/users/${item.seerr_user_id}`)"
         target="_blank"
         class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors"
       >{{ item.seerr_username || '—' }}</a>
@@ -120,6 +120,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n'
+import { safeUrl } from '@/utils/safeUrl'
 
 const { t } = useI18n()
 

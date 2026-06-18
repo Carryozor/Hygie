@@ -2,8 +2,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/api/client'
+import { getToken, setToken, clearToken } from '@/api/tokenStore'
 
-const ACCESS_TOKEN_KEY  = 'hygie_token'
 // Pre-cookie versions persisted the refresh token here — now it lives in an
 // httpOnly cookie. The key is only read once for migration, then purged.
 const LEGACY_REFRESH_KEY = 'hygie_refresh_token'
@@ -11,26 +11,31 @@ const ACCESS_TTL_MS     = 60 * 60 * 1000   // 1h — matches backend ACCESS_TOKE
 const REFRESH_BEFORE_MS = 5  * 60 * 1000   // refresh 5min before expiry
 
 export const useAuthStore = defineStore('auth', () => {
-  const token         = ref(localStorage.getItem(ACCESS_TOKEN_KEY) || '')
-  const username      = ref('')
-  const setupComplete = ref(null)
+  // In-memory only (see api/tokenStore.js) — never persisted to
+  // localStorage/sessionStorage, so it does not survive a page reload.
+  // triedSilentRefresh tracks whether router/index.js already attempted to
+  // re-mint it from the httpOnly refresh cookie this session.
+  const token              = ref(getToken())
+  const username            = ref('')
+  const setupComplete       = ref(null)
+  const triedSilentRefresh  = ref(false)
 
   let _refreshTimer = null
 
   const isLoggedIn = computed(() => !!token.value)
 
   // ── Token storage ──────────────────────────────────────────────────────────
-  // Only the short-lived access token touches localStorage. The 30-day
-  // refresh token is an httpOnly cookie set by the backend — invisible to JS.
+  // The 30-day refresh token is an httpOnly cookie set by the backend —
+  // invisible to JS. The access token lives only in memory (tokenStore.js).
   function _setAccessToken(access) {
     token.value = access
-    localStorage.setItem(ACCESS_TOKEN_KEY, access)
+    setToken(access)
     _scheduleRefresh()
   }
 
   function _clearTokens() {
     token.value = ''
-    localStorage.removeItem(ACCESS_TOKEN_KEY)
+    clearToken()
     localStorage.removeItem(LEGACY_REFRESH_KEY)
     if (_refreshTimer) clearTimeout(_refreshTimer)
     _refreshTimer = null
@@ -64,6 +69,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function refresh() {
+    triedSilentRefresh.value = true
     // The httpOnly cookie carries the refresh token; the body field is only
     // used to migrate sessions created before the cookie change.
     const legacy = localStorage.getItem(LEGACY_REFRESH_KEY) || ''
@@ -106,7 +112,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    token, username, setupComplete, isLoggedIn,
+    token, username, setupComplete, isLoggedIn, triedSilentRefresh,
     checkSetup, setup, login, refresh, fetchMe, logout,
   }
 })

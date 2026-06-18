@@ -9,6 +9,20 @@ import pytest
 from unittest.mock import MagicMock
 
 
+@pytest.fixture(autouse=True)
+def _reset_circuit_breakers():
+    """Circuit breakers live in a process-global registry (arr_clients/circuit_breaker.py).
+    Without resetting it, a breaker tripped OPEN by one test's failure
+    simulation leaks into any later test that happens to share the same
+    breaker name (e.g. "emby:0"), making that later test's behavior depend
+    on test execution order instead of its own setup.
+    """
+    from backend.arr_clients import circuit_breaker
+    circuit_breaker._registry.clear()
+    yield
+    circuit_breaker._registry.clear()
+
+
 @pytest.fixture(scope="session")
 def test_client(tmp_path_factory):
     """Synchronous TestClient for lightweight route tests. Auth dependency is bypassed."""

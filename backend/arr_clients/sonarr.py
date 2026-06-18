@@ -196,9 +196,10 @@ async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
     return None
 
 
-async def sonarr_get_series_by_id(series_id: int) -> Optional[dict]:
+async def sonarr_get_series_by_id(series_id: int, url: str = "", key: str = "") -> Optional[dict]:
     """Get a Sonarr series by its series ID."""
-    url, key = await _sonarr_config()
+    if not url or not key:
+        url, key = await _sonarr_config()
     if not url or not key or not series_id:
         return None
     try:
@@ -208,6 +209,21 @@ async def sonarr_get_series_by_id(series_id: int) -> Optional[dict]:
                 return r.json()
     except Exception as e:
         logger.warning(f"sonarr_get_series_by_id: {e}")
+    return None
+
+
+async def sonarr_get_series_by_id_any(series_id: int) -> Optional[dict]:
+    """Get a series from any configured Sonarr server that has this ID.
+
+    Unlike sonarr_get_series_by_id()'s legacy single-server fallback, this
+    checks every enabled server — needed in multi-Sonarr setups where
+    series_id is only meaningful on the server that issued it.
+    """
+    servers = await get_sonarr_servers()
+    for srv in servers:
+        series = await sonarr_get_series_by_id(series_id, url=srv["url"].rstrip("/"), key=srv["api_key"])
+        if series:
+            return series
     return None
 
 

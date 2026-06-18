@@ -8,6 +8,7 @@ from .radarr import (
     radarr_find_by_path,
     radarr_find_by_path_cached,
     radarr_get,
+    radarr_get_any,
     radarr_get_poster_url,
     radarr_get_torrent_hash,
     radarr_get_torrent_hash_any,
@@ -25,6 +26,7 @@ from .sonarr import (
     sonarr_get_poster_url,
     sonarr_get_series,
     sonarr_get_series_by_id,
+    sonarr_get_series_by_id_any,
     sonarr_get_torrent_hash,
     test_sonarr,
 )

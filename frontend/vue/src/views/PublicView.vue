@@ -171,7 +171,7 @@
               <!-- View on server link -->
               <a
                 v-if="serverItemUrl(item)"
-                :href="serverItemUrl(item)"
+                :href="safeUrl(serverItemUrl(item))"
                 target="_blank"
                 rel="noopener"
                 class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-xs text-[var(--muted)] hover:text-white hover:border-[var(--accent)]/50 transition-colors"
@@ -218,6 +218,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { safeUrl } from '@/utils/safeUrl'
 
 const route = useRoute()
 

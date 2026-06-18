@@ -61,7 +61,8 @@ async def _get_or_create_collection(
         return None
 
     ru = await client.get(f"{emby_url}/Users", headers={"X-Emby-Token": emby_key})
-    user_id = ru.json()[0]["Id"] if ru.status_code == 200 and ru.json() else ""
+    _ru_users = ru.json() if ru.status_code == 200 else None
+    user_id = _ru_users[0]["Id"] if isinstance(_ru_users, list) and _ru_users else ""
 
     rc = await client.post(
         f"{emby_url}/Collections",

@@ -214,6 +214,21 @@ async def radarr_delete_by_id(radarr_id: int, delete_files: bool = False) -> boo
     return False
 
 
+async def radarr_get_any(radarr_id: int) -> Optional[dict]:
+    """Get full movie details from any configured Radarr server that has this ID.
+
+    Unlike radarr_get()'s legacy single-server fallback, this checks every
+    enabled server — needed in multi-Radarr setups where radarr_id is only
+    meaningful on the server that issued it.
+    """
+    servers = await get_radarr_servers()
+    for srv in servers:
+        movie = await radarr_get(radarr_id, url=srv["url"].rstrip("/"), key=srv["api_key"])
+        if movie:
+            return movie
+    return None
+
+
 async def radarr_get_torrent_hash_any(radarr_id: int) -> Optional[str]:
     """Get torrent hash from any configured Radarr server that has this movie."""
     servers = await get_radarr_servers()

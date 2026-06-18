@@ -51,7 +51,7 @@
     <div class="p-2">
       <a
         v-if="item.seerr_request_url"
-        :href="item.seerr_request_url"
+        :href="safeUrl(item.seerr_request_url)"
         target="_blank"
         class="text-xs font-medium truncate block hover:text-[var(--accent)] transition-colors"
         :title="item.title"
@@ -68,6 +68,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n'
+import { safeUrl } from '@/utils/safeUrl'
 
 const { t } = useI18n()
 

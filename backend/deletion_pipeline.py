@@ -94,16 +94,19 @@ class SizeLookupStep(DeletionStep):
         if ctx.dry_run:
             return
         try:
-            from .arr_clients import radarr_get, sonarr_get_series_by_id
+            from .arr_clients import radarr_get_any, sonarr_get_series_by_id_any
+            # *_any() checks every configured server instead of only the
+            # legacy default — radarr_id/sonarr_series_id are only meaningful
+            # on the specific server that issued them in multi-server setups.
             if ctx.media_type == "Movie":
                 rid = ctx.item.get("radarr_id")
                 if rid:
-                    movie = await radarr_get(int(rid))
+                    movie = await radarr_get_any(int(rid))
                     ctx.size_bytes = int((movie.get("movieFile") or {}).get("size") or 0) if movie else 0
             else:
                 sid = ctx.item.get("sonarr_series_id")
                 if sid:
-                    series = await sonarr_get_series_by_id(int(sid))
+                    series = await sonarr_get_series_by_id_any(int(sid))
                     ctx.size_bytes = int((series.get("statistics") or {}).get("sizeOnDisk") or 0) if series else 0
         except Exception as e:
             logger.info("SizeLookupStep: size unavailable for '%s' (stats will show 0): %s", ctx.title, e)

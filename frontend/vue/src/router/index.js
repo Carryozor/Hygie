@@ -28,6 +28,12 @@ router.beforeEach(async to => {
   // Only call the API once — setupComplete is null until first check
   const setup = auth.setupComplete !== null ? auth.setupComplete : await auth.checkSetup()
   if (!setup) return { name: 'setup' }
+  // The access token lives in memory only (see api/tokenStore.js) and does not
+  // survive a page reload — try once to re-mint it from the httpOnly refresh
+  // cookie before treating the user as logged out.
+  if (!auth.isLoggedIn && !auth.triedSilentRefresh) {
+    await auth.refresh()
+  }
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
   return true
 })

@@ -11,7 +11,6 @@
         :value="stats.global.queue?.pending ?? 0"
         icon="fa-clock"
         color="yellow"
-        :sub="`${stats.global.queue?.total ?? 0} ${t('dashboard.stats.total')}`"
       />
       <StatCard
         :label="t('dashboard.stats.totalDeleted')"
@@ -167,7 +166,7 @@ v-if="item.poster_url"
             <!-- Title + meta -->
             <td class="px-3 py-2 max-w-[200px]">
               <a
-v-if="item.seerr_request_url" :href="item.seerr_request_url" target="_blank"
+v-if="item.seerr_request_url" :href="safeUrl(item.seerr_request_url)" target="_blank"
                 class="font-medium text-sm truncate block hover:text-[var(--accent)] transition-colors" :title="item.title">
                 {{ item.title }}
               </a>
@@ -226,6 +225,7 @@ import { useI18n } from 'vue-i18n'
 import { useStatsStore } from '@/stores/stats'
 import StatCard from '@/components/ui/StatCard.vue'
 import api from '@/api/client'
+import { safeUrl } from '@/utils/safeUrl'
 
 const { t, locale } = useI18n()
 const stats   = useStatsStore()

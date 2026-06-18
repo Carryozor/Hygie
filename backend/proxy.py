@@ -168,6 +168,16 @@ async def proxy_image(request: Request):
                                 f"Proxy: redirect target not in whitelist: {sanitize_url(url)[:80]}"
                             )
                             return Response(status_code=403)
+                        # Re-run the same DNS-rebinding check as the initial request —
+                        # a whitelisted host's DNS could be rebound between the first
+                        # request and this redirect being followed.
+                        redirect_host = (urlparse(url).hostname or "").lower()
+                        if await _resolves_to_loopback_or_link_local(redirect_host):
+                            logger.warning(
+                                "Proxy: DNS rebinding attempt detected on redirect for host %r",
+                                redirect_host,
+                            )
+                            return Response(status_code=403)
                         continue
                     if r.status_code == 200:
                         ct = r.headers.get("content-type", "image/jpeg")

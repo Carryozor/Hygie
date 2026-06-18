@@ -23,6 +23,7 @@ export function formatApiError(err) {
   if (status === 500) return data?.detail || 'Erreur serveur interne'
   if (status === 404) return 'Ressource introuvable'
   if (status === 403) return 'Accès refusé'
+  if (status === 429) return 'Trop de requêtes — réessayez dans un instant'
   return `Erreur ${status}`
 }
 
@@ -39,8 +40,8 @@ export function installErrorInterceptor(axiosInstance) {
       const status = err.response?.status
       // 401 handled by auth interceptor — skip
       if (status === 401) return Promise.reject(err)
-      // Surface 422 and 5xx to the user via toast
-      if (status === 422 || (status >= 500 && status < 600)) {
+      // Surface 422, 429, and 5xx to the user via toast
+      if (status === 422 || status === 429 || (status >= 500 && status < 600)) {
         emitError(formatApiError(err))
       }
       return Promise.reject(err)

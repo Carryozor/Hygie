@@ -36,12 +36,16 @@ async def _seerr_pages(
             logger.warning("_seerr_pages: HTTP %s from %s (skip=%s)", r.status_code, url, skip)
             break
         data = r.json()
-        page = data.get("results", []) if isinstance(data, dict) else data
-        total = data.get("pageInfo", {}).get("results", len(page))
+        is_dict = isinstance(data, dict)
+        page = data.get("results", []) if is_dict else data
+        # Some Seerr/Jellyseerr variants (older or proxied) return a bare JSON
+        # array instead of {results, pageInfo} — there is no pageInfo to read
+        # in that case, so treat the page as the final one.
+        total = data.get("pageInfo", {}).get("results", len(page)) if is_dict else len(page)
         if not page:
             break
         yield page
-        if skip + 100 >= total:
+        if not is_dict or skip + 100 >= total:
             break
         skip += 100
 

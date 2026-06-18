@@ -4,6 +4,40 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.0.6] — 2026-06-18
+
+### Security
+
+- **MariaDB rate limiting no longer falls back to per-process memory** — in multi-worker deployments (the documented production topology), failed-login rate limiting silently used an in-memory counter per worker instead of the shared `rate_limit` table, multiplying the effective limit by the worker count and resetting it on every restart. Now backed by the database on MariaDB too, in its own module (`backend/_rate_limit_backend.py`) so the raw-driver `%s` placeholders stay out of the dialect-translated query layer.
+- **Image proxy: the DNS-rebinding check now re-runs on every redirect hop**, not just the initial request — a whitelisted host's DNS could be rebound between the first request and a followed redirect.
+- **Emby circuit breaker wiring completed** — `get_library_user_data` and `get_play_activity` (both scan-critical) now route through the same per-server circuit breaker as the rest of the Emby client, matching the documented architecture and avoiding unbounded retry storms when Emby is down mid-scan.
+- **REPLACE INTO replaced with INSERT ... ON DUPLICATE KEY UPDATE for MariaDB** — `REPLACE INTO` does DELETE+INSERT internally; under REPEATABLE-READ with multiple Uvicorn workers, concurrent transactions on the settings table caused `ER_READ_CHANGED_ROW` (error 1020). Also adds rollback in `get_db()` so failed MariaDB transactions are cleaned up before the connection returns to the pool.
+- **Frontend: access token moved out of localStorage** — it now lives in memory only (`api/tokenStore.js`) and is re-minted from the httpOnly refresh cookie on page load via a silent `/auth/refresh` call, closing the gap where any injected script could read it from localStorage.
+- **Frontend: dynamic `:href` bindings now validate the URL scheme** (`utils/safeUrl.js`) before rendering — Vue does not auto-escape `:href`, so an unsanitized `javascript:` URL in a Seerr request link or media-server URL would have executed in the authenticated origin.
+- **Legacy fallback UI (`frontend/static/js/libraries.js`)**: two library-name interpolations were unescaped (a `data-n` attribute and an `<option>` body) — a stored DOM-XSS path, now escaped consistently with the rest of the file.
+- **Dependency: `npm audit fix`** — patched the `form-data` CRLF-injection advisory pulled in transitively via axios.
+- **Dockerfile: dashboard icon downloads are now sha256-verified**, matching the integrity checking already in place for the bundled Font Awesome assets.
+
+### Fixed
+
+- **`CREATE INDEX IF NOT EXISTS` on MariaDB** — that syntax only exists on MariaDB ≥ 10.5 and is a hard syntax error on MySQL and older MariaDB, which could break schema init outright on those versions. Indexes are now created unconditionally with the "already exists" error tolerated in code, giving the same idempotency across every MariaDB/MySQL version.
+- **New indexes**: composite `media_queue(status, delete_at)` (the hottest query in the app) and `libraries(server_id)`.
+- **Seerr/Jellyseerr pagination** — `_seerr_pages` no longer raises `AttributeError` if a Seerr instance returns a bare JSON array instead of `{results, pageInfo}` (seen on some older/proxied variants); it now treats that page as the final one instead of aborting the whole request-cache build.
+- **Deletion stats for multi-Radarr/Sonarr setups** — `SizeLookupStep` queried only the legacy default server for file size, so it could silently report 0 (or the wrong movie/series) when `radarr_id`/`sonarr_series_id` belonged to a different configured server. New `radarr_get_any()` / `sonarr_get_series_by_id_any()` helpers check every configured server, the same way `radarr_get_torrent_hash_any()` already did.
+- **Deletion: exceptions escaping `asyncio.gather` are no longer dropped silently** — they're now logged and counted as errors instead of just being absent from the success count.
+- Minor robustness fixes: `overlay.py` used the deprecated `asyncio.get_event_loop()`; `collection.py` could raise on a malformed Emby `/Users` response; `services/arr_service.py` swallowed the masked-API-key lookup error with a bare `pass` instead of logging it; `db/repositories.py` no longer silently swallows a failed rollback in the batch-insert error path.
+
+### Frontend
+
+- Removed the "X au total" sub-label under the dashboard's "En attente" stat — it always echoed the same total as the pending count and added no information.
+- 429 (rate-limited) API responses are now surfaced to the user as a toast instead of failing silently.
+
+### Tests
+
+- Added a `_reset_circuit_breakers` autouse fixture (`tests/conftest.py`) — the circuit-breaker registry is process-global and wasn't reset between tests, so a breaker tripped OPEN by one test's failure simulation could leak into an unrelated later test sharing the same service name.
+
+---
+
 ## [4.0.5] — 2026-06-15
 
 ### Security

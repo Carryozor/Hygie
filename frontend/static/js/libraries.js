@@ -50,7 +50,7 @@ async function loadLibraries() {
           <button class="btn btn-ghost" style="padding:6px 10px" title="${l.enabled?t('Désactiver'):t('Activer')}" onclick="toggleLibrary('${l.id}',${!l.enabled})">
             <i class="fas fa-${l.enabled?'toggle-on':'toggle-off'}" style="color:${l.enabled?'#10b981':'#94a3b8'}"></i>
           </button>
-          <button class="btn btn-ghost" style="padding:6px 10px" title="${t('Scanner')}" onclick="triggerScanLibrary('${l.id}',this.dataset.n)" data-n="${l.name}"><i class="fas fa-magnifying-glass"></i></button>
+          <button class="btn btn-ghost" style="padding:6px 10px" title="${t('Scanner')}" onclick="triggerScanLibrary('${l.id}',this.dataset.n)" data-n="${escapeHtml(l.name)}"><i class="fas fa-magnifying-glass"></i></button>
           <button class="btn btn-ghost" style="padding:6px 10px" title="${t('Cloner')}" onclick="cloneLibrary('${l.id}')"><i class="fas fa-clone"></i></button>
           <button class="btn btn-ghost" style="padding:6px 10px" title="${t('Modifier')}" onclick="editLibrary('${l.id}')"><i class="fas fa-pen"></i></button>
           <button class="btn btn-ghost" style="padding:6px 10px;color:#ef4444" title="${t('Supprimer')}" onclick="deleteLibrary('${l.id}')"><i class="fas fa-trash"></i></button>
@@ -155,7 +155,7 @@ async function loadEmbyLibOptions(selected='') {
   sel.innerHTML=`<option value="">${t('Chargement...')}</option>`;
   try {
     const libs = await api('/api/libraries/emby');
-    sel.innerHTML = libs.map(l=>`<option value="${l.id}">${l.name}${l.type?' ('+l.type+')':''}</option>`).join('');
+    sel.innerHTML = libs.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}${l.type?' ('+escapeHtml(l.type)+')':''}</option>`).join('');
     if (selected) { sel.value=selected; if (!sel.value) { const o=document.createElement('option'); o.value=selected; o.textContent=`(ID: ${selected})`; o.selected=true; sel.prepend(o); } }
   } catch(e) { sel.innerHTML=`<option value="">${t('Erreur Emby')}</option>`; }
 }

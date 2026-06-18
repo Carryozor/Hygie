@@ -85,9 +85,19 @@ RUN mkdir -p /app/frontend/static/css /app/frontend/static/webfonts \
        done \
     && chown -R hygie:hygie /app/frontend/static/css /app/frontend/static/webfonts \
     && mkdir -p /app/frontend/static/img/icons \
-    && for icon in radarr sonarr overseerr jellyseerr qbittorrent discord emby jellyfin; do \
-         curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@2c58e2cdcaadde7a65ee0e4f066eef4c84e9811a/png/$icon.png" \
-           -o "/app/frontend/static/img/icons/$icon.png" || exit 1; \
+    && for icon in \
+         "radarr 2d1534f87513e2a7a3b699654dfed2ba70f6f65693ed4a015e497315135e2e67" \
+         "sonarr a6d3283d0232b5a0bd0572f3d26edcbe64d07d36f43c3fc28d4f0bc155eaf49a" \
+         "overseerr fe0ca048747082cb892b8a46d6ad605be10e09218a1ce2cc3cc65579123b1ebf" \
+         "jellyseerr d3e5e5058a3e5c924107691445d91d7a9d8a09cba7003deb87c3c08006738b07" \
+         "qbittorrent 3d03a2c91440a85ab6879207f90e17a8ff9c9580ae5a26ec3a64b2c2418f7019" \
+         "discord 13ae2215f810ed44c9689dad38d622e5555dbc25c4eb347f46ad1c8a3539574c" \
+         "emby 12c420023fd1f4e4738c4f43cb96b8bad0abb95f4b652261f5c8ec45006e71c2" \
+         "jellyfin 2e45c7bb04b1fdbc70737be1676c73bcfbe98dcd9f72dcd063196c7075c65b37"; do \
+         set -- $icon; \
+         curl -fsSL "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@2c58e2cdcaadde7a65ee0e4f066eef4c84e9811a/png/$1.png" \
+           -o "/app/frontend/static/img/icons/$1.png" \
+         && echo "$2  /app/frontend/static/img/icons/$1.png" | sha256sum -c - || exit 1; \
        done \
     && chown -R hygie:hygie /app/frontend/static/img/icons
 

@@ -84,5 +84,5 @@ def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr"
 
 async def _overlay_poster(image_bytes: bytes, days_left: int, ui_lang: str = "fr") -> Optional[bytes]:
     """Async wrapper — runs CPU-bound PIL work in a thread pool to avoid blocking the event loop."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _overlay_poster_sync, image_bytes, days_left, ui_lang)

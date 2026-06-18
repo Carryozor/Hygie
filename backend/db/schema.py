@@ -289,11 +289,13 @@ _SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts DESC)",
     "CREATE INDEX IF NOT EXISTS idx_media_status ON media_queue(status)",
     "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)",
+    "CREATE INDEX IF NOT EXISTS idx_media_status_delete ON media_queue(status, delete_at)",
     "CREATE INDEX IF NOT EXISTS idx_media_emby_id ON media_queue(emby_id)",
     "CREATE INDEX IF NOT EXISTS idx_media_library_id ON media_queue(library_id)",
     "CREATE INDEX IF NOT EXISTS idx_ignored_emby_id ON ignored_media(emby_id)",
     "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)",
     "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)",
+    "CREATE INDEX IF NOT EXISTS idx_libraries_server ON libraries(server_id)",
 ]
 
 _KNOWN_TABLES = frozenset({
@@ -443,6 +445,9 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)"
         )
         await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_status_delete ON media_queue(status, delete_at)"
+        )
+        await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_media_emby_id ON media_queue(emby_id)"
         )
         await db.execute(
@@ -456,6 +461,9 @@ async def _init_db_sqlite():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_libraries_server ON libraries(server_id)"
         )
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)
@@ -527,7 +535,15 @@ async def _init_db_mariadb() -> None:
         for _table_name, ddl in MARIADB_TABLES:
             await db.execute(ddl)
         for idx_sql in MARIADB_INDEXES:
-            await db.execute(idx_sql)
+            try:
+                await db.execute(idx_sql)
+            except Exception as e:
+                # MariaDB/MySQL have no `CREATE INDEX IF NOT EXISTS` — error 1061
+                # ("Duplicate key name") means the index already exists from a
+                # previous startup, which is the idempotency we want. Anything
+                # else (bad column, bad syntax) must still surface.
+                if "1061" not in str(e) and "duplicate key name" not in str(e).lower():
+                    raise
         for k, v in DEFAULT_SETTINGS.items():
             existing = await db.fetch_one("SELECT 1 FROM settings WHERE `key`=?", (k,))
             if not existing:

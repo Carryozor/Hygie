@@ -33,8 +33,8 @@ async def test_arr_instance(type_: str, url: str, api_key: str) -> dict:
                 if s.get("url", "").rstrip("/") == url:
                     key = s.get("api_key", "")
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("arr_service: could not resolve masked API key for %s: %s", url, e)
 
     if not url or not key:
         return {"ok": False, "message": "URL et clé API requis"}

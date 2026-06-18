@@ -1,12 +1,13 @@
 // frontend/vue/src/api/client.js
 import axios from 'axios'
 import { installErrorInterceptor } from './errorHandler'
+import { getToken, setToken, clearToken } from './tokenStore'
 
 const api = axios.create({ baseURL: '/api' })
 
 // ── Request — inject access token ─────────────────────────────────────────────
 api.interceptors.request.use(cfg => {
-  const token = localStorage.getItem('hygie_token')
+  const token = getToken()
   if (token) cfg.headers.Authorization = `Bearer ${token}`
   return cfg
 })
@@ -64,7 +65,7 @@ api.interceptors.response.use(
           refresh_token: localStorage.getItem('hygie_refresh_token') || '',
         })
         const newToken = data.access_token || data.token
-        localStorage.setItem('hygie_token', newToken)
+        setToken(newToken)
         localStorage.removeItem('hygie_refresh_token')
         api.defaults.headers.common.Authorization = `Bearer ${newToken}`
         _processQueue(null, newToken)
@@ -72,7 +73,7 @@ api.interceptors.response.use(
         return api(originalReq)
       } catch (refreshErr) {
         _processQueue(refreshErr)
-        localStorage.removeItem('hygie_token')
+        clearToken()
         localStorage.removeItem('hygie_refresh_token')
         window.dispatchEvent(new Event('hygie:unauthorized'))
         return Promise.reject(refreshErr)

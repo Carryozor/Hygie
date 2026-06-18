@@ -97,8 +97,8 @@ async def insert_queue_entries_batch(entries: list) -> None:
         except Exception:
             try:
                 await db.execute("ROLLBACK")
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.warning("insert_queue_entries_batch: rollback failed: %s", rollback_err)
             raise
 
 

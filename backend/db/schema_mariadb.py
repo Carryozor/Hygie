@@ -215,14 +215,21 @@ MARIADB_TABLES: list[tuple[str, str]] = [
     ),
 ]
 
+#  `CREATE INDEX IF NOT EXISTS` is only valid on MariaDB >= 10.5 and is a hard
+#  syntax error on MySQL and on older MariaDB — every entry below omits it.
+#  _init_db_mariadb() (schema.py) executes each statement inside a try/except
+#  that tolerates the "duplicate key name" error (1061) on subsequent startups,
+#  which gives the same idempotency `IF NOT EXISTS` would have provided.
 MARIADB_INDEXES: list[str] = [
-    "CREATE INDEX IF NOT EXISTS idx_rt_user ON refresh_tokens(user_id)",
-    "CREATE INDEX IF NOT EXISTS idx_logs_ts        ON logs(ts)",
-    "CREATE INDEX IF NOT EXISTS idx_media_status   ON media_queue(status)",
-    "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)",
-    "CREATE INDEX IF NOT EXISTS idx_media_emby_id  ON media_queue(emby_id)",
-    "CREATE INDEX IF NOT EXISTS idx_media_lib_id   ON media_queue(library_id)",
-    "CREATE INDEX IF NOT EXISTS idx_ignored_emby   ON ignored_media(emby_id)",
-    "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(`key`, ts)",
-    "CREATE INDEX IF NOT EXISTS idx_notif_media    ON notifications(media_id)",
+    "CREATE INDEX idx_rt_user ON refresh_tokens(user_id)",
+    "CREATE INDEX idx_logs_ts        ON logs(ts)",
+    "CREATE INDEX idx_media_status   ON media_queue(status)",
+    "CREATE INDEX idx_media_delete_at ON media_queue(delete_at)",
+    "CREATE INDEX idx_media_status_delete ON media_queue(status, delete_at)",
+    "CREATE INDEX idx_media_emby_id  ON media_queue(emby_id)",
+    "CREATE INDEX idx_media_lib_id   ON media_queue(library_id)",
+    "CREATE INDEX idx_ignored_emby   ON ignored_media(emby_id)",
+    "CREATE INDEX idx_rate_limit_key ON rate_limit(`key`, ts)",
+    "CREATE INDEX idx_notif_media    ON notifications(media_id)",
+    "CREATE INDEX idx_libraries_server ON libraries(server_id)",
 ]

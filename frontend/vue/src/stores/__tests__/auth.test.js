@@ -7,35 +7,40 @@ vi.mock('@/api/client', () => ({
 }))
 
 import api from '@/api/client'
+import { getToken, setToken, clearToken } from '@/api/tokenStore'
 import { useAuthStore } from '../auth'
 
 describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    clearToken()
     vi.clearAllMocks()
   })
-  afterEach(() => { localStorage.clear() })
+  afterEach(() => { localStorage.clear(); clearToken() })
 
   it('isLoggedIn false when no token', () => {
     expect(useAuthStore().isLoggedIn).toBe(false)
   })
 
-  it('isLoggedIn true when token in localStorage', () => {
-    localStorage.setItem('hygie_token', 'tok')
+  it('isLoggedIn true when a token is already set in memory', () => {
+    // The access token lives in tokenStore.js (in-memory), not localStorage —
+    // see api/tokenStore.js for why (XSS can read localStorage, not module state).
+    setToken('tok')
     expect(useAuthStore().isLoggedIn).toBe(true)
   })
 
-  it('login stores access_token but never persists the refresh token', async () => {
-    // The refresh token lives in an httpOnly cookie — localStorage would
-    // expose it to any XSS.
+  it('login stores access_token in memory only — never in localStorage', async () => {
+    // The refresh token lives in an httpOnly cookie, and the access token
+    // lives only in memory — localStorage would expose either to any XSS.
     api.post.mockResolvedValueOnce({
       data: { access_token: 'acc', refresh_token: 'ref', username: 'admin' },
     })
     const store = useAuthStore()
     await store.login('admin', 'pass')
     expect(store.token).toBe('acc')
-    expect(localStorage.getItem('hygie_token')).toBe('acc')
+    expect(getToken()).toBe('acc')
+    expect(localStorage.getItem('hygie_token')).toBeNull()
     expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 
@@ -48,12 +53,12 @@ describe('useAuthStore', () => {
 
   it('logout clears tokens', async () => {
     api.post.mockResolvedValue({ data: { status: 'ok' } })
-    localStorage.setItem('hygie_token', 'tok')
+    setToken('tok')
     localStorage.setItem('hygie_refresh_token', 'ref')
     const store = useAuthStore()
     await store.logout()
     expect(store.token).toBe('')
-    expect(localStorage.getItem('hygie_token')).toBeNull()
+    expect(getToken()).toBe('')
     expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 

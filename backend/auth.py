@@ -283,8 +283,10 @@ def _memory_rate_limit(key: str, now: float, cutoff: float) -> bool:
 def rate_limit(key: str) -> bool:
     """Returns True if the key has exceeded the limit. Records this attempt.
 
-    Persists attempts to SQLite so the window survives container restarts.
-    Falls back to in-memory for :memory: databases (test environment).
+    Persists attempts to SQLite or MariaDB (shared across multi-worker
+    deployments) so the window survives container restarts and is not
+    multiplied by worker count. Falls back to in-memory for :memory:
+    databases (test environment) or on a DB error.
     """
     now = time.time()
     cutoff = now - RATE_LIMIT_WINDOW
@@ -292,11 +294,14 @@ def rate_limit(key: str) -> bool:
     if DB_PATH == ":memory:":
         return _memory_rate_limit(key, now, cutoff)
 
-    # rate_limit uses synchronous sqlite3 — skip SQLite file I/O on MariaDB
-    # to avoid creating a spurious hygie.db file in a MariaDB-only deployment.
     from .db.engine import DIALECT
-    if DIALECT != "sqlite":
-        return _memory_rate_limit(key, now, cutoff)
+    if DIALECT == "mariadb":
+        try:
+            from ._rate_limit_backend import mariadb_rate_limit
+            return mariadb_rate_limit(key, now, cutoff, RATE_LIMIT_MAX)
+        except Exception as e:
+            logger.warning(f"rate_limit MariaDB error, falling back to in-memory: {e}")
+            return _memory_rate_limit(key, now, cutoff)
 
     try:
         with _sqlite3.connect(DB_PATH, timeout=5) as conn:

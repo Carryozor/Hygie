@@ -125,6 +125,17 @@ async def run_deletion() -> None:
                     *[_delete_one(r) for r in to_delete], return_exceptions=True
                 )
                 deleted_count = sum(1 for r in results if r is True)
+                # _delete_one() catches its own per-item errors and returns False/None —
+                # an Exception surfacing here means something escaped that handling
+                # (e.g. a DB error in _claim_pending). Log it instead of dropping it
+                # silently, so a systemic bug doesn't just look like "0 deleted".
+                for r, item in zip(results, to_delete):
+                    if isinstance(r, Exception):
+                        logger.error(
+                            "Deletion: unhandled exception for '%s': %s",
+                            item.get("title", item.get("id")), r,
+                        )
+                        _counters["errors"] += 1
 
                 _error_count = _counters["errors"]
                 if _error_count >= _alert_threshold > 0:

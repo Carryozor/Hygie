@@ -300,33 +300,43 @@ async def get_library_user_data(user_id: str, library_id: str, server_id: str = 
     result: dict = {}
     start_index = 0
     page_size = 500
+    breaker = _emby_breaker(server_id)
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            while True:
-                params = {
-                    "ParentId": library_id,
-                    "Fields": "UserData",
-                    "Recursive": "true",
-                    "StartIndex": start_index,
-                    "Limit": page_size,
-                    "IncludeItemTypes": "Movie,Episode",
-                }
-                r = await http_retry(
-                    lambda: client.get(f"{url}/Users/{user_id}/Items", headers=_auth(key), params=params)
+    async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+        while True:
+            params = {
+                "ParentId": library_id,
+                "Fields": "UserData",
+                "Recursive": "true",
+                "StartIndex": start_index,
+                "Limit": page_size,
+                "IncludeItemTypes": "Movie,Episode",
+            }
+            try:
+                r = await breaker.call(
+                    lambda p=params: http_retry(
+                        lambda: client.get(f"{url}/Users/{user_id}/Items", headers=_auth(key), params=p)
+                    )
                 )
                 if r.status_code != 200:
                     break
                 body = r.json()
-                items = body.get("Items", [])
-                for item in items:
-                    result[item["Id"]] = item.get("UserData") or {}
-                total = body.get("TotalRecordCount", 0)
-                start_index += len(items)
-                if not items or start_index >= total:
-                    break
-    except Exception as e:
-        logger.warning(f"get_library_user_data error: {e}")
+            except CircuitOpenError:
+                logger.warning(
+                    "Circuit breaker OPEN for emby:%s — get_library_user_data skipped (lib=%s)",
+                    server_id, library_id,
+                )
+                break
+            except Exception as e:
+                logger.warning(f"get_library_user_data error: {e}")
+                break
+            items = body.get("Items", [])
+            for item in items:
+                result[item["Id"]] = item.get("UserData") or {}
+            total = body.get("TotalRecordCount", 0)
+            start_index += len(items)
+            if not items or start_index >= total:
+                break
     return result
 
 
@@ -369,40 +379,44 @@ async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
     result: dict = {}   # {item_id: most_recent_stop_date_iso}
     start  = 0
     limit  = 500
+    breaker = _emby_breaker(server_id)
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
-            while True:
-                r = await client.get(
-                    f"{url}/System/ActivityLog/Entries",
-                    headers=_auth(key),
-                    params={
-                        "minDate":    min_date,
-                        "hasUserId":  "true",
-                        "limit":      limit,
-                        "startIndex": start,
-                    },
+    async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+        while True:
+            params = {
+                "minDate":    min_date,
+                "hasUserId":  "true",
+                "limit":      limit,
+                "startIndex": start,
+            }
+            try:
+                r = await breaker.call(
+                    lambda p=params: client.get(f"{url}/System/ActivityLog/Entries", headers=_auth(key), params=p)
                 )
                 if r.status_code != 200:
                     break
-                body  = r.json()
-                items = body.get("Items", [])
-                for entry in items:
-                    if entry.get("Type") not in ("playback.stop",):
-                        continue
-                    item_id = str(entry.get("ItemId") or "")
-                    date    = entry.get("Date") or ""
-                    if not item_id or not date:
-                        continue
-                    # Keep the most recent stop date across ALL users for this item
-                    if item_id not in result or date > result[item_id]:
-                        result[item_id] = date
-                total = body.get("TotalRecordCount", 0)
-                start += len(items)
-                if not items or start >= total:
-                    break
-    except Exception as e:
-        logger.warning("get_play_activity error: %s", e)
+                body = r.json()
+            except CircuitOpenError:
+                logger.warning("Circuit breaker OPEN for emby:%s — get_play_activity skipped", server_id)
+                break
+            except Exception as e:
+                logger.warning("get_play_activity error: %s", e)
+                break
+            items = body.get("Items", [])
+            for entry in items:
+                if entry.get("Type") not in ("playback.stop",):
+                    continue
+                item_id = str(entry.get("ItemId") or "")
+                date    = entry.get("Date") or ""
+                if not item_id or not date:
+                    continue
+                # Keep the most recent stop date across ALL users for this item
+                if item_id not in result or date > result[item_id]:
+                    result[item_id] = date
+            total = body.get("TotalRecordCount", 0)
+            start += len(items)
+            if not items or start >= total:
+                break
 
     return result
 

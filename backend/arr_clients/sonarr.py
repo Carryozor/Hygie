@@ -259,8 +259,39 @@ async def sonarr_delete_episode_file(episode_file_id: int, url: str = "", key: s
         return False
 
 
+async def _sonarr_unmonitor_episodes(c: httpx.AsyncClient, url: str, key: str, episode_ids: list[int]) -> None:
+    """Bulk-unmonitor a set of episodes — best-effort, never raises.
+
+    Called after files have already been wiped so Sonarr stops treating them
+    as "missing" and re-grabbing them on its next RSS sync / automatic search.
+    """
+    if not episode_ids:
+        return
+    try:
+        await c.request(
+            "PUT",
+            f"{url}/api/v3/episode/monitor",
+            headers=_arr_auth(key),
+            json={"episodeIds": episode_ids, "monitored": False},
+        )
+    except Exception as e:
+        logger.warning(f"_sonarr_unmonitor_episodes: {e}")
+
+
+async def _episode_ids_for_files(
+    c: httpx.AsyncClient, url: str, key: str, series_id: int, ef_ids: set[int]
+) -> list[int]:
+    """Map episode file IDs to the episode IDs that reference them."""
+    re_ = await c.get(
+        f"{url}/api/v3/episode", headers=_arr_auth(key), params={"seriesId": series_id}
+    )
+    if re_.status_code != 200:
+        return []
+    return [ep["id"] for ep in re_.json() if ep.get("episodeFileId") in ef_ids]
+
+
 async def sonarr_delete_season(series_id: int, season_number: int, url: str = "", key: str = "") -> bool:
-    """Delete all episode files for a given season."""
+    """Delete all episode files for a given season, then unmonitor those episodes."""
     if not url or not key:
         url, key = await _sonarr_config()
     if not url or not key:
@@ -284,7 +315,11 @@ async def sonarr_delete_season(series_id: int, season_number: int, url: str = ""
                     headers=_arr_auth(key),
                     json={"episodeFileIds": ef_ids},
                 )
-                return dr.status_code in (200, 204)
+                ok = dr.status_code in (200, 204)
+                if ok:
+                    episode_ids = await _episode_ids_for_files(c, url, key, series_id, set(ef_ids))
+                    await _sonarr_unmonitor_episodes(c, url, key, episode_ids)
+                return ok
         return await with_retry(_do, label=f"sonarr.delete_season[{series_id}:{season_number}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_season: {e}")
@@ -292,7 +327,13 @@ async def sonarr_delete_season(series_id: int, season_number: int, url: str = ""
 
 
 async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> bool:
-    """Delete an entire series from Sonarr (keeps the series entry, deletes all files)."""
+    """Delete all files of an entire series, then unmonitor the series.
+
+    Keeps the series entry itself (matching Hygie's per-episode behavior of
+    never touching arr bookkeeping beyond what's needed), but disables
+    monitoring — otherwise Sonarr keeps treating the wiped episodes as
+    "missing" and can re-grab them on its next RSS sync.
+    """
     if not url or not key:
         url, key = await _sonarr_config()
     if not url or not key:
@@ -317,7 +358,19 @@ async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> 
                     headers=_arr_auth(key),
                     json={"episodeFileIds": ef_ids},
                 )
-                return dr.status_code in (200, 204)
+                ok = dr.status_code in (200, 204)
+                if ok:
+                    rs = await c.get(f"{url}/api/v3/series/{series_id}", headers=_arr_auth(key))
+                    if rs.status_code == 200:
+                        series = rs.json()
+                        series["monitored"] = False
+                        await c.request(
+                            "PUT",
+                            f"{url}/api/v3/series/{series_id}",
+                            headers=_arr_auth(key),
+                            json=series,
+                        )
+                return ok
         return await with_retry(_do, label=f"sonarr.delete_series[{series_id}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_series: {e}")
@@ -355,3 +408,61 @@ async def sonarr_get_torrent_hash(episode_file_id: int, url: str = "", key: str 
     except Exception as e:
         logger.warning(f"sonarr_get_torrent_hash: {e}")
     return None
+
+
+async def sonarr_get_torrent_hashes_for_group(
+    series_id: int, season_number: Optional[int] = None, url: str = "", key: str = ""
+) -> set[str]:
+    """Resolve every distinct qBittorrent hash backing a season's or series'
+    episode files, by matching history records to the actual episodes involved.
+
+    Replaces the old single-hash sonarr_get_torrent_hash() for consolidated
+    deletes: that function returned the first downloadId found anywhere in the
+    series' history regardless of which episode it belonged to, so a
+    season/series delete could resolve (and "delete") a torrent unrelated to
+    any of the files actually being removed — while the real torrent(s)
+    backing those files were silently left untouched (qBittorrent's delete
+    endpoint returns 200 even for a hash that matches no torrent).
+
+    Must run BEFORE the bulk episodefile delete — Sonarr's episode/history
+    records are looked up by the (still-existing) episode file IDs.
+    """
+    if not url or not key:
+        url, key = await _sonarr_config()
+    if not url or not key or not series_id:
+        return set()
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            rf = await c.get(
+                f"{url}/api/v3/episodefile", headers=_arr_auth(key), params={"seriesId": series_id}
+            )
+            if rf.status_code != 200:
+                return set()
+            ef_list = rf.json()
+            if season_number is not None:
+                ef_list = [ef for ef in ef_list if ef.get("seasonNumber") == season_number]
+            ef_ids = {ef["id"] for ef in ef_list}
+            if not ef_ids:
+                return set()
+
+            episode_ids = set(await _episode_ids_for_files(c, url, key, series_id, ef_ids))
+            if not episode_ids:
+                return set()
+
+            rh = await c.get(
+                f"{url}/api/v3/history/series", headers=_arr_auth(key), params={"seriesId": series_id}
+            )
+            if rh.status_code != 200:
+                return set()
+            records = rh.json() if isinstance(rh.json(), list) else rh.json().get("records", [])
+            hashes: set[str] = set()
+            for rec in records:
+                if rec.get("episodeId") not in episode_ids:
+                    continue
+                dl_id = (rec.get("downloadId") or "").lower()
+                if dl_id and len(dl_id) >= 32:
+                    hashes.add(dl_id)
+            return hashes
+    except Exception as e:
+        logger.warning(f"sonarr_get_torrent_hashes_for_group: {e}")
+        return set()

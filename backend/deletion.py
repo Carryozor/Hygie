@@ -214,6 +214,35 @@ async def _find_torrent_hash(row: dict) -> Optional[str]:
     return None
 
 
+async def _find_torrent_hashes_consolidated(row: dict) -> set:
+    """Resolve every distinct torrent hash backing a consolidated season/series entry.
+
+    Must run BEFORE the bulk Sonarr file delete — the lookup matches history
+    records to the (still-existing) episode file records.
+    """
+    if not _is_consolidated_row(row):
+        return set()
+    from .arr_clients import sonarr_get_torrent_hashes_for_group
+    return await sonarr_get_torrent_hashes_for_group(
+        int(row["sonarr_series_id"]), season_number=row.get("season_number")
+    )
+
+
+def _is_consolidated_row(row: dict) -> bool:
+    """True for the consolidated season/series queue rows produced by
+    deletion_unit=season|series — one row stands in for a whole group of
+    episodes and carries sonarr_series_id but no per-item sonarr_id.
+
+    A normal per-episode row (deletion_unit=episode) carries sonarr_id (its
+    own episodeFile id) *and* sonarr_series_id/season_number — the scanner
+    sets all three together for every regular episode — so sonarr_series_id
+    alone is not a safe discriminator; without the sonarr_id check, a single
+    episode's delete was previously misrouted into sonarr_delete_season(),
+    wiping every file in that whole season instead of just the one due.
+    """
+    return bool(row.get("sonarr_series_id")) and not row.get("sonarr_id")
+
+
 async def _delete_from_arr(row: dict) -> None:
     """Remove media from Radarr or Sonarr."""
     file_path = row.get("file_path", "")
@@ -221,6 +250,7 @@ async def _delete_from_arr(row: dict) -> None:
     title = row.get("title", "?")
     sonarr_series_id = row.get("sonarr_series_id")
     season_number = row.get("season_number")
+    consolidated = _is_consolidated_row(row)
 
     if media_type == "Movie":
         rid_stored = row.get("radarr_id")
@@ -233,11 +263,11 @@ async def _delete_from_arr(row: dict) -> None:
                 rid, r_url, r_key = found
                 await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
                 await add_log("DEBUG", lm("radarr.removed", title=title), "deletion")
-    elif sonarr_series_id and season_number is not None:
+    elif consolidated and season_number is not None:
         # Season-level consolidated entry — try all servers if no cache info
         ok = await sonarr_delete_season(int(sonarr_series_id), int(season_number))
         await add_log("DEBUG" if ok else "WARN", lm("sonarr.season_ok" if ok else "sonarr.season_err", title=title, n=season_number), "deletion")
-    elif sonarr_series_id:
+    elif consolidated:
         # Series-level consolidated entry
         ok = await sonarr_delete_series(int(sonarr_series_id))
         await add_log("DEBUG" if ok else "WARN", lm("sonarr.series_ok" if ok else "sonarr.series_err", title=title), "deletion")

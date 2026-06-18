@@ -4,6 +4,22 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.1.0] — 2026-06-18
+
+### Fixed
+
+- **Consolidated season/series deletion left qBittorrent, Sonarr monitoring, and Emby out of sync with what was actually deleted.** When `deletion_unit` is `season` or `series`, Hygie collapses every eligible episode into a single queue entry and bulk-deletes the files via Sonarr — but three separate bugs meant the rest of the stack never caught up:
+  - `sonarr_get_torrent_hash()` resolved a qBittorrent hash by grabbing the *first* `downloadId` found anywhere in the series' Sonarr history, regardless of which episode it belonged to. For a season/series spanning more than one download (season packs, per-episode grabs, replaced releases), this could "delete" a torrent unrelated to any of the files actually removed — qBittorrent's delete endpoint returns 200 even for a hash matching no torrent, so Hygie logged success while the real torrent(s) sat untouched on disk. Replaced with `sonarr_get_torrent_hashes_for_group()`, which maps episodeFile → episode → history correctly and returns every distinct hash actually backing the group; `QbitStep` now acts on all of them.
+  - `sonarr_delete_series()` / `sonarr_delete_season()` wiped the episode files but left the series/episodes `monitored=true` in Sonarr, so Sonarr could re-grab the now-"missing" episodes on its next RSS sync — silently undoing the deletion. Both now unmonitor after a successful file wipe (series: full series object PUT; season: bulk `episode/monitor` PUT for just that season).
+  - `MediaServerStep` skipped Emby entirely for consolidated entries ("synthetic entries have no media server file" — false for a real series), leaving stale library entries behind. It now resolves the real Series/Season item by its on-disk path (`emby_client.find_item_by_path()`, exact-path-verified) and deletes it.
+- **`_delete_from_arr()` could misroute a single per-episode deletion into a whole-season wipe.** A normal `deletion_unit=episode` row carries `sonarr_id` (its own episode file id) *and* `sonarr_series_id`/`season_number` — the scanner sets all three together for every regular episode — so the season/series branches (keyed only on `sonarr_series_id`/`season_number`) could fire for a single-episode delete and call `sonarr_delete_season()`, removing every file in that entire season. Found via code review while fixing the above; the dispatcher now requires `sonarr_id` to be absent before treating a row as consolidated.
+
+### Tests
+
+- New regression coverage: `tests/test_sonarr_consolidated_deletion.py`, `tests/test_deletion_pipeline_consolidated.py`, `tests/test_delete_from_arr_dispatch.py`, plus `find_item_by_path()` cases in `tests/test_emby_client.py`.
+
+---
+
 ## [4.0.6] — 2026-06-18
 
 ### Security

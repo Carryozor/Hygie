@@ -128,6 +128,58 @@ async def test_delete_item_uses_header(httpx_mock: HTTPXMock):
     assert httpx_mock.get_requests()[0].method == "DELETE"
 
 
+# ─── find_item_by_path ────────────────────────────────────────────────────────
+# Regression coverage: consolidated season/series deletions used to skip Emby
+# entirely (the synthetic "sonarr-{id}" emby_id was assumed to have "no media
+# server file"), leaving stale library entries after the files were wiped via
+# Sonarr. find_item_by_path() lets the deletion pipeline resolve the real
+# Emby item for a series/season by its on-disk path instead.
+
+async def test_find_item_by_path_returns_matching_item(httpx_mock: HTTPXMock):
+    import httpx
+    series_path = "/data/media/series/Lupin (2021) [tvdb-375921]"
+    expected_url = httpx.URL(
+        f"{FAKE_URL}/Items",
+        params={"Recursive": "true", "Path": series_path, "IncludeItemTypes": "Series", "Fields": "Path"},
+    )
+    httpx_mock.add_response(
+        url=expected_url,
+        json={"Items": [{"Id": "emby-series-99", "Path": series_path, "Type": "Series"}]},
+    )
+    from backend.emby_client import find_item_by_path
+    item = await find_item_by_path(series_path, include_types="Series", server_id="0")
+
+    assert item is not None
+    assert item["Id"] == "emby-series-99"
+    _assert_uses_header_not_query(httpx_mock)
+
+
+async def test_find_item_by_path_rejects_a_loose_server_side_match(httpx_mock: HTTPXMock):
+    """Defense in depth: even if the server's Path filter is a loose/prefix
+    match rather than exact, we must not delete on an unverified result."""
+    series_path = "/data/media/series/Lupin (2021) [tvdb-375921]"
+    httpx_mock.add_response(
+        json={"Items": [{"Id": "emby-wrong-item", "Path": "/data/media/series/Lupin Other Show", "Type": "Series"}]},
+    )
+    from backend.emby_client import find_item_by_path
+    item = await find_item_by_path(series_path, include_types="Series", server_id="0")
+    assert item is None
+
+
+async def test_find_item_by_path_returns_none_when_no_match(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json={"Items": []})
+    from backend.emby_client import find_item_by_path
+    item = await find_item_by_path("/data/media/series/Unknown", include_types="Series", server_id="0")
+    assert item is None
+
+
+async def test_find_item_by_path_returns_none_on_http_error(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(status_code=500)
+    from backend.emby_client import find_item_by_path
+    item = await find_item_by_path("/data/media/series/Lupin", include_types="Series", server_id="0")
+    assert item is None
+
+
 # ─── get_items_in_library ────────────────────────────────────────────────────
 
 async def test_get_items_in_library_uses_header(httpx_mock: HTTPXMock):

@@ -37,9 +37,14 @@ class DeletionContext:
     qbit_tag:    str  = "Supprimé-Hygie"
 
     # Populated by pipeline steps
-    server:       Optional[dict] = field(default=None, repr=False)
-    torrent_hash: Optional[str]  = None
-    size_bytes:   int            = 0
+    server:         Optional[dict] = field(default=None, repr=False)
+    torrent_hash:   Optional[str]  = None
+    # Consolidated season/series deletes can span more than one download
+    # (season packs, per-episode grabs, replaced releases) — torrent_hashes
+    # holds every distinct hash found for the group, torrent_hash stays the
+    # single-item (Movie / per-episode) path.
+    torrent_hashes: set            = field(default_factory=set)
+    size_bytes:     int            = 0
 
     # Tracks soft step failures — steps that failed but didn't abort the pipeline.
     # Populated by steps that catch their own exceptions (SizeLookup, TorrentHash, etc.).
@@ -74,6 +79,14 @@ class DeletionContext:
     @property
     def log_prefix(self) -> str:
         return self.job_tag + self.dry_prefix
+
+    @property
+    def is_consolidated(self) -> bool:
+        """True for the consolidated season/series queue entries produced by
+        deletion_unit=season|series — one row stands in for a whole group of
+        episodes and carries sonarr_series_id but no per-item sonarr_id."""
+        from .deletion import _is_consolidated_row
+        return _is_consolidated_row(self.item)
 
 
 # ── Step base ─────────────────────────────────────────────────────────────────
@@ -114,14 +127,23 @@ class SizeLookupStep(DeletionStep):
 
 
 class TorrentHashStep(DeletionStep):
-    """Find torrent hash BEFORE removing from arr — history disappears after deletion."""
+    """Find torrent hash(es) BEFORE removing from arr — history disappears after deletion.
+
+    Consolidated season/series entries can be backed by more than one
+    download (season packs, per-episode grabs, replaced releases), so they
+    resolve a *set* of hashes instead of the single-item hash.
+    """
 
     async def execute(self, ctx: DeletionContext) -> None:
         if ctx.dry_run:
             return
         try:
-            from .deletion import _find_torrent_hash
-            ctx.torrent_hash = await _find_torrent_hash(ctx.item)
+            if ctx.is_consolidated:
+                from .deletion import _find_torrent_hashes_consolidated
+                ctx.torrent_hashes = await _find_torrent_hashes_consolidated(ctx.item)
+            else:
+                from .deletion import _find_torrent_hash
+                ctx.torrent_hash = await _find_torrent_hash(ctx.item)
         except Exception as e:
             logger.info("TorrentHashStep: hash unavailable for '%s' (qBit step will be skipped): %s", ctx.title, e)
             ctx.step_warnings.append(f"TorrentHash: {e}")
@@ -183,8 +205,10 @@ class MediaServerStep(DeletionStep):
         if ctx.dry_run:
             return
         emby_id = ctx.emby_id
-        # Synthetic consolidated entries (sonarr-{id}) have no media server file
-        if not emby_id or emby_id.startswith("sonarr-"):
+        if not emby_id:
+            return
+        if emby_id.startswith("sonarr-"):
+            await self._delete_consolidated(ctx)
             return
 
         from .media_server_factory import delete_server_item, get_server_item_id
@@ -199,6 +223,47 @@ class MediaServerStep(DeletionStep):
             await add_log("DEBUG", lm("plex.deleted", key=item_id), "deletion")
         else:
             await add_log("DEBUG", lm("emby.hardlink", title=ctx.title), "deletion")
+
+    async def _delete_consolidated(self, ctx: DeletionContext) -> None:
+        """Consolidated season/series entries carry no per-item Emby ID — resolve
+        the matching Series/Season library item by its on-disk path instead.
+
+        The path comes from Sonarr (authoritative), not from this row's stored
+        file_path alone, since the anchor episode's path is only reliable for
+        locating the season subfolder, not the series root.
+        """
+        import os
+
+        from .arr_clients import sonarr_get_series_by_id_any
+        from .emby_client import delete_item as emby_delete_item, find_item_by_path
+        from .db.logs import add_log
+        from .logmsg import lm
+
+        series_id = ctx.item.get("sonarr_series_id")
+        if not series_id:
+            return
+        series = await sonarr_get_series_by_id_any(int(series_id))
+        series_path = (series or {}).get("path") or ""
+        if not series_path:
+            return
+
+        season_number = ctx.item.get("season_number")
+        if season_number is not None:
+            season_path = os.path.dirname(ctx.item.get("file_path") or "")
+            target = await find_item_by_path(season_path, include_types="Season", server_id=ctx.server_id) if season_path else None
+        else:
+            target = await find_item_by_path(series_path, include_types="Series", server_id=ctx.server_id)
+
+        if not target:
+            await add_log("DEBUG", lm("emby.consolidated_not_found", title=ctx.title), "deletion")
+            return
+
+        ok = await emby_delete_item(str(target.get("Id")), server_id=ctx.server_id)
+        await add_log(
+            "DEBUG" if ok else "WARN",
+            lm("emby.consolidated_ok" if ok else "emby.consolidated_err", title=ctx.title),
+            "deletion",
+        )
 
 
 class ArrStep(DeletionStep):
@@ -222,7 +287,11 @@ class SeerrStep(DeletionStep):
 
 
 class QbitStep(DeletionStep):
-    """Tag or delete the torrent in qBittorrent based on configured action."""
+    """Tag or delete the torrent(s) in qBittorrent based on configured action.
+
+    Consolidated entries hand over a set of hashes (ctx.torrent_hashes) — every
+    one of them gets tagged/deleted, not just the first.
+    """
 
     async def execute(self, ctx: DeletionContext) -> None:
         if ctx.dry_run:
@@ -231,7 +300,10 @@ class QbitStep(DeletionStep):
         from .logmsg import lm
         from .deletion import _handle_qbit
 
-        if ctx.torrent_hash:
+        if ctx.torrent_hashes:
+            for torrent_hash in ctx.torrent_hashes:
+                await _handle_qbit(torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag)
+        elif ctx.torrent_hash:
             await _handle_qbit(ctx.torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag)
         else:
             await add_log(

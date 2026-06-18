@@ -421,6 +421,48 @@ async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
     return result
 
 
+async def find_item_by_path(path: str, include_types: str = "Series,Season", server_id: str = "0") -> Optional[dict]:
+    """Find a library item (Series or Season by default) by its exact on-disk path.
+
+    Used for consolidated season/series deletions, which have no per-item
+    Emby ID stored — the deletion pipeline knows the path (from Sonarr) but
+    not which Emby item it corresponds to.
+    """
+    if not path:
+        return None
+    url, key = await get_client(server_id)
+    if not url or not key:
+        return None
+    breaker = _emby_breaker(server_id)
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as client:
+            r = await breaker.call(
+                lambda: http_retry(lambda: client.get(
+                    f"{url}/Items",
+                    headers=_auth(key),
+                    params={
+                        "Recursive": "true",
+                        "Path": path,
+                        "IncludeItemTypes": include_types,
+                        "Fields": "Path",
+                    },
+                ))
+            )
+            if r.status_code == 200:
+                wanted = path.rstrip("/")
+                for item in r.json().get("Items", []):
+                    # The Path filter's exactness isn't guaranteed across every
+                    # Emby/Jellyfin version — confirm the match ourselves before
+                    # handing back an item that gets deleted by the caller.
+                    if (item.get("Path") or "").rstrip("/") == wanted:
+                        return item
+    except CircuitOpenError:
+        logger.warning("Circuit breaker OPEN for emby:%s — find_item_by_path skipped", server_id)
+    except Exception as e:
+        logger.warning(f"find_item_by_path error: {e}")
+    return None
+
+
 async def delete_item(item_id: str, server_id: str = "0") -> bool:
     """Delete an item from the media server. Removes the hardlink but not the physical file."""
     url, key = await get_client(server_id)

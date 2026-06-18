@@ -28,6 +28,7 @@ from .sonarr import (
     sonarr_get_series_by_id,
     sonarr_get_series_by_id_any,
     sonarr_get_torrent_hash,
+    sonarr_get_torrent_hashes_for_group,
     test_sonarr,
 )
 from .seerr import (

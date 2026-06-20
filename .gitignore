@@ -37,6 +37,9 @@ Thumbs.db
 # Docker
 *.log
 
+# Stray personal-infra compose file — must never be tracked here again
+/compose.yml
+
 # Frontend build output and dependencies
 frontend/dist/
 frontend/vue/node_modules/

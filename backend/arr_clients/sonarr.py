@@ -1,6 +1,5 @@
 """Sonarr API client."""
 import asyncio
-import json
 import logging
 from typing import Optional
 
@@ -9,7 +8,7 @@ import httpx
 from ..db.settings_store import get_setting
 from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 from .retry import with_retry
-from .shared import _arr_auth
+from .shared import _arr_auth, _get_arr_servers
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +21,7 @@ async def _sonarr_config():
 
 async def get_sonarr_servers() -> list[dict]:
     """Return all enabled Sonarr server configs (multi + legacy single)."""
-    servers = []
-    raw = await get_setting("sonarr_servers") or "[]"
-    try:
-        multi = json.loads(raw) if isinstance(raw, str) else raw
-        servers = [s for s in (multi or []) if s.get("enabled", True) and s.get("url") and s.get("api_key")]
-    except Exception:
-        pass
-    if not servers:
-        url, key = await _sonarr_config()
-        if url and key:
-            servers = [{"id": "legacy", "name": "Sonarr", "url": url, "api_key": key, "enabled": True}]
-    return servers
+    return await _get_arr_servers("sonarr_servers", _sonarr_config, "Sonarr")
 
 
 async def test_sonarr() -> tuple[bool, str]:

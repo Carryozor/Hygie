@@ -428,7 +428,7 @@ async def websocket_endpoint(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.warning("WebSocket log stream error", exc_info=True)
     finally:
         unregister_ws(ws)
 

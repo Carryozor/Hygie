@@ -4,6 +4,27 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.1.1] — 2026-06-23
+
+### Fixed
+
+- **Sidebar lost the version number, the next-scan/next-deletion countdown, and the library tree after the v4.x token-storage migration.** `status.js`'s `start()` and `AppSidebar.vue`'s `onMounted()` still gated on `localStorage.getItem('hygie_token')` — a key the access token stopped being written to once it moved to in-memory storage + an httpOnly refresh cookie (see 4.0.x security hardening). The guard was therefore always false even when logged in, so `servers.fetch()`, `fetchScheduler()`, and the `/version` fetch never ran. Both now gate on the real auth state (`useAuthStore().isLoggedIn`). `PublicView.vue`'s admin-bypass-the-public-password check had the same stale-key bug, fixed the same way (`tokenStore.getToken()`).
+- **`POST /api/auth/logout` could 500 with a MariaDB `ER_CHECKREAD` (1020, "Record has changed since last read … try restarting transaction")** on `revoke_refresh_token` under concurrent REPEATABLE-READ transactions — same error class as the 4.0.6 `REPLACE INTO` fix, on a plain `UPDATE` this time. `DbConn.execute`/`execute_write` now retry the statement (up to 2 attempts) on error 1020 specifically, since MariaDB's own message names the correct remedy.
+- **`seerr_user_rules.name` was missing from the MariaDB schema** — `seerr_rules.create_rule`/`update_rule` write it on every request, so creating or editing a per-user Seerr grace-period rule 500'd with "Unknown column" on any MariaDB deployment. New migration `m015` backfills it (and four other columns present in the SQLite DDL but absent from MariaDB's, found via a new schema-parity test) on existing databases; both dialects' DDL now match.
+
+### Security
+
+- **SSRF (authenticated): `/api/settings/test-arr`, `/sync-arr-from-seerr`, and `/media-servers/{id}/test` accepted any URL** — unlike the image proxy these aren't whitelisted (testing a not-yet-saved server is the point), so a compromised admin session could use the server to probe loopback addresses or the cloud metadata endpoint (`169.254.169.254`) and read the response. Now blocked the same way the image proxy blocks DNS rebinding; RFC1918 LAN addresses stay allowed. `sync_arr_from_seerr` additionally re-validates every redirect hop (it sets `follow_redirects=True`), closing a bypass where the initial-URL check alone could be sidestepped by a 302.
+- **Plex webhook had no rate limit** on the secret comparison — every other sensitive endpoint (login, refresh, setup) already did. Brute-forcing `plex_webhook_secret` is now rate-limited like the rest.
+- **`HYGIE_TRUST_PROXY` misconfiguration behind a reverse proxy/tunnel now logs a warning** the first time an `X-Forwarded-For` header arrives while untrusted — `StartupValidator` only caught this via `HYGIE_ALLOWED_ORIGINS`, which stays unset on deployments (e.g. behind a Cloudflare Tunnel) that don't need CORS configured.
+- Public dashboard slug comparison now uses `hmac.compare_digest`, for consistency with the password check next to it.
+
+### Tests
+
+- New: `tests/test_schema_parity.py` (diffs every shared table's declared columns between the SQLite and MariaDB DDL), `tests/test_db_retry.py` (MariaDB 1020 retry behavior), plus SSRF/rate-limit/slug regression tests in `tests/test_security_hardening.py` and `tests/test_auth.py`.
+
+---
+
 ## [4.1.0] — 2026-06-18
 
 ### Fixed

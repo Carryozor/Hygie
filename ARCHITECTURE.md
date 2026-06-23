@@ -148,8 +148,12 @@ will carry `job_id = run_id`, making them filterable from `job_history`.
 ### Global in-process caches
 
 Several module-level variables cache data to avoid DB/HTTP calls on every
-request. All have `asyncio.Lock` guards (v3.7) to prevent cache stampedes under
-concurrent async requests.
+request. Some have `asyncio.Lock` guards (v3.7) to prevent cache stampedes
+under concurrent async requests — see the Lock column below; `_ms_cache`,
+`_overlay_cache`, `_proxy_whitelist`, and `_sid_cookie` do not, so concurrent
+requests after TTL expiry can issue duplicate refreshes (the refreshed value
+is cheap/idempotent in each case, so this is a minor inefficiency, not a
+correctness bug).
 
 In multi-worker mode, each worker has its own copy of these caches. A write in
 worker A does not immediately propagate to workers B/C/D. Workers B/C/D will

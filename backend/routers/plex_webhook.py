@@ -1,12 +1,14 @@
 # backend/routers/plex_webhook.py
 """POST /api/plex/webhook — receive Plex Media Server webhook events."""
+import asyncio
 import json
 import logging
 import secrets as _secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Form, HTTPException, Query, Response
+from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 
+from ..auth import get_client_ip, rate_limit
 from ..db.repositories import update_last_played_scrobble
 from ..db.settings_store import get_setting
 
@@ -16,8 +18,15 @@ router = APIRouter(prefix="/api/plex", tags=["plex"])
 _HANDLED_EVENTS = {"media.scrobble", "media.play", "media.pause", "media.resume", "media.stop"}
 
 
-async def _process_webhook(payload: str, secret: str) -> Response:
+async def _process_webhook(request: Request, payload: str, secret: str) -> Response:
     """Shared implementation for both webhook endpoints."""
+    ip = get_client_ip(request)
+    # Rate limit before the secret comparison — same reasoning as login: an
+    # unauthenticated network attacker could otherwise brute-force the
+    # webhook secret with no limit at all.
+    if await asyncio.to_thread(rate_limit, f"plex_webhook:{ip}"):
+        raise HTTPException(status_code=429, detail="Trop de tentatives — réessayez dans 5 minutes")
+
     configured_secret = await get_setting("plex_webhook_secret") or ""
     # Fail closed: without a configured secret anyone could forge scrobble
     # events and shift last_played, delaying or preventing deletions.
@@ -56,6 +65,7 @@ async def _process_webhook(payload: str, secret: str) -> Response:
 @router.post("/webhook/{secret_token}")
 async def plex_webhook_path(
     secret_token: str,
+    request: Request,
     payload: str = Form(...),
 ) -> Response:
     """Receive a Plex webhook event — secret embedded in URL path (recommended).
@@ -68,11 +78,12 @@ async def plex_webhook_path(
     the path, and some tools (WAFs, log shippers) treat them differently.
     The secret still appears in access logs under HTTPS — restrict log access.
     """
-    return await _process_webhook(payload, secret_token)
+    return await _process_webhook(request, payload, secret_token)
 
 
 @router.post("/webhook")
 async def plex_webhook(
+    request: Request,
     payload: str = Form(...),
     secret: str = Query(default=""),
 ) -> Response:
@@ -80,7 +91,7 @@ async def plex_webhook(
 
     Prefer /api/plex/webhook/{secret} (path-based) for new installations.
     """
-    return await _process_webhook(payload, secret)
+    return await _process_webhook(request, payload, secret)
 
 
 async def _handle_scrobble(rating_key: str, metadata: dict) -> None:

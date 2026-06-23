@@ -4,15 +4,44 @@ Extracted from routers/settings.py to separate HTTP concerns from domain logic.
 """
 import json
 import logging
+from urllib.parse import urlparse
 
 import httpx
 
 from ..db.settings_store import get_setting, set_setting
-from ..db.utils import TIMEOUT_SHORT
+from ..db.utils import TIMEOUT_SHORT, is_loopback_or_link_local
 
 logger = logging.getLogger(__name__)
 
 _MASK = "***"
+
+
+async def _reject_if_loopback_or_link_local(url: str) -> str:
+    """Return an error message if url's host is loopback/link-local, else ''.
+
+    Guards admin "test connection" endpoints: unlike the image proxy these
+    URLs aren't whitelisted (testing a not-yet-saved server is the point), so
+    an authenticated session could otherwise use the server as an SSRF oracle
+    against itself or the cloud metadata endpoint (169.254.169.254). RFC1918
+    LAN addresses stay allowed — real Radarr/Sonarr/Emby live there.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    if host and await is_loopback_or_link_local(host):
+        return f"Hôte non autorisé : {host}"
+    return ""
+
+
+async def _ssrf_guard_hook(request: httpx.Request) -> None:
+    """httpx request event hook — re-checked on every hop, including redirects.
+
+    A single pre-flight check on the original URL is not enough for clients
+    with follow_redirects=True: the already-validated host could redirect the
+    request to an internal target, and httpx would follow it without telling
+    the caller. Raising here aborts the whole request, redirect or not.
+    """
+    blocked = await _reject_if_loopback_or_link_local(str(request.url))
+    if blocked:
+        raise httpx.HTTPError(f"SSRF guard: {blocked}")
 
 
 async def test_arr_instance(type_: str, url: str, api_key: str) -> dict:
@@ -38,6 +67,10 @@ async def test_arr_instance(type_: str, url: str, api_key: str) -> dict:
 
     if not url or not key:
         return {"ok": False, "message": "URL et clé API requis"}
+
+    blocked = await _reject_if_loopback_or_link_local(url)
+    if blocked:
+        return {"ok": False, "message": blocked}
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
@@ -76,11 +109,18 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     if not base or not key:
         raise ValueError("URL et clé API Seerr requis")
 
+    blocked = await _reject_if_loopback_or_link_local(base)
+    if blocked:
+        raise ValueError(blocked)
+
     headers = {"X-Api-Key": key}
     imported_radarr: list[dict] = []
     imported_sonarr: list[dict] = []
 
-    async with httpx.AsyncClient(timeout=TIMEOUT_SHORT, follow_redirects=True) as c:
+    async with httpx.AsyncClient(
+        timeout=TIMEOUT_SHORT, follow_redirects=True,
+        event_hooks={"request": [_ssrf_guard_hook]},
+    ) as c:
         for endpoint in ("/api/v1/settings/radarr", "/api/v1/service/radarr"):
             rr = await c.get(f"{base}{endpoint}", headers=headers)
             logger.info("Seerr radarr %s → HTTP %s", endpoint, rr.status_code)

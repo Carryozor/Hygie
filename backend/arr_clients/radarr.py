@@ -1,5 +1,4 @@
 """Radarr API client."""
-import json
 import logging
 from typing import Optional
 
@@ -8,7 +7,7 @@ import httpx
 from ..db.settings_store import get_setting
 from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM
 from .retry import with_retry
-from .shared import _arr_auth, _path_matches
+from .shared import _arr_auth, _path_matches, _get_arr_servers
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +20,7 @@ async def _radarr_config():
 
 async def get_radarr_servers() -> list[dict]:
     """Return all enabled Radarr server configs (multi + legacy single)."""
-    servers = []
-    # Multi-server list (new format)
-    raw = await get_setting("radarr_servers") or "[]"
-    try:
-        multi = json.loads(raw) if isinstance(raw, str) else raw
-        servers = [s for s in (multi or []) if s.get("enabled", True) and s.get("url") and s.get("api_key")]
-    except Exception:
-        pass
-    # Legacy single-server fallback
-    if not servers:
-        url, key = await _radarr_config()
-        if url and key:
-            servers = [{"id": "legacy", "name": "Radarr", "url": url, "api_key": key, "enabled": True}]
-    return servers
+    return await _get_arr_servers("radarr_servers", _radarr_config, "Radarr")
 
 
 async def test_radarr() -> tuple[bool, str]:

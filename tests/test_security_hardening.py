@@ -6,8 +6,10 @@ fetch_one heuristic, LIKE wildcard escaping.
 """
 import os
 import json
+import httpx
 import pytest
 import pytest_asyncio
+import respx
 
 os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
@@ -116,6 +118,16 @@ async def wh_client(tmp_path):
     import backend.db.utils as _db_utils
     import backend.db.settings_store as _ss
 
+    # Import backend.auth before any DB_PATH override below — auth.py does
+    # `from .db.utils import DB_PATH` (a one-time snapshot), so if this is
+    # the first-ever import of backend.auth in the process it must happen
+    # while DB_PATH is still ":memory:", or rate_limit() silently switches
+    # from the in-memory fallback to a real sqlite3 connection against
+    # whatever stale path it captured.
+    import backend.auth as _auth_mod
+    _auth_mod.DB_PATH = ":memory:"  # belt-and-suspenders: force the memory-backed path regardless of import order
+    _auth_mod._rate_buckets.clear()
+
     db_path = str(tmp_path / "wh.db")
     orig_engine, orig_utils = _eng.SQLITE_PATH, _db_utils.DB_PATH
     _eng.SQLITE_PATH = db_path
@@ -137,6 +149,7 @@ async def wh_client(tmp_path):
     _db_utils.DB_PATH = orig_utils
     _ss._settings_cache.clear()
     _ss._settings_cache_ts = 0.0
+    _auth_mod._rate_buckets.clear()
 
 
 def _scrobble_payload() -> str:
@@ -173,6 +186,21 @@ async def test_webhook_accepted_with_correct_secret(wh_client):
         "/api/plex/webhook?secret=s3cret-token", data={"payload": _scrobble_payload()}
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_webhook_rate_limited_after_repeated_wrong_secret(wh_client):
+    """A network attacker can otherwise brute-force plex_webhook_secret with
+    no rate limit at all — every other sensitive endpoint (login, refresh,
+    setup) already calls rate_limit() before the secret comparison."""
+    from backend.db.settings_store import set_setting
+    from backend.auth import RATE_LIMIT_MAX
+    await set_setting("plex_webhook_secret", "s3cret-token")
+    for _ in range(RATE_LIMIT_MAX + 1):
+        resp = await wh_client.post(
+            "/api/plex/webhook?secret=wrong", data={"payload": _scrobble_payload()}
+        )
+    assert resp.status_code == 429
 
 
 # ─── DB engine: busy_timeout + fetch_one heuristic ────────────────────────────
@@ -444,3 +472,189 @@ async def test_jobs_history_limit_is_bounded(tmp_path):
     _ss._settings_cache_ts = 0.0
 
     assert resp.status_code == 422, f"Expected 422 for out-of-range limit, got {resp.status_code}"
+
+
+# ─── SSRF guard on admin "test connection" endpoints ──────────────────────────
+# /api/settings/test-arr, /sync-arr-from-seerr and /media-servers/{id}/test let
+# an authenticated admin make the *server* issue an HTTP request to an
+# arbitrary URL and read the response back — unlike the image proxy, these
+# URLs aren't whitelisted (testing a not-yet-saved server is the whole point).
+# Block loopback/link-local (localhost, the 169.254.169.254 cloud metadata
+# endpoint) the same way proxy.py does; RFC1918 LAN addresses stay allowed
+# since real Radarr/Sonarr/Emby instances commonly live there.
+
+class _ForbiddenAsyncClient:
+    """httpx.AsyncClient that records whether it was ever instantiated.
+
+    Raises on construction too, but the call sites' own broad `except
+    Exception` would otherwise swallow that into a generic {"ok": False}
+    result that looks like a pass even when the guard never fired — the
+    `instantiated` flag is what actually proves no request was attempted.
+    """
+    instantiated = False
+
+    def __init__(self, *a, **kw):
+        type(self).instantiated = True
+        raise RuntimeError("must not make an HTTP request to a blocked host")
+
+
+@pytest.mark.asyncio
+async def test_test_arr_instance_blocks_loopback(monkeypatch):
+    import backend.services.arr_service as svc
+    _ForbiddenAsyncClient.instantiated = False
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _ForbiddenAsyncClient)
+    result = await svc.test_arr_instance("radarr", "http://127.0.0.1:7878", "key")
+    assert _ForbiddenAsyncClient.instantiated is False, "guard did not fire before the HTTP call"
+    assert result["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_test_arr_instance_blocks_cloud_metadata(monkeypatch):
+    import backend.services.arr_service as svc
+    _ForbiddenAsyncClient.instantiated = False
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _ForbiddenAsyncClient)
+    result = await svc.test_arr_instance("radarr", "http://169.254.169.254/latest/meta-data/", "key")
+    assert _ForbiddenAsyncClient.instantiated is False, "guard did not fire before the HTTP call"
+    assert result["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_test_arr_instance_allows_lan_address(monkeypatch):
+    """RFC1918 LAN addresses must still work — real Radarr/Sonarr live there."""
+    import backend.services.arr_service as svc
+
+    class _OkResponse:
+        status_code = 200
+        def json(self): return {"version": "5.0"}
+
+    class _OkClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **kw): return _OkResponse()
+
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _OkClient)
+    result = await svc.test_arr_instance("radarr", "http://192.168.1.50:7878", "key")
+    assert result["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_sync_arr_from_seerr_blocks_loopback(monkeypatch):
+    import backend.services.arr_service as svc
+    _ForbiddenAsyncClient.instantiated = False
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _ForbiddenAsyncClient)
+    with pytest.raises(ValueError):
+        await svc.sync_arr_from_seerr("http://127.0.0.1:5055", "key")
+    assert _ForbiddenAsyncClient.instantiated is False, "guard did not fire before the HTTP call"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_sync_arr_from_seerr_blocks_redirect_to_loopback():
+    """sync_arr_from_seerr uses follow_redirects=True — the initial-URL guard
+    alone is not enough: a Seerr server (or anyone who can spoof its DNS/
+    responses) could 302 the request to an internal target after the guard
+    already ran once. Every hop must be re-checked, the same way proxy.py
+    re-validates redirects for the image proxy."""
+    import backend.services.arr_service as svc
+
+    redirect_route = respx.get("http://seerr.example.com/api/v1/settings/radarr").mock(
+        return_value=httpx.Response(302, headers={"Location": "http://127.0.0.1:8000/admin/secrets"})
+    )
+    internal_route = respx.get("http://127.0.0.1:8000/admin/secrets").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    with pytest.raises(Exception):
+        await svc.sync_arr_from_seerr("http://seerr.example.com", "key")
+
+    assert redirect_route.called, "the initial (allowed) request should still go out"
+    assert not internal_route.called, "the redirect target must be re-validated and blocked"
+
+
+@pytest.mark.asyncio
+async def test_test_media_server_blocks_loopback(monkeypatch, tmp_path):
+    import backend.db.engine as _eng
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _ss
+
+    db_path = str(tmp_path / "ms.db")
+    _eng.SQLITE_PATH = db_path
+    _db_utils.DB_PATH = db_path
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+
+    from backend.db.schema import init_db
+    await init_db()
+    from backend.db.media_servers import save_media_servers
+
+    await save_media_servers([{
+        "id": "0", "name": "evil", "url": "http://127.0.0.1:8096",
+        "api_key": "k", "type": "emby", "enabled": True,
+    }])
+
+    import backend.routers.settings as settings_router
+
+    async def _forbidden_test_emby(*a, **kw):
+        raise AssertionError("must not contact a blocked host")
+
+    monkeypatch.setattr(settings_router, "test_emby", _forbidden_test_emby)
+
+    result = await settings_router.test_media_server(server_id="0", user="testuser")
+    assert result["ok"] is False
+
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+
+
+# ─── Public dashboard: slug comparison ────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def public_client(tmp_path):
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    import backend.db.engine as _eng
+    import backend.db.utils as _db_utils
+    import backend.db.settings_store as _ss
+
+    import backend.auth as _auth_mod
+    _auth_mod.DB_PATH = ":memory:"
+    _auth_mod._rate_buckets.clear()
+
+    db_path = str(tmp_path / "public.db")
+    _eng.SQLITE_PATH = db_path
+    _db_utils.DB_PATH = db_path
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+
+    from backend.db.schema import init_db
+    await init_db()
+
+    from backend.routers import public as public_router
+    app = FastAPI()
+    app.include_router(public_router.router)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+    _ss._settings_cache.clear()
+    _ss._settings_cache_ts = 0.0
+    _auth_mod._rate_buckets.clear()
+
+
+@pytest.mark.asyncio
+async def test_public_upcoming_rejects_wrong_slug(public_client):
+    from backend.db.settings_store import set_setting
+    await set_setting("public_dashboard_enabled", "true")
+    await set_setting("public_dashboard_slug", "myslug")
+    resp = await public_client.get("/api/public/upcoming", params={"slug": "wrong"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_public_upcoming_accepts_correct_slug(public_client):
+    from backend.db.settings_store import set_setting
+    await set_setting("public_dashboard_enabled", "true")
+    await set_setting("public_dashboard_slug", "myslug")
+    resp = await public_client.get("/api/public/upcoming", params={"slug": "myslug"})
+    assert resp.status_code == 200

@@ -525,6 +525,34 @@ async def _m014_add_library_ids_to_seerr_user_rules():
             await db.commit()
 
 
+async def _m015_fix_remaining_mariadb_column_gaps():
+    """Fix remaining columns present in the SQLite DDL but missing from MariaDB.
+
+    Found by tests/test_schema_parity.py, which diffs every shared table's
+    declared columns between the two dialects. `seerr_user_rules.name` is the
+    one that actually mattered: seerr_rules.create_rule/update_rule write it
+    on every request, so without this column those endpoints 500 on MariaDB
+    with 'Unknown column'. The rest (media_queue.torrent_hash/seerr_discord_id
+    /ignored, logs.category, job_history.result) are unused dead columns on
+    both dialects today — added anyway so the parity test (and any future
+    feature that starts using them) doesn't have to special-case MariaDB.
+    """
+    async with get_db() as db:
+        for table, col, sqlite_type, mariadb_type in (
+            ("media_queue", "torrent_hash", "TEXT DEFAULT ''", "TEXT DEFAULT ('')"),
+            ("media_queue", "seerr_discord_id", "TEXT DEFAULT ''", "TEXT DEFAULT ('')"),
+            ("media_queue", "ignored", "INTEGER DEFAULT 0", "TINYINT DEFAULT 0"),
+            ("logs", "category", "TEXT DEFAULT ''", "TEXT DEFAULT ('')"),
+            ("job_history", "result", "TEXT", "LONGTEXT DEFAULT NULL"),
+            ("seerr_user_rules", "name", "TEXT NOT NULL DEFAULT ''", "TEXT NOT NULL DEFAULT ('')"),
+        ):
+            cols = await db.table_columns(table)
+            if col not in cols:
+                col_type = mariadb_type if DIALECT == "mariadb" else sqlite_type
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+        await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -540,4 +568,5 @@ _MIGRATIONS = [
     ("m012", "Convert interval settings from hours to minutes",          _m012_interval_hours_to_minutes),
     ("m013", "Purge verbose per-item scan log entries",                  _m013_purge_verbose_scan_logs),
     ("m014", "Add library_ids to seerr_user_rules (missing from MariaDB DDL)", _m014_add_library_ids_to_seerr_user_rules),
+    ("m015", "Fix remaining MariaDB column gaps (seerr_user_rules.name, etc.)", _m015_fix_remaining_mariadb_column_gaps),
 ]

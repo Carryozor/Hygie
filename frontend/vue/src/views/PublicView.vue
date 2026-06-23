@@ -219,6 +219,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { safeUrl } from '@/utils/safeUrl'
+import { getToken } from '@/api/tokenStore'
 
 const route = useRoute()
 
@@ -425,8 +426,9 @@ async function loadDashboard(password = '') {
     // Password travels in a header, not the query string — query params leak
     // into server access logs, browser history and the Referer header.
     if (password) headers['X-Dashboard-Password'] = password
-    // Send admin token if present so admins bypass the public password requirement
-    const token = localStorage.getItem('hygie_token')
+    // Send admin token if present so admins bypass the public password requirement.
+    // The access token lives in memory only (tokenStore.js), never in localStorage.
+    const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
     const res  = await fetch(`/api/public/upcoming?${params}`, { headers })
     const data = await res.json()

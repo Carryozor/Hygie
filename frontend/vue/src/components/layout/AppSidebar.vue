@@ -113,6 +113,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useStatusStore } from '@/stores/status'
 import HygieLogoSvg from '@/components/ui/HygieLogoSvg.vue'
@@ -121,6 +122,7 @@ import api from '@/api/client'
 
 const { t } = useI18n()
 
+const auth     = useAuthStore()
 const settings = useSettingsStore()
 const status   = useStatusStore()
 
@@ -201,8 +203,10 @@ const scanProgress        = computed(() => progressPercent(scanNext.value, scanI
 const deletionProgress    = computed(() => progressPercent(deletionNext.value, deletionIntervalMin.value))
 
 onMounted(async () => {
-  // Ne rien faire si pas de token — évite les 401 en boucle sur la page login
-  if (!localStorage.getItem('hygie_token')) return
+  // Ne rien faire si pas connecté — évite les 401 en boucle sur la page login.
+  // The access token lives in memory only (tokenStore.js), never in
+  // localStorage, so gate on the real auth state, not a legacy key.
+  if (!auth.isLoggedIn) return
 
   await settings.fetch()
 

@@ -171,3 +171,26 @@ def test_get_client_ip_no_client_returns_unknown():
     request.headers = {}
     request.client = None
     assert auth_mod.get_client_ip(request) == "unknown"
+
+
+def test_get_client_ip_warns_once_when_forwarded_for_present_but_untrusted(caplog):
+    """Regression: StartupValidator only flags this from HYGIE_ALLOWED_ORIGINS,
+    which stays silent on deployments (e.g. behind a Cloudflare Tunnel) that
+    never set that variable. A live X-Forwarded-For header while
+    HYGIE_TRUST_PROXY is off is direct evidence of the same misconfiguration —
+    rate limiting is keyed on the proxy's IP, not the real client's."""
+    from unittest.mock import MagicMock
+    import logging
+    request = MagicMock()
+    request.headers = {"X-Forwarded-For": "1.2.3.4"}
+    request.client = MagicMock(host="172.27.0.1")
+    auth_mod._TRUST_PROXY = False
+    auth_mod._warned_untrusted_forwarded_for = False
+    try:
+        with caplog.at_level(logging.WARNING, logger="backend.auth"):
+            auth_mod.get_client_ip(request)
+            auth_mod.get_client_ip(request)  # second call must not warn again
+        warnings = [r for r in caplog.records if "HYGIE_TRUST_PROXY" in r.message]
+        assert len(warnings) == 1
+    finally:
+        auth_mod._warned_untrusted_forwarded_for = False

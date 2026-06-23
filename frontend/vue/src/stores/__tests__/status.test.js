@@ -6,21 +6,28 @@ vi.mock('@/api/client', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
 
+const serversFetch = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/stores/servers', () => ({
   useServersStore: () => ({
     servers: [{ id: '0', enabled: true }],
-    fetch:   vi.fn().mockResolvedValue(undefined),
+    fetch:   serversFetch,
   }),
 }))
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: vi.fn(() => ({ isLoggedIn: true })),
+}))
+
 import api from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import { useStatusStore } from '../status'
 
 describe('useStatusStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    localStorage.setItem('hygie_token', 'test')
+    localStorage.clear()
+    useAuthStore.mockReturnValue({ isLoggedIn: true })
   })
 
   it('initial state defaults', () => {
@@ -88,5 +95,26 @@ describe('useStatusStore', () => {
 
   it('stop does not throw when never started', () => {
     expect(() => useStatusStore().stop()).not.toThrow()
+  })
+
+  // Regression: the access token lives in memory only (tokenStore.js) and is
+  // never written to localStorage['hygie_token'] anymore — start() must gate
+  // on the real auth state (useAuthStore().isLoggedIn), not that dead key.
+  it('start() fetches servers and scheduler when logged in, without any legacy localStorage token', async () => {
+    expect(localStorage.getItem('hygie_token')).toBeNull()
+    api.get.mockResolvedValueOnce({ data: [] }) // /scheduler/status
+    api.get.mockResolvedValueOnce({ data: { count: 0 } }) // /logs/unseen-errors-count
+    const s = useStatusStore()
+    await s.start()
+    expect(serversFetch).toHaveBeenCalled()
+    expect(api.get).toHaveBeenCalledWith('/scheduler/status')
+  })
+
+  it('start() does nothing when not logged in', async () => {
+    useAuthStore.mockReturnValue({ isLoggedIn: false })
+    const s = useStatusStore()
+    await s.start()
+    expect(serversFetch).not.toHaveBeenCalled()
+    expect(api.get).not.toHaveBeenCalled()
   })
 })

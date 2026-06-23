@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 from ..db.settings_store import get_all_settings, set_setting, get_setting
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
+from ..db.utils import is_loopback_or_link_local
 from ..emby_client import test_connection as test_emby
 from ..db.media_servers import is_plex
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
@@ -209,8 +210,8 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
                         _run_backup, "interval", hours=hours,
                         id="backup_job", replace_existing=True,
                     )
-            except (ValueError, TypeError, Exception):
-                pass
+            except Exception as e:
+                logger.warning("settings: failed to reschedule backup_job: %s", e)
 
     # Invalidate image proxy whitelist when service URLs change
     _url_keys = {"emby_url", "emby_external_url", "radarr_url", "sonarr_url"}
@@ -346,6 +347,10 @@ async def purge_server_queue_endpoint(server_id: str, user: str = Depends(requir
 async def test_media_server(server_id: str, user: str = Depends(require_auth)):
     servers = await get_media_servers()
     server = next((s for s in servers if str(s.get("id")) == server_id), None)
+    if server:
+        host = (urlparse(server.get("url") or "").hostname or "").lower()
+        if host and await is_loopback_or_link_local(host):
+            return {"ok": False, "message": f"Hôte non autorisé : {host}", "server_type": "", "error_code": ""}
     if server and is_plex(server):
         from ..plex_client import test_plex_server
         result = await test_plex_server(server)

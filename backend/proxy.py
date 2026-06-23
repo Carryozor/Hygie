@@ -1,9 +1,7 @@
 """Image proxy endpoint with SSRF-protection whitelist."""
 import asyncio
-import ipaddress
 import logging
 import re
-import socket
 import time
 from urllib.parse import urlparse
 
@@ -13,7 +11,7 @@ from fastapi.responses import Response
 
 from .db.settings_store import get_setting
 from .db.media_servers import get_media_servers
-from .db.utils import sanitize_url
+from .db.utils import sanitize_url, is_loopback_or_link_local
 
 logger = logging.getLogger(__name__)
 
@@ -57,29 +55,6 @@ def _is_url_allowed(url: str, allowed: set) -> bool:
         return (host, port) in allowed
     except Exception:
         return False
-
-
-async def _resolves_to_loopback_or_link_local(hostname: str) -> bool:
-    """Return True if hostname resolves to a loopback or link-local address.
-
-    DNS rebinding protection: a whitelisted hostname could be temporarily
-    rebound to 127.x.x.x or 169.254.x.x by an attacker. RFC1918 LAN
-    addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are NOT blocked here
-    because legitimate self-hosted Emby servers often live on a LAN.
-    """
-    try:
-        loop = asyncio.get_event_loop()
-        infos = await loop.run_in_executor(
-            None,
-            lambda: socket.getaddrinfo(hostname, None, 0, socket.SOCK_STREAM),
-        )
-        for info in infos:
-            ip = ipaddress.ip_address(info[4][0])
-            if ip.is_loopback or ip.is_link_local:
-                return True
-    except Exception:
-        pass
-    return False
 
 
 def invalidate_proxy_whitelist() -> None:
@@ -148,7 +123,7 @@ async def proxy_image(request: Request):
             return Response(status_code=403, content=f"Host not allowed: {host}")
 
         host = (parsed.hostname or "").lower()
-        if await _resolves_to_loopback_or_link_local(host):
+        if await is_loopback_or_link_local(host):
             logger.warning("Proxy: DNS rebinding attempt detected for host %r", host)
             return Response(status_code=403)
 
@@ -172,7 +147,7 @@ async def proxy_image(request: Request):
                         # a whitelisted host's DNS could be rebound between the first
                         # request and this redirect being followed.
                         redirect_host = (urlparse(url).hostname or "").lower()
-                        if await _resolves_to_loopback_or_link_local(redirect_host):
+                        if await is_loopback_or_link_local(redirect_host):
                             logger.warning(
                                 "Proxy: DNS rebinding attempt detected on redirect for host %r",
                                 redirect_host,

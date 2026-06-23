@@ -318,14 +318,30 @@ def rate_limit(key: str) -> bool:
         return _memory_rate_limit(key, now, cutoff)
 
 
+_warned_untrusted_forwarded_for = False
+
+
 def get_client_ip(request: Request) -> str:
     """Return the client IP for rate limiting.
 
     Only trusts X-Forwarded-For when HYGIE_TRUST_PROXY=1 is set, preventing
     spoofing attacks on deployments without a reverse proxy.
     """
+    global _warned_untrusted_forwarded_for
     if _TRUST_PROXY:
         fwd = request.headers.get("X-Forwarded-For")
         if fwd:
             return fwd.split(",")[0].strip()
+    elif request.headers.get("X-Forwarded-For") and not _warned_untrusted_forwarded_for:
+        # StartupValidator only catches this via HYGIE_ALLOWED_ORIGINS, which
+        # stays unset on deployments behind a tunnel/proxy that doesn't need
+        # CORS configured (e.g. Cloudflare Tunnel). A live X-Forwarded-For
+        # header while untrusted is direct evidence rate limiting is keyed on
+        # the proxy's IP — shared by everyone — instead of the real client.
+        _warned_untrusted_forwarded_for = True
+        logger.warning(
+            "Requête reçue avec X-Forwarded-For mais HYGIE_TRUST_PROXY n'est pas activé — "
+            "le rate limiting utilisera l'IP du proxy (partagée par tous) au lieu de l'IP réelle. "
+            "Si l'app est derrière un reverse proxy/tunnel, définir HYGIE_TRUST_PROXY=1."
+        )
     return request.client.host if request.client else "unknown"

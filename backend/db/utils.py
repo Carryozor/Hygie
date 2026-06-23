@@ -1,8 +1,10 @@
 # backend/db/utils.py
 """DB-layer constants and pure utilities — no DB access."""
 import asyncio
+import ipaddress
 import os
 import re as _re
+import socket
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -34,6 +36,29 @@ def now_utc() -> datetime:
 def sanitize_url(url: str) -> str:
     """Redact sensitive query parameters from a URL for safe logging."""
     return _SENSITIVE_PARAMS.sub(r'\1=***', url)
+
+
+async def is_loopback_or_link_local(hostname: str) -> bool:
+    """Return True if hostname resolves to a loopback or link-local address.
+
+    Blocks SSRF probes against the host itself (127.0.0.1) and the cloud
+    metadata service (169.254.169.254, link-local). RFC1918 LAN addresses
+    (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are NOT blocked — legitimate
+    self-hosted Emby/Radarr/Sonarr instances commonly live there.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        infos = await loop.run_in_executor(
+            None,
+            lambda: socket.getaddrinfo(hostname, None, 0, socket.SOCK_STREAM),
+        )
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_loopback or ip.is_link_local:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def escape_like(text: str) -> str:

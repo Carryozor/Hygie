@@ -183,6 +183,7 @@ _TABLES = [
             seerr_user_id INTEGER NOT NULL,
             seerr_username TEXT NOT NULL,
             library_id TEXT NOT NULL,
+            library_ids TEXT,
             grace_days INTEGER NOT NULL DEFAULT 30,
             enabled INTEGER NOT NULL DEFAULT 1,
             discord_id TEXT DEFAULT '',

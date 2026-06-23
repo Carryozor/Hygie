@@ -189,9 +189,14 @@ class DbConn:
             cur = await self._raw.execute(sql, params)
             return cur.lastrowid or 0
         else:
-            async with self._raw.cursor() as cur:
-                await cur.execute(self._q(sql), params or ())
-                return cur.lastrowid or 0
+            q = self._q(sql)
+
+            async def _run():
+                async with self._raw.cursor() as cur:
+                    await cur.execute(q, params or ())
+                    return cur.lastrowid or 0
+
+            return await _retry_transient_mariadb(_run)
 
     async def execute_write(self, sql: str, params: tuple = ()) -> int:
         """Run UPDATE/DELETE. Returns rowcount."""
@@ -199,9 +204,14 @@ class DbConn:
             cur = await self._raw.execute(sql, params)
             return cur.rowcount
         else:
-            async with self._raw.cursor() as cur:
-                await cur.execute(self._q(sql), params or ())
-                return cur.rowcount
+            q = self._q(sql)
+
+            async def _run():
+                async with self._raw.cursor() as cur:
+                    await cur.execute(q, params or ())
+                    return cur.rowcount
+
+            return await _retry_transient_mariadb(_run)
 
     async def executemany(self, sql: str, params_seq) -> None:
         if self._dialect == "sqlite":
@@ -237,6 +247,28 @@ class DbConn:
                 "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?", (table,)
             )
             return row is not None
+
+
+# MariaDB ER_CHECKREAD — "Record has changed since last read in table '...';
+# try restarting transaction". A transient REPEATABLE-READ conflict; MariaDB's
+# own error message names the fix, so retrying the statement is correct here
+# (nothing has been committed yet — see _replace_into_upsert above for the
+# sibling case this same error class motivated).
+_TRANSIENT_MARIADB_ERRNOS = {1020}
+_MAX_TRANSIENT_RETRIES = 2
+
+
+async def _retry_transient_mariadb(run):
+    attempt = 0
+    while True:
+        try:
+            return await run()
+        except Exception as exc:
+            errno = exc.args[0] if exc.args else None
+            if errno in _TRANSIENT_MARIADB_ERRNOS and attempt < _MAX_TRANSIENT_RETRIES:
+                attempt += 1
+                continue
+            raise
 
 
 def _sqlite_row_factory(cursor, row):

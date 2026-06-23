@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/api/client'
 import { useServersStore } from '@/stores/servers'
+import { useAuthStore } from '@/stores/auth'
 
 export const useStatusStore = defineStore('status', () => {
   // ── Scheduler state ──────────────────────────────────────────────────────
@@ -113,7 +114,9 @@ export const useStatusStore = defineStore('status', () => {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   async function start() {
-    if (!localStorage.getItem('hygie_token')) return
+    // The access token lives in memory only (tokenStore.js), never in
+    // localStorage — gate on the real auth state, not a legacy key.
+    if (!useAuthStore().isLoggedIn) return
     // Guard against duplicate start() calls creating stacked intervals
     if (_schedulerInterval !== null) return
     const servers = useServersStore()

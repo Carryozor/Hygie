@@ -45,7 +45,11 @@ async def public_upcoming(
         return JSONResponse({"error": "disabled"}, status_code=403)
 
     cfg_slug = (await get_setting("public_dashboard_slug") or "").strip()
-    if cfg_slug and slug != cfg_slug:
+    # compare_digest for consistency with the password check below — a remote
+    # timing attack on a short slug string is impractical over real network
+    # jitter, but there is no reason for this one comparison to be the odd
+    # one out.
+    if cfg_slug and not hmac.compare_digest(slug.encode(), cfg_slug.encode()):
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     # Admins with a valid token bypass the public password requirement

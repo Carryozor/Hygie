@@ -14,11 +14,11 @@ from ..logmsg import lm
 
 from ..emby_client import get_libraries as emby_get_libraries
 from ..db.media_servers import is_plex as _is_plex
-from ..scanner._orchestrator import run_scan_libraries
 from ..scheduler import (
     is_scan_running,
     reevaluate_library_queue,
     run_scan_library,
+    run_scan_libraries,
 )
 
 router = APIRouter(prefix="/api/libraries", tags=["libraries"])

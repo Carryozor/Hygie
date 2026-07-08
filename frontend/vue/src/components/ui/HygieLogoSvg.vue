@@ -58,11 +58,11 @@ const TYPE_COLOR = {
   emby:     '#52B54B',   // Emby green
   jellyfin: '#AA5CC3',   // Jellyfin purple
 }
-const DIM   = '#7c3aed'
+const DIM   = '#1f7d8c'
 const RED   = '#ef4444'
 
 function typeColor(type) {
-  return TYPE_COLOR[(type || '').toLowerCase()] || '#6366f1'
+  return TYPE_COLOR[(type || '').toLowerCase()] || '#22c1d6'
 }
 
 // ── Arc computation ───────────────────────────────────────────────────────────

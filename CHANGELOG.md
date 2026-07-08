@@ -4,13 +4,18 @@ All notable changes to Hygie are documented here.
 
 ---
 
-## [Unreleased]
+## [4.1.2] — 2026-07-08
 
 ### Fixed
 
 - **The queue's "time left" label showed "Demain" on the final day even when deletion was an hour away.** `daysRemaining` used `Math.ceil` on a day-fraction, so anything under 24h rounded up to 1 day → "Demain". Time remaining is now bucketed by a pure, unit-tested helper (`utils/timeRemaining.js`): under an hour shows the imminent label, 1–23h shows `dans {n}h` (new `days.inHours` i18n key, all 8 locales), and only ≥24h shows "Demain"/`dans {n}j`.
 - **A failed-then-retried deletion could send a duplicate "supprimé" Discord notification.** `DiscordNotifyStep`'s idempotency guard relied on the `now` marker written by `update_queue_status`, which only records it for the `deleted`/`deleting` statuses — a deletion that ended in `error` left no marker, so the retry re-notified. The step now persists the marker itself, right after sending.
+- **The reveal (eye) toggle on the qBittorrent proxy URL and both Discord webhook fields showed the mask (`***`) instead of the real value.** The Discord fields only flipped the input `type` without fetching the secret; the proxy URL field had no eye toggle at all. Both now reveal the real stored value via `revealSetting`, like the other password fields.
 - Timers are now cleared on unmount in `ToastNotification`, `QueueView`, and `IgnoredView` (stray `setTimeout`/debounce handles could fire a ghost callback after navigation).
+
+### Changed
+
+- **New brand logo.** Set as favicon, apple-touch icon, and PWA icons (192/512), and shown inside the sidebar status ring. The UI accent was retinted from indigo to the logo's teal/cyan (`#22c1d6`) across `style.css` and `tailwind.config.js`, plus the status-ring fallback colors. README updated to the new logo.
 
 ### Security
 

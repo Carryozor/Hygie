@@ -172,7 +172,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
@@ -263,4 +263,5 @@ let searchTimer = null
 watch(search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; load() }, 300) })
 watch([statusFilter, page], load)
 onMounted(async () => { await settings.fetch(); load() })
+onUnmounted(() => clearTimeout(searchTimer))
 </script>

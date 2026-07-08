@@ -108,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
 
@@ -170,4 +170,5 @@ async function doRemove() {
 let timer = null
 watch(search, () => { clearTimeout(timer); timer = setTimeout(load, 300) })
 onMounted(load)
+onUnmounted(() => clearTimeout(timer))
 </script>

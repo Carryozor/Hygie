@@ -28,6 +28,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const toasts = ref([])
 let _counter = 0
+const _timers = new Set()
 
 function toastClass(type) {
   if (type === 'error')   return 'bg-red-500/15 border-red-500/30 text-red-300'
@@ -46,7 +47,8 @@ function toastIcon(type) {
 function add(message, type = 'error') {
   const id = ++_counter
   toasts.value.push({ id, message, type })
-  setTimeout(() => remove(id), 6000)
+  const handle = setTimeout(() => remove(id), 6000)
+  _timers.add(handle)
 }
 
 function remove(id) {
@@ -58,7 +60,11 @@ function onError(e) {
 }
 
 onMounted(()   => window.addEventListener('hygie:error', onError))
-onUnmounted(() => window.removeEventListener('hygie:error', onError))
+onUnmounted(() => {
+  window.removeEventListener('hygie:error', onError)
+  _timers.forEach(clearTimeout)
+  _timers.clear()
+})
 </script>
 
 <style scoped>

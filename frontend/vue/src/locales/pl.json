@@ -93,6 +93,7 @@
     "tomorrow": "Jutro",
     "in": "Za",
     "inDays": "za {n}d",
+    "inHours": "za {n}h",
     "imminent": "wkrótce"
   },
   "settings": {

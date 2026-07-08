@@ -93,6 +93,7 @@
     "tomorrow": "Morgen",
     "in": "Over",
     "inDays": "over {n}d",
+    "inHours": "over {n}u",
     "imminent": "dreigend"
   },
   "settings": {

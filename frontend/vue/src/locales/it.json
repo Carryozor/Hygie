@@ -93,6 +93,7 @@
     "tomorrow": "Domani",
     "in": "Tra",
     "inDays": "tra {n}g",
+    "inHours": "tra {n}h",
     "imminent": "imminente"
   },
   "settings": {

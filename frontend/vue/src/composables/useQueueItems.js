@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
+import { remainingBucket } from '@/utils/timeRemaining'
 
 export function useQueueItems() {
   const { t, locale } = useI18n()
@@ -66,13 +67,14 @@ export function useQueueItems() {
 
   function daysLabel(deleteAt, status) {
     if (status === 'deleted') return t('status.deleted')
-    if (!deleteAt) return '—'
-    const d = daysRemaining(deleteAt)
-    if (d === null) return '—'
-    if (d < 0)  return t('days.exceeded')
-    if (d === 0) return t('days.today')
-    if (d === 1) return t('days.tomorrow')
-    return t('days.inDays', { n: d })
+    const b = remainingBucket(deleteAt)
+    switch (b.kind) {
+      case 'exceeded': return t('days.exceeded')
+      case 'soon':     return t('days.imminent')
+      case 'hours':    return t('days.inHours', { n: b.value })
+      case 'days':     return b.value === 1 ? t('days.tomorrow') : t('days.inDays', { n: b.value })
+      default:         return '—'
+    }
   }
 
   function daysClass(deleteAt, status) {

@@ -93,6 +93,7 @@
     "tomorrow": "Tomorrow",
     "in": "In",
     "inDays": "in {n}d",
+    "inHours": "in {n}h",
     "imminent": "imminent"
   },
   "settings": {

@@ -44,7 +44,10 @@
     <div>
       <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.qbit.quiProxyOptional') }}</label>
       <div class="flex gap-2">
-        <input v-model="form.qbit_proxy_url" type="url" :placeholder="t('settings.qbit.quiProxyPlaceholder')" class="flex-1 field font-mono" />
+        <input v-model="form.qbit_proxy_url" :type="showProxy ? 'text' : 'password'" :placeholder="t('settings.qbit.quiProxyPlaceholder')" class="flex-1 field font-mono" />
+        <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="toggleProxy">
+          <i :class="['fas', showProxy ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
+        </button>
         <TestBtn v-if="form.qbit_proxy_url" service="qui" />
       </div>
     </div>
@@ -88,15 +91,23 @@ import TestBtn from '@/components/ui/TestBtn.vue'
 import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 
 const { t } = useI18n()
-const props   = defineProps({ form: { type: Object, required: true } })
-const showPwd  = ref(false)
-const tagInput = ref(null)
+const props    = defineProps({ form: { type: Object, required: true } })
+const showPwd   = ref(false)
+const showProxy = ref(false)
+const tagInput  = ref(null)
 
 async function togglePwd() {
   if (!showPwd.value && isMasked(props.form.qbit_password)) {
     props.form.qbit_password = await revealSetting('qbit_password')
   }
   showPwd.value = !showPwd.value
+}
+
+async function toggleProxy() {
+  if (!showProxy.value && isMasked(props.form.qbit_proxy_url)) {
+    props.form.qbit_proxy_url = await revealSetting('qbit_proxy_url')
+  }
+  showProxy.value = !showProxy.value
 }
 
 const tagEnabled = computed(() => !!props.form.qbit_tag)

@@ -14,7 +14,7 @@
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.webhookMain') }}</label>
         <div class="flex gap-2">
           <input v-model="form.discord_webhook" :type="showWebhook ? 'text' : 'password'" :placeholder="t('settings.discord.webhookPlaceholder')" class="flex-1 field font-mono" />
-          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showWebhook = !showWebhook">
+          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="toggleWebhook">
             <i :class="['fas', showWebhook ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
         </div>
@@ -35,7 +35,7 @@
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.alerts.webhook') }}</label>
         <div class="flex gap-2">
           <input v-model="form.discord_webhook_alerts" :type="showAlerts ? 'text' : 'password'" :placeholder="t('settings.discord.webhookPlaceholder')" class="flex-1 field font-mono" />
-          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="showAlerts = !showAlerts">
+          <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="toggleAlerts">
             <i :class="['fas', showAlerts ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
           </button>
         </div>
@@ -80,12 +80,29 @@ import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import AlertRow from './AlertRow.vue'
+import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 
 const { t } = useI18n()
-defineProps({ form: { type: Object, required: true } })
+const props = defineProps({ form: { type: Object, required: true } })
 
 const showWebhook = ref(false)
 const showAlerts  = ref(false)
+
+// The eye must fetch the real secret before showing it — the value arrives
+// masked ('***'), so toggling the input type alone would only reveal the mask.
+async function toggleWebhook() {
+  if (!showWebhook.value && isMasked(props.form.discord_webhook)) {
+    props.form.discord_webhook = await revealSetting('discord_webhook')
+  }
+  showWebhook.value = !showWebhook.value
+}
+
+async function toggleAlerts() {
+  if (!showAlerts.value && isMasked(props.form.discord_webhook_alerts)) {
+    props.form.discord_webhook_alerts = await revealSetting('discord_webhook_alerts')
+  }
+  showAlerts.value = !showAlerts.value
+}
 </script>
 
 <style scoped>

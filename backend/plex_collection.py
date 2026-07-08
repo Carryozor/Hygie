@@ -12,7 +12,6 @@ import asyncio
 import logging
 from typing import Optional
 
-import httpx
 
 from .db.engine import get_db
 from .db.logs import add_log
@@ -20,7 +19,7 @@ from .logmsg import lm
 
 from .db.media_servers import get_media_servers
 from .db.settings_store import get_bool_setting, get_setting
-from .db.utils import now_utc, parse_iso_dt
+from .db.utils import now_utc, parse_iso_dt, guarded_image_get
 from .overlay import _overlay_poster
 from .plex_client import PlexClient, build_plex_client
 
@@ -122,13 +121,7 @@ async def _apply_plex_overlays(plex: PlexClient, items: list, ui_lang: str) -> N
 
                 original_bytes: Optional[bytes] = None
                 if poster_url and poster_url.startswith("http"):
-                    async with httpx.AsyncClient(timeout=20) as http:
-                        try:
-                            pr = await http.get(poster_url, follow_redirects=True)
-                            if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
-                                original_bytes = pr.content
-                        except Exception as e:
-                            logger.debug("Plex poster fetch error: %s", e)
+                    original_bytes = await guarded_image_get(poster_url, timeout=20)
 
                 if not original_bytes:
                     return

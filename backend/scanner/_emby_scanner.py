@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx
 
-from ..db.utils import now_utc, parse_iso_dt
+from ..db.utils import now_utc, parse_iso_dt, guarded_image_get
 from ..db.engine import get_db
 from ..db.settings_store import get_setting, get_bool_setting
 from ..db.logs import add_log
@@ -286,13 +286,13 @@ async def reevaluate_library_queue(library_id: str) -> int:
                     emby_url_val, emby_key_val = await get_client(_lib_srv)
                     overlay_on = await get_bool_setting("emby_leaving_soon_overlay")
                     if overlay_on:
-                        async with httpx.AsyncClient(timeout=10) as hc:
-                            pr = await hc.get(poster_url, follow_redirects=True)
-                            if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
+                        poster_bytes = await guarded_image_get(poster_url, timeout=10)
+                        if poster_bytes:
+                            async with httpx.AsyncClient(timeout=10) as hc:
                                 await hc.post(
                                     f"{emby_url_val}/Items/{emby_id}/Images/Primary",
                                     headers={"X-Emby-Token": emby_key_val, "Content-Type": "image/jpeg"},
-                                    content=pr.content,
+                                    content=poster_bytes,
                                 )
                 except Exception as e_rp:
                     logger.debug(f"Restore poster (reevaluate): {e_rp}")

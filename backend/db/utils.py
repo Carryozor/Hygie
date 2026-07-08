@@ -2,11 +2,14 @@
 """DB-layer constants and pure utilities — no DB access."""
 import asyncio
 import ipaddress
+import logging
 import os
 import re as _re
 import socket
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/hygie.db")
 
@@ -59,6 +62,44 @@ async def is_loopback_or_link_local(hostname: str) -> bool:
     except Exception:
         pass
     return False
+
+
+async def ssrf_guard_hook(request) -> None:
+    """httpx request event hook — re-runs on every hop, redirects included.
+
+    Attach to any AsyncClient that follows redirects to an externally-influenced
+    URL (poster/image fetches): a trusted host could 30x-redirect the request to
+    127.0.0.1 or the cloud metadata endpoint, and httpx would follow it silently.
+    Raising here aborts the whole request. RFC1918 LAN stays allowed — see
+    is_loopback_or_link_local.
+    """
+    import httpx
+    host = (request.url.host or "").lower()
+    if host and await is_loopback_or_link_local(host):
+        raise httpx.HTTPError(f"SSRF guard: hôte non autorisé : {host}")
+
+
+async def guarded_image_get(url: str, timeout: float = TIMEOUT_SHORT) -> Optional[bytes]:
+    """Fetch image bytes from an externally-influenced URL, SSRF-safe.
+
+    Follows redirects but re-validates every hop via ssrf_guard_hook. Returns the
+    body only on a 200 image/* response, else None (SSRF block, non-image, HTTP
+    error, network failure). Callers use this for poster/artwork fetches where the
+    URL originates from media metadata rather than admin configuration.
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            event_hooks={"request": [ssrf_guard_hook]},
+        ) as client:
+            r = await client.get(url)
+        if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+            return r.content
+    except Exception as e:
+        logger.debug("guarded_image_get(%s): %s", sanitize_url(url), e)
+    return None
 
 
 def escape_like(text: str) -> str:

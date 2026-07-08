@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 
-from .db.utils import now_utc, parse_iso_dt
+from .db.utils import now_utc, parse_iso_dt, guarded_image_get
 from .db.engine import get_db
 from .db.repositories import get_poster_url_by_emby_id, get_pending_before_for_server
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
@@ -128,13 +128,13 @@ async def _restore_posters_for_removed(
             poster_url = await get_poster_url_by_emby_id(emby_id) or ""
             if not poster_url or not poster_url.startswith("http"):
                 continue
-            pr = await client.get(poster_url, follow_redirects=True)
-            if pr.status_code != 200 or not pr.headers.get("content-type", "").startswith("image"):
+            poster_bytes = await guarded_image_get(poster_url)
+            if not poster_bytes:
                 continue
             resp = await client.post(
                 f"{emby_url}/Items/{emby_id}/Images/Primary",
                 headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                content=pr.content,
+                content=poster_bytes,
             )
             if resp.status_code in (200, 204):
                 _invalidate_overlay_cache(emby_id)
@@ -171,12 +171,7 @@ async def _apply_overlays(
                 original_bytes: Optional[bytes] = None
                 poster_url = w.get("poster_url", "")
                 if poster_url and poster_url.startswith("http"):
-                    try:
-                        pr = await client.get(poster_url, follow_redirects=True)
-                        if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("image"):
-                            original_bytes = pr.content
-                    except Exception as e:
-                        logger.debug(f"Poster fetch failed: {e}")
+                    original_bytes = await guarded_image_get(poster_url)
 
                 if not original_bytes:
                     pr = await client.get(

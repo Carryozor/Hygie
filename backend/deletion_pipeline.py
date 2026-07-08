@@ -161,8 +161,8 @@ class DiscordNotifyStep(DeletionStep):
             return
         try:
             item_id = ctx.item.get("id")
+            from .db.engine import get_db
             if item_id:
-                from .db.engine import get_db
                 async with get_db() as _db:
                     _row = await _db.fetch_one(
                         "SELECT 1 FROM notifications WHERE media_id=? AND threshold='now'",
@@ -172,6 +172,18 @@ class DiscordNotifyStep(DeletionStep):
                     return
             from .discord_client import send_notification
             await send_notification([ctx.item], "now", dry_run=False)
+            # Persist the 'now' marker here — not only in update_queue_status,
+            # which records it solely for the deleted/deleting statuses. A
+            # deletion that fails (status 'error') and is retried would otherwise
+            # re-send a duplicate Discord message, since the guard above would
+            # still find no marker.
+            if item_id:
+                async with get_db() as _db:
+                    await _db.execute(
+                        "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
+                        (item_id, "now"),
+                    )
+                    await _db.commit()
         except Exception as e:
             # Isolated logging — if add_log itself fails (DB issue), we must not
             # propagate that exception up to the pipeline and abort the deletion.

@@ -45,3 +45,6 @@ frontend/dist/
 frontend/vue/node_modules/
 data-local/
 docs/superpowers/
+
+# Claude Code local config — not part of the app
+.claude/

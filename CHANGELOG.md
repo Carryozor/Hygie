@@ -4,6 +4,25 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The queue's "time left" label showed "Demain" on the final day even when deletion was an hour away.** `daysRemaining` used `Math.ceil` on a day-fraction, so anything under 24h rounded up to 1 day → "Demain". Time remaining is now bucketed by a pure, unit-tested helper (`utils/timeRemaining.js`): under an hour shows the imminent label, 1–23h shows `dans {n}h` (new `days.inHours` i18n key, all 8 locales), and only ≥24h shows "Demain"/`dans {n}j`.
+- **A failed-then-retried deletion could send a duplicate "supprimé" Discord notification.** `DiscordNotifyStep`'s idempotency guard relied on the `now` marker written by `update_queue_status`, which only records it for the `deleted`/`deleting` statuses — a deletion that ended in `error` left no marker, so the retry re-notified. The step now persists the marker itself, right after sending.
+- Timers are now cleared on unmount in `ToastNotification`, `QueueView`, and `IgnoredView` (stray `setTimeout`/debounce handles could fire a ghost callback after navigation).
+
+### Security
+
+- **SSRF: poster/artwork fetches followed redirects without re-validation.** `collection.py`, `plex_collection.py`, and `scanner/_emby_scanner.py` fetched `poster_url` (from media metadata) with `follow_redirects=True` but no per-hop guard, so a trusted host could 30x-redirect the fetch to `127.0.0.1` or `169.254.169.254`. All four call sites now go through `guarded_image_get()` in `db/utils.py`, which re-validates every hop against loopback/link-local (RFC1918 LAN stays allowed, matching the image proxy). Covered by `tests/test_ssrf_poster_guard.py`.
+
+### CI
+
+- The backend coverage/lint/schema gate (`test.yml`) now runs against a live MariaDB service in addition to SQLite — previously the comprehensive gate was SQLite-only, so the dual-dialect paths that broke prod (v4.1.1) were only exercised by the separate `ci.yml` job, which runs neither coverage, lint, nor the schema check.
+- Added non-blocking security scans to CI: `pip-audit` (Python deps), `bandit` (backend code), and `npm audit` (frontend). Drop `continue-on-error` to make them enforcing once the baseline is clean.
+
+---
+
 ## [4.1.1] — 2026-06-23
 
 ### Fixed

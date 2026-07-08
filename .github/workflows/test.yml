@@ -12,6 +12,21 @@ jobs:
     name: Backend (Python 3.12)
     runs-on: ubuntu-latest
 
+    # Live MariaDB so the coverage/lint/schema gate also exercises the
+    # dual-dialect write paths. Without it this job ran SQLite-only, so the
+    # comprehensive gate never covered the dialect that broke prod (v4.1.1).
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_DATABASE: hygie
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +42,10 @@ jobs:
       - name: Check schema consistency
         run: python3 scripts/check-schema.py
 
-      - name: Run tests with coverage
+      - name: Run tests with coverage (SQLite + MariaDB)
         timeout-minutes: 10
+        env:
+          TEST_MARIADB_URL: mysql+aiomysql://root:ci@127.0.0.1:3306/hygie
         run: |
           python3 -m pytest -q --tb=short --timeout=60 \
             --cov=backend \
@@ -37,6 +54,21 @@ jobs:
 
       - name: Lint (ruff)
         run: python3 -m ruff check backend/ tests/
+
+      # Non-blocking today (continue-on-error) so a fresh transitive advisory
+      # doesn't wedge unrelated PRs. Review the annotations, then drop
+      # continue-on-error once the baseline is clean to make it enforcing.
+      - name: Security scan — dependencies (pip-audit)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: Security scan — code (bandit)
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r backend/ -ll
 
   frontend:
     name: Frontend (Node 22)
@@ -67,3 +99,10 @@ jobs:
       - name: Build frontend
         working-directory: frontend/vue
         run: npm run build
+
+      # Non-blocking (see backend security scans) — surfaces known-vulnerable
+      # npm packages without wedging PRs on transitive advisories.
+      - name: Security scan — npm audit
+        working-directory: frontend/vue
+        continue-on-error: true
+        run: npm audit --audit-level=high

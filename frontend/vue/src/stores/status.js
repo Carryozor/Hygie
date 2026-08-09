@@ -19,11 +19,15 @@ export const useStatusStore = defineStore('status', () => {
   // ── Log state ────────────────────────────────────────────────────────────
   const hasUnseenErrors = ref(false)
 
+  // ── Scheduler fetch state — surfaces a failed /scheduler/status poll so the
+  //    UI doesn't silently keep showing stale scan/deletion timers forever.
+  const schedulerError = ref(false)
+
   // ── Computed logo status ─────────────────────────────────────────────────
   const logoStatus = computed(() => {
     if (hasUnseenErrors.value) return 'error'
-    if (serverStatus.value === 'ok') return 'ok'
-    if (serverStatus.value === 'unknown' || serverStatus.value === 'error') return 'unknown'
+    if (serverStatus.value === 'ok' && !schedulerError.value) return 'ok'
+    if (serverStatus.value === 'unknown' || serverStatus.value === 'error' || schedulerError.value) return 'unknown'
     return 'none'
   })
 
@@ -43,12 +47,18 @@ export const useStatusStore = defineStore('status', () => {
       scanRunning.value     = scan?.is_running    || false
       deletionRunning.value = deletion?.is_running || false
 
+      schedulerError.value = false
+
       const anyRunning = scanRunning.value || deletionRunning.value
       if (_schedulerInterval) {
         clearInterval(_schedulerInterval)
         _schedulerInterval = setInterval(fetchScheduler, anyRunning ? 3000 : 30000)
       }
-    } catch { /* silent */ }
+    } catch {
+      // Keep the last-known scan/deletion timers (better than blanking them),
+      // but flag the failure so logoStatus doesn't silently read as healthy.
+      schedulerError.value = true
+    }
   }
 
   // ── Per-server results (up to 3, mapped to the 3 logo arcs) ─────────────
@@ -144,7 +154,7 @@ export const useStatusStore = defineStore('status', () => {
 
   return {
     scanNext, deletionNext, scanRunning, deletionRunning,
-    serverError, serverStatus, serverResults, hasUnseenErrors, logoStatus,
+    serverError, serverStatus, serverResults, hasUnseenErrors, schedulerError, logoStatus,
     fetchScheduler, checkServerHealth, checkUnseenErrors,
     start, stop,
   }

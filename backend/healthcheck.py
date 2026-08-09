@@ -32,7 +32,7 @@ IS_MARIADB   = bool(DATABASE_URL)
 def _http_check() -> tuple[int, str]:
     try:
         req = urllib.request.Request(HEALTH_URL)
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:  # nosec B310 - HEALTH_URL is a hardcoded loopback constant
             return resp.status, resp.read(2048).decode("utf-8", errors="ignore")
     except urllib.error.HTTPError as e:
         try:

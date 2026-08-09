@@ -93,6 +93,31 @@ describe('useStatusStore', () => {
     expect(s.hasUnseenErrors).toBe(false)
   })
 
+  it('fetchScheduler sets schedulerError on API failure instead of failing silently', async () => {
+    api.get.mockRejectedValueOnce(new Error('network down'))
+    const s = useStatusStore()
+    await s.fetchScheduler()
+    expect(s.schedulerError).toBe(true)
+  })
+
+  it('fetchScheduler clears schedulerError on a subsequent successful poll', async () => {
+    api.get.mockRejectedValueOnce(new Error('network down'))
+    const s = useStatusStore()
+    await s.fetchScheduler()
+    expect(s.schedulerError).toBe(true)
+
+    api.get.mockResolvedValueOnce({ data: [] })
+    await s.fetchScheduler()
+    expect(s.schedulerError).toBe(false)
+  })
+
+  it('logoStatus is "unknown" when schedulerError is true even if serverStatus=ok', () => {
+    const s = useStatusStore()
+    s.serverStatus = 'ok'
+    s.schedulerError = true
+    expect(s.logoStatus).toBe('unknown')
+  })
+
   it('stop does not throw when never started', () => {
     expect(() => useStatusStore().stop()).not.toThrow()
   })

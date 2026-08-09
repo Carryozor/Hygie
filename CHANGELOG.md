@@ -4,6 +4,41 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.2.0] — 2026-08-09
+
+### Security
+
+- **66 known Python CVEs fixed.** `cryptography` 44.0.3→50.0.0, `pillow` 11.1.0→12.3.0, `PyJWT` 2.10.1→2.13.0, `jinja2` 3.1.5→3.1.6, `python-multipart` 0.0.20→0.0.32, `aiomysql` 0.2.0→0.3.2, and `fastapi` 0.115.6→0.141.1 (pulls a patched `starlette` 0.41.3→1.6.0 transitively). Verified clean with a live `pip-audit` run, plus the full backend test suite green against the new versions.
+- **7 npm vulnerabilities fixed** (6 high, 1 moderate): `axios` bumped past the vulnerable `<1.17.0` range, `postcss` patched, `vite` 5→6 (pulls patched `esbuild`; `vitest` already required vite ^6). `npm audit` now reports 0 vulnerabilities.
+- **`pip-audit`, `bandit`, and `npm audit` are now enforcing in CI** (were `continue-on-error: true` since they were added — they were finding the above issues on every run with nobody looking). Bandit's 24 SQL-identifier findings (`B608`) were reviewed individually against the actual code (identifiers are all hardcoded lists/allowlists, never user input — SQL values already went through bound placeholders everywhere) and annotated with a one-line `# nosec` justification each rather than suppressed in bulk.
+
+### Fixed
+
+- **The zero-config SQLite quick start (`docker compose up -d`) failed outright** with "required variable DB_MARIADB_PASSWORD is missing a value", even though the separate `mariadb` service is profile-gated (`--profile mariadb`) and never starts otherwise. Compose interpolates `:?`-required variables for every service in the file before profile filtering runs, so this broke `docker-compose.yml` on its own — not just the dev override. The "must be set" check now runs in the `mariadb` entrypoint (which only executes when that service actually starts) instead of at compose parse time.
+- **A corrupted/non-numeric server id in storage crashed the entire "add media server" endpoint** while computing the next free id. Malformed entries are now skipped (with a warning logged) instead of raising.
+- **The scheduler status poll (sidebar status ring) failed silently on API errors**, leaving stale scan/deletion timers on screen with no indication anything was wrong. It now flips the status ring to the existing "unknown" state, same as a server-health failure.
+
+### Performance
+
+- Added missing indexes on `media_queue`: `seerr_user_id`, `radarr_id`, `sonarr_id`, `tmdb_id` — queried on the Seerr enrichment and deletion-pipeline id-lookup paths without one.
+
+### CI
+
+- `ci.yml` no longer runs on every push to `main` and every PR — it duplicated `test.yml`'s already-comprehensive MariaDB test run for no extra signal. It now only fires on tag pushes, which is also its trigger for the docker build/release job.
+
+### Tech debt
+
+- **66 → 0 unused imports** (`ruff` `F401`), now enforced in CI (was explicitly disabled). The `arr_clients` re-export barrel declares an explicit `__all__`; imports that exist purely as `mock.patch(...)`/monkeypatch targets for the test suite are kept with a documented `# noqa: F401` rather than deleted.
+- **`db/encryption.py` and `db/migrations.py`'s `run_migrations()` had zero direct tests** despite carrying, respectively, all API-key/webhook secret encryption and the append-only migration history responsible for the v4.1.1 regression class. New tests cover both, including the specific property that a failed migration must never be marked applied (so it retries on the next boot instead of leaving the DB half-migrated).
+
+### Docs
+
+- `CLAUDE.md` no longer points at a `.claude/skills/release/SKILL.md` that doesn't exist in the repo — documents the actual tag-push → CI release flow.
+
+**Deliberately deferred** (larger refactors, same items already deferred in the 2026-07-08 review): service layer extraction, `radarr.py`/`sonarr.py` deduplication, god-function splits (`lifespan`, `_scan_library`).
+
+---
+
 ## [4.1.2] — 2026-07-08
 
 ### Fixed

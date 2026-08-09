@@ -53,7 +53,7 @@ async def _send_pending_notifications():
                     placeholders = ",".join("?" * len(candidates))
                     candidate_ids = [item["id"] for item in candidates]
                     notif_rows = await db.fetch_all(
-                        f"SELECT media_id FROM notifications"
+                        f"SELECT media_id FROM notifications"  # nosec B608 - placeholders count from len(candidates), values bound
                         f" WHERE threshold=? AND media_id IN ({placeholders})",
                         [threshold_key] + candidate_ids,
                     )

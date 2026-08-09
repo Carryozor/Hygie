@@ -12,7 +12,6 @@ from typing import Optional
 import httpx
 
 from .db.utils import now_utc, parse_iso_dt, guarded_image_get
-from .db.engine import get_db
 from .db.repositories import get_poster_url_by_emby_id, get_pending_before_for_server
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers

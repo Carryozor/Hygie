@@ -6,7 +6,7 @@ from typing import Optional, List
 import httpx
 
 from ..db.settings_store import get_setting
-from ..db.utils import DB_PATH, TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
+from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 from ..db.engine import get_db
 from ..exceptions import ArrClientError
 

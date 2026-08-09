@@ -237,7 +237,7 @@ async def test_scan_library_passes_server_id_to_get_poster_url(monkeypatch, tmp_
         "url": "http://server2:8096", "api_key": "key2", "enabled": True}])
 
     called_with = []
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
     async def mock_get_client(sid="0"):
         called_with.append(sid)
         return ("http://server2:8096", "key2")

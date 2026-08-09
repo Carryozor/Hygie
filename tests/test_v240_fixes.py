@@ -174,7 +174,6 @@ async def fresh_db(monkeypatch, tmp_path):
     import backend.db.settings_store as _db_ss
     import backend.db.media_servers as _db_ms
     import backend.db.schema as _db_schema
-    import backend.db.logs as _db_logs
     import backend.db.engine as _db_engine
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr(_db_utils, "DB_PATH", db_path)
@@ -243,7 +242,6 @@ def test_interval_bounds_clamp():
 @pytest.mark.asyncio
 async def test_startup_validator_reports_pool_init_error_as_critical(tmp_path):
     """When init_db_pool fails, the error should surface as CRITICAL via the validator."""
-    import os
     import backend.db.utils as _u
     import backend.db.engine as _e
     import backend.db.schema as _schema

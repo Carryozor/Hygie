@@ -14,7 +14,7 @@ App de nettoyage de médiathèque (Emby/Jellyfin/Plex + *arr). Backend FastAPI (
 | Lint | `make lint-all` (ruff + eslint) |
 | Parité schémas | `make check-schema` — obligatoire après tout changement DB |
 | Build image | `make build` |
-| Déploiement | voir le skill `release` (`.claude/skills/release/SKILL.md`) |
+| Déploiement | `git tag vX.Y.Z && git push origin main vX.Y.Z` — le workflow `ci.yml` (trigger `tags: v*`) build + push l'image ghcr et crée la release GitHub depuis `CHANGELOG.md` |
 
 ## Pièges connus — et la règle qui prévient chacun
 

@@ -40,7 +40,6 @@ async def isolated_db(tmp_path, monkeypatch):
 
     # scheduler/deletion/conditions import DB_PATH at module level — patch their local copies too
     import backend.deletion as deletion_mod
-    import backend.rules.legacy_conditions as cond_mod
     monkeypatch.setattr(deletion_mod, "DB_PATH", db_path)
 
     # Seed required settings

@@ -7,13 +7,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..db.utils import STATUS_PENDING, STATUS_DELETING, STATUS_DELETED, STATUS_ERROR, escape_like
+from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR, escape_like
 from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 from ..db.repositories import (
     get_by_id, claim_for_deletion, update_queue_status,
-    delete_by_id, delete_by_ids, purge_by_status,
+    delete_by_id, purge_by_status,
     get_status_counts, get_all_for_enrichment, update_enrichment_fields,
     get_pending_for_poster_regen, update_poster,
 )
@@ -99,12 +99,12 @@ async def list_queue(
 
     async with get_db() as db:
         count_row = await db.fetch_one(
-            f"SELECT COUNT(*) AS cnt FROM media_queue {where_clause}", params
+            f"SELECT COUNT(*) AS cnt FROM media_queue {where_clause}", params  # nosec B608 - where_clause from hardcoded literal fragments, values bound
         )
         total = count_row["cnt"] if count_row else 0
 
         items = await db.fetch_all(
-            f"SELECT * FROM media_queue {where_clause} "
+            f"SELECT * FROM media_queue {where_clause} "  # nosec B608 - sort_col from _SORT_MAP allowlist, where_clause from literals
             f"ORDER BY {sort_col} {sort_dir} LIMIT ? OFFSET ?",
             params + [limit, offset],
         )
@@ -181,7 +181,7 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
 
         async with get_db() as db:
             rows = await db.fetch_all(
-                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",
+                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",  # nosec B608 - placeholders count from len(body.ids), values bound
                 body.ids,
             )
             for row in rows:
@@ -198,7 +198,7 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
         success = 0
         async with get_db() as db:
             rows = await db.fetch_all(
-                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",
+                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",  # nosec B608 - placeholders count from len(body.ids), values bound
                 body.ids,
             )
         for row in rows:

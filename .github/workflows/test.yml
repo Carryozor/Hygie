@@ -55,17 +55,16 @@ jobs:
       - name: Lint (ruff)
         run: python3 -m ruff check backend/ tests/
 
-      # Non-blocking today (continue-on-error) so a fresh transitive advisory
-      # doesn't wedge unrelated PRs. Review the annotations, then drop
-      # continue-on-error once the baseline is clean to make it enforcing.
+      # Enforcing since v4.2.0 — baseline was cleaned (66 known CVEs fixed by
+      # pinning patched versions; bandit findings are hardened SQL-identifier
+      # patterns reviewed and marked `# nosec` with a one-line justification
+      # each). A red run here means an actual new advisory, not noise.
       - name: Security scan — dependencies (pip-audit)
-        continue-on-error: true
         run: |
           pip install pip-audit
           pip-audit -r requirements.txt
 
       - name: Security scan — code (bandit)
-        continue-on-error: true
         run: |
           pip install bandit
           bandit -r backend/ -ll
@@ -100,9 +99,7 @@ jobs:
         working-directory: frontend/vue
         run: npm run build
 
-      # Non-blocking (see backend security scans) — surfaces known-vulnerable
-      # npm packages without wedging PRs on transitive advisories.
+      # Enforcing since v4.2.0 — see backend security scans above.
       - name: Security scan — npm audit
         working-directory: frontend/vue
-        continue-on-error: true
         run: npm audit --audit-level=high

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
-from .utils import DB_PATH
+from .utils import DB_PATH  # noqa: F401 - re-exported as a monkeypatch target for tests (fresh_db fixtures)
 from .encryption import _migrate_encrypt_settings
 from .settings_store import DEFAULT_SETTINGS
 
@@ -297,6 +297,10 @@ _SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)",
     "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)",
     "CREATE INDEX IF NOT EXISTS idx_libraries_server ON libraries(server_id)",
+    "CREATE INDEX IF NOT EXISTS idx_media_seerr_user_id ON media_queue(seerr_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_media_radarr_id ON media_queue(radarr_id)",
+    "CREATE INDEX IF NOT EXISTS idx_media_sonarr_id ON media_queue(sonarr_id)",
+    "CREATE INDEX IF NOT EXISTS idx_media_tmdb_id ON media_queue(tmdb_id)",
 ]
 
 _KNOWN_TABLES = frozenset({
@@ -354,7 +358,7 @@ async def _migrate_logs_table(db):
             + f", {message_col}"
         )
         await db.execute(
-            f"INSERT INTO logs (ts, level, source, message) SELECT {src} FROM logs_legacy"
+            f"INSERT INTO logs (ts, level, source, message) SELECT {src} FROM logs_legacy"  # nosec B608 - src built from hardcoded literal column names, one-time migration
         )
     await db.execute("DROP TABLE logs_legacy")
     logger.info("Logs table migrated successfully")
@@ -391,7 +395,7 @@ async def _migrate_job_history_table(db):
             if src:
                 cols_in.append(src); cols_out.append(dst)
         await db.execute(
-            f"INSERT INTO job_history ({', '.join(cols_out)}) "
+            f"INSERT INTO job_history ({', '.join(cols_out)}) "  # nosec B608 - cols built from hardcoded literal column names, one-time migration
             f"SELECT {', '.join(cols_in)} FROM job_history_legacy"
         )
     await db.execute("DROP TABLE job_history_legacy")
@@ -465,6 +469,18 @@ async def _init_db_sqlite():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_libraries_server ON libraries(server_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_seerr_user_id ON media_queue(seerr_user_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_radarr_id ON media_queue(radarr_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_sonarr_id ON media_queue(sonarr_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_tmdb_id ON media_queue(tmdb_id)"
         )
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)

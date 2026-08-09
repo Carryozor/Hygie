@@ -7,7 +7,7 @@ from typing import Optional
 import httpx
 
 from .db.utils import TIMEOUT_MEDIUM, TIMEOUT_SHORT
-from .arr_clients.circuit_breaker import get_breaker, CircuitOpenError
+from .arr_clients.circuit_breaker import get_breaker
 
 logger = logging.getLogger(__name__)
 

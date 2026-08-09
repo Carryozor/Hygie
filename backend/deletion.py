@@ -6,26 +6,25 @@ from datetime import timedelta
 from typing import Optional
 
 from .db.utils import (
-    DB_PATH, STATUS_DELETED, STATUS_DELETING, STATUS_ERROR, STATUS_PENDING, now_utc,
+    DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc,
 )
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
+from .emby_client import delete_item, get_client  # noqa: F401 - unused in this module's own code, but mock.patch("backend.deletion.delete_item"/"get_client") targets require them re-imported here
 from .db.repositories import (
     get_pending_queue, update_queue_status,
     reset_deleting_to_pending, claim_for_deletion,
     delete_stale_deleted,
 )
-from .emby_client import delete_item, get_client
 from .arr_clients import (
-    radarr_delete, radarr_find_by_path, radarr_get, radarr_get_torrent_hash,
+    radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,
     radarr_delete_by_id, radarr_get_torrent_hash_any,
     seerr_delete_request, sonarr_delete_episode_file, sonarr_delete_season,
-    sonarr_delete_series, sonarr_find_by_path, sonarr_get_series_by_id,
-    sonarr_get_torrent_hash,
+    sonarr_delete_series, sonarr_find_by_path, sonarr_get_torrent_hash,
 )
 from .qbit_client import qbit_add_tag, qbit_delete_torrent, qbit_find_by_path
-from .discord_client import send_alert, send_notification
+from .discord_client import send_alert, send_notification  # noqa: F401 - send_notification unused directly, but mock.patch("backend.deletion.send_notification") targets require it re-imported here
 from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock

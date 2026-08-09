@@ -20,7 +20,7 @@ from ..emby_client import (
     get_library_user_data,
     get_play_activity,
     get_series_tmdb_map,
-    get_user_data,
+    get_user_data,  # noqa: F401 - unused directly, but mock.patch("backend.scanner._emby_scanner.get_user_data") targets require it re-imported here
     get_users,
     resolve_item_tmdb,
 )

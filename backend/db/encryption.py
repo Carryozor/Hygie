@@ -76,7 +76,7 @@ async def _migrate_encrypt_settings(db) -> None:
         return
     placeholders = ",".join("?" * len(SENSITIVE_KEYS))
     rows = await db.fetch_all(
-        f"SELECT `key`, value FROM settings WHERE `key` IN ({placeholders})",
+        f"SELECT `key`, value FROM settings WHERE `key` IN ({placeholders})",  # nosec B608 - placeholders count from fixed SENSITIVE_KEYS, values bound
         tuple(SENSITIVE_KEYS),
     )
     migrated = 0

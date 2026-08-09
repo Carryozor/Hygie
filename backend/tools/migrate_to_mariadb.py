@@ -13,7 +13,6 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
 
 import aiosqlite
 
@@ -46,7 +45,7 @@ async def read_sqlite_table(sqlite_path: str, table: str) -> list[dict]:
     """Read all rows from a SQLite table as list of dicts."""
     async with aiosqlite.connect(sqlite_path) as db:
         db.row_factory = lambda c, r: {col[0]: r[i] for i, col in enumerate(c.description)}
-        async with db.execute(f"SELECT * FROM {table}") as cur:
+        async with db.execute(f"SELECT * FROM {table}") as cur:  # nosec B608 - table from hardcoded ORDERED_TABLES
             return await cur.fetchall()
 
 

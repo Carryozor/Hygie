@@ -50,12 +50,19 @@ services:
     # deletes it before each start as a second safeguard for unexpected crashes (OOM,
     # power loss, host reboot).
     stop_grace_period: 60s
-    entrypoint: ["bash", "-c", "rm -f /var/lib/mysql/tc.log && exec docker-entrypoint.sh mariadbd"]
+    # `:?` (required-var) interpolation runs for every service in the merged
+    # config at parse time, BEFORE profile filtering — so it broke `docker
+    # compose up -d` (the zero-config SQLite quick start) even though this
+    # service never activates without `--profile mariadb`. Use a safe `:-`
+    # empty default at parse time instead, and enforce the "must be set"
+    # requirement in the entrypoint, which only runs when this service is
+    # actually started.
+    entrypoint: ["bash", "-c", "test -n \"$$MYSQL_PASSWORD\" || { echo 'DB_MARIADB_PASSWORD manquant — le définir dans .env avant --profile mariadb' >&2; exit 1; }; test -n \"$$MYSQL_ROOT_PASSWORD\" || { echo 'DB_MARIADB_ROOT_PASSWORD manquant — le définir dans .env avant --profile mariadb' >&2; exit 1; }; rm -f /var/lib/mysql/tc.log && exec docker-entrypoint.sh mariadbd"]
     environment:
       MYSQL_DATABASE: hygie
       MYSQL_USER: hygie
-      MYSQL_PASSWORD: ${DB_MARIADB_PASSWORD:?Set DB_MARIADB_PASSWORD in your .env file — do not use defaults}
-      MYSQL_ROOT_PASSWORD: ${DB_MARIADB_ROOT_PASSWORD:?Set DB_MARIADB_ROOT_PASSWORD in your .env file — do not use defaults}
+      MYSQL_PASSWORD: ${DB_MARIADB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${DB_MARIADB_ROOT_PASSWORD:-}
     volumes:
       - hygie_mariadb:/var/lib/mysql
     healthcheck:

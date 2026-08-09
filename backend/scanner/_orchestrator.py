@@ -11,7 +11,7 @@ from ..db.media_servers import get_media_servers
 from ..db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
 from ..db.repositories import (
     get_enabled_libraries, get_queued_and_ignored_ids,
-    get_all_emby_ids, delete_stale_pending_no_seerr,
+    delete_stale_pending_no_seerr,
 )
 from ..emby_client import get_users, ensure_server_uid
 from ..arr_clients import (

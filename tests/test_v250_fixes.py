@@ -1,7 +1,6 @@
 """Tests for v2.5.0 fixes — poster proxy, scheduler dedup, settings cleanup, emby retry."""
 import os
 import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 import httpx
 

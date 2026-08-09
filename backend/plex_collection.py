@@ -54,7 +54,7 @@ async def sync_plex_overlays() -> None:
     plex_server_ids = tuple(str(s["id"]) for s in plex_servers)
     async with get_db() as db:
         lib_rows = await db.fetch_all(
-            "SELECT id, server_id FROM libraries WHERE server_id IN ({})".format(
+            "SELECT id, server_id FROM libraries WHERE server_id IN ({})".format(  # nosec B608 - placeholders count from len(plex_server_ids), values bound
                 ",".join("?" * len(plex_server_ids))
             ),
             plex_server_ids,
@@ -67,7 +67,7 @@ async def sync_plex_overlays() -> None:
     # Fetch pending Plex items
     async with get_db() as db:
         pending = await db.fetch_all(
-            "SELECT emby_id, title, delete_at, poster_url, plex_rating_key, library_id "
+            "SELECT emby_id, title, delete_at, poster_url, plex_rating_key, library_id "  # nosec B608 - placeholders count from len(lib_to_server), values bound
             "FROM media_queue WHERE status='pending' "
             "AND library_id IN ({}) AND plex_rating_key != ''".format(
                 ",".join("?" * len(lib_to_server))

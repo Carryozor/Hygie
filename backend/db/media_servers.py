@@ -4,7 +4,7 @@ import json
 import logging
 import time
 
-from .utils import DB_PATH
+from .utils import DB_PATH  # noqa: F401 - re-exported as a monkeypatch target for tests (fresh_db fixtures)
 from .engine import get_db
 from .encryption import _decrypt_value, _encrypt_value
 from .settings_store import _invalidate_settings_cache

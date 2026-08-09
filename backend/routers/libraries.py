@@ -170,7 +170,7 @@ async def update_library(
     params.append(library_id)
     async with get_db() as db:
         await db.execute(
-            f"UPDATE libraries SET {', '.join(updates)} WHERE id=?", params
+            f"UPDATE libraries SET {', '.join(updates)} WHERE id=?", params  # nosec B608 - column names filtered through _ALLOWED_LIB_COLS, values bound
         )
         await db.commit()
 

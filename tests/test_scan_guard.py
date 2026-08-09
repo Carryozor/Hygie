@@ -1,5 +1,4 @@
 """Tests for scan/deletion trigger guards — 409 when job already running."""
-import pytest
 from unittest.mock import patch
 
 

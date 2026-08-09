@@ -6,7 +6,6 @@ Hygie still read `discordId`, so every user came back without a Discord ID.
 """
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 
 # ─── Unit: _extract_discord_id ────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 """Tests for CircuitBreaker — state transitions, probe serialization, decay."""
 import asyncio
-import time
 import pytest
 from backend.arr_clients.circuit_breaker import CircuitBreaker, CircuitOpenError
 

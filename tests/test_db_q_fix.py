@@ -1,5 +1,4 @@
 """Tests for DbConn._q() — regex must NOT replace ? inside string literals."""
-import pytest
 from backend.db.engine import DbConn
 
 

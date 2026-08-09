@@ -197,7 +197,7 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         if "backup_interval_hours" in updated or "backup_enabled" in updated:
             try:
                 from ..backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
-                from ..db.settings_store import get_bool_setting as _get_bool, get_int_setting as _get_int
+                from ..db.settings_store import get_int_setting as _get_int
                 hours = int(incoming.get("backup_interval_hours") or await _get_int("backup_interval_hours", _DEFAULT_INTERVAL_HOURS))
                 enabled = (incoming.get("backup_enabled", "true") == "true")
                 if not enabled or hours <= 0:
@@ -268,7 +268,13 @@ async def add_media_server(body: MediaServerBody, user: str = Depends(require_au
     url = _validate_server_url(body.url or "", "url")
     ext_url = _validate_server_url(body.ext_url, "ext_url")
     servers = await get_media_servers()
-    new_id = str(max([int(s.get("id", 0)) for s in servers], default=-1) + 1)
+    existing_ids = []
+    for s in servers:
+        try:
+            existing_ids.append(int(s.get("id", 0)))
+        except (TypeError, ValueError):
+            logger.warning("add_media_server: non-numeric server id %r ignored for new-id calc", s.get("id"))
+    new_id = str(max(existing_ids, default=-1) + 1)
     servers.append({
         "id": new_id,
         "name": body.name or f"Serveur {new_id}",

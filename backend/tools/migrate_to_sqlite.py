@@ -37,7 +37,7 @@ async def _read_mariadb_table(db_url: str, table: str) -> list[dict]:
     conn = await aiomysql.connect(**kwargs, autocommit=True, charset="utf8mb4")
     try:
         async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute(f"SELECT * FROM `{table}`")
+            await cur.execute(f"SELECT * FROM `{table}`")  # nosec B608 - table from hardcoded ORDERED_TABLES
             rows = list(await cur.fetchall())
         return rows
     finally:

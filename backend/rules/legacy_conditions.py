@@ -11,7 +11,6 @@ Public API:
   _evaluate_item            — full evaluation + DB insert for one Emby item
 """
 import logging
-import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional

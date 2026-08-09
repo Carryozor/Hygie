@@ -5,7 +5,6 @@ from typing import Optional
 from ..db.utils import now_utc, parse_iso_dt
 from ..db.repositories import get_expert_rules as _get_expert_rules
 from ..rules.engine import evaluate_rule as _evaluate_rule
-from ..rules.models import RuleAction as _RuleAction
 
 
 def _build_plex_item_data(item: dict) -> dict:

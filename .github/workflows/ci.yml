@@ -1,11 +1,14 @@
 name: CI
 
+# Only fires on tag pushes. Branch pushes to main and PRs are already fully
+# covered by test.yml (coverage, lint, schema check, MariaDB, security scans);
+# running a second, thinner test job on every push/PR was pure duplication
+# (same MariaDB service, same pytest run, no extra signal). The `test` job
+# below still exists because tag pushes are NOT covered by test.yml's
+# `branches: [main, develop]` trigger, and it's the gate for docker/release.
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
-    branches: [main]
 
 jobs:
   test:

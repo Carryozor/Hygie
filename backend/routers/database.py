@@ -1,7 +1,6 @@
 """Database management — info, connection test, migration."""
 import asyncio
 import logging
-import os
 import re
 from typing import Optional
 
@@ -43,7 +42,7 @@ async def db_info(user: str = Depends(require_auth)):
             try:
                 exists = await db.table_exists(table)
                 if exists:
-                    row = await db.fetch_one(f"SELECT COUNT(*) AS n FROM {table}")
+                    row = await db.fetch_one(f"SELECT COUNT(*) AS n FROM {table}")  # nosec B608 - table from hardcoded _TABLES list
                     counts[table] = row["n"] if row else 0
             except Exception:
                 counts[table] = -1

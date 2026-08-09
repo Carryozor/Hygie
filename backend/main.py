@@ -16,16 +16,13 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .db import utils as _db_utils
-from .db.utils import DB_PATH
-from .db.settings_store import get_setting, set_setting, get_bool_setting, get_int_setting
+from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
 from .logmsg import lm
 
@@ -33,7 +30,6 @@ from .db.schema import init_db
 from .db.websocket import register_ws, unregister_ws
 from .auth import verify_token
 from .scheduler import (
-    run_deletion,
     _run_deletion_guarded,
     run_ignored_cleanup,
     run_scan,

@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 
 from .engine import get_db
-from .utils import now_utc, STATUS_PENDING, STATUS_DELETING, STATUS_DELETED
+from .utils import now_utc, STATUS_PENDING, STATUS_DELETING
 from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, ConditionGroup as _ConditionGroup, RuleOperator, RuleAction
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ async def get_expert_rules(*, enabled_only: bool = False) -> list:
     where = "WHERE enabled=1" if enabled_only else ""
     async with get_db() as db:
         rows = await db.fetch_all(
-            f"SELECT * FROM expert_rules {where} ORDER BY priority ASC, id ASC"
+            f"SELECT * FROM expert_rules {where} ORDER BY priority ASC, id ASC"  # nosec B608 - where is one of two hardcoded literals, no interpolated input
         )
     result = []
     for d in rows:
@@ -494,7 +494,7 @@ async def update_enrichment_fields(item_id: int, fields: dict) -> None:
     set_clause = ", ".join(f"{k}=?" for k in safe)
     async with get_db() as db:
         await db.execute(
-            f"UPDATE media_queue SET {set_clause} WHERE id=?",
+            f"UPDATE media_queue SET {set_clause} WHERE id=?",  # nosec B608 - set_clause columns filtered through _ENRICH_ALLOWED, values bound
             list(safe.values()) + [item_id],
         )
         await db.commit()
@@ -522,7 +522,9 @@ async def delete_by_ids(item_ids: list[int]) -> None:
         return
     placeholders = ",".join("?" * len(item_ids))
     async with get_db() as db:
-        await db.execute(f"DELETE FROM media_queue WHERE id IN ({placeholders})", item_ids)
+        await db.execute(
+            f"DELETE FROM media_queue WHERE id IN ({placeholders})", item_ids  # nosec B608 - placeholders count from len(item_ids), values bound
+        )
         await db.commit()
 
 
@@ -571,7 +573,7 @@ async def delete_stale_pending_no_seerr(library_ids: list[str]) -> int:
     placeholders = ",".join("?" * len(library_ids))
     async with get_db() as db:
         n = await db.execute_write(
-            f"DELETE FROM media_queue WHERE status='pending' "
+            f"DELETE FROM media_queue WHERE status='pending' "  # nosec B608 - placeholders count from len(library_ids), values bound
             f"AND (seerr_user_id IS NULL OR seerr_user_id = 0) "
             f"AND library_id IN ({placeholders})",
             list(library_ids),
@@ -597,7 +599,7 @@ async def delete_pending_by_server(server_id: str) -> int:
         ids = [r["id"] for r in rows]
         placeholders = ",".join("?" * len(ids))
         await db.execute_write(
-            f"DELETE FROM media_queue WHERE id IN ({placeholders})", tuple(ids)
+            f"DELETE FROM media_queue WHERE id IN ({placeholders})", tuple(ids)  # nosec B608 - placeholders count from len(ids), values bound
         )
         await db.commit()
     return len(ids)

@@ -208,7 +208,7 @@ async def _m007_migrate_notification_columns():
                 # (The old MariaDB branch hard-coded %s, which the %→%% escaping
                 # in _q would corrupt into %%s and break the parameter binding.)
                 await db.execute(
-                    f"INSERT OR IGNORE INTO notifications (media_id, threshold) "
+                    f"INSERT OR IGNORE INTO notifications (media_id, threshold) "  # nosec B608 - col is a literal from the hardcoded tuple above, not input
                     f"SELECT id, ? FROM media_queue WHERE {col}=1",
                     (threshold,),
                 )
@@ -426,7 +426,7 @@ async def _m011_libraries_to_expert_rules():
         rule_name = f"{name} (migré)"
         async with get_db() as db:
             existing = await db.fetch_one(
-                f"SELECT id FROM expert_rules WHERE name=?"
+                f"SELECT id FROM expert_rules WHERE name=?"  # nosec B608 - _cast is a hardcoded dialect constant (CHAR/TEXT)
                 f" AND CAST(library_id AS {_cast})=CAST(? AS {_cast})",
                 (rule_name, lib_id),
             )

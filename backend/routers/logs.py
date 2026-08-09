@@ -34,7 +34,7 @@ async def list_logs(
 
     async with get_db() as db:
         rows = await db.fetch_all(
-            f"SELECT * FROM logs {where_clause} ORDER BY ts DESC LIMIT ?",
+            f"SELECT * FROM logs {where_clause} ORDER BY ts DESC LIMIT ?",  # nosec B608 - where_clause built from hardcoded literal fragments, values bound
             params + [limit],
         )
     return rows

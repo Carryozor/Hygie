@@ -239,4 +239,8 @@ MARIADB_INDEXES: list[str] = [
     "CREATE INDEX idx_rate_limit_key ON rate_limit(`key`, ts)",
     "CREATE INDEX idx_notif_media    ON notifications(media_id)",
     "CREATE INDEX idx_libraries_server ON libraries(server_id)",
+    "CREATE INDEX idx_media_seerr_user_id ON media_queue(seerr_user_id)",
+    "CREATE INDEX idx_media_radarr_id ON media_queue(radarr_id)",
+    "CREATE INDEX idx_media_sonarr_id ON media_queue(sonarr_id)",
+    "CREATE INDEX idx_media_tmdb_id ON media_queue(tmdb_id)",
 ]

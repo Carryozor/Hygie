@@ -39,7 +39,7 @@ async def list_ignored(
 
     async with get_db() as db:
         rows = await db.fetch_all(
-            f"SELECT * FROM ignored_media {where} ORDER BY ignored_at DESC LIMIT ?",
+            f"SELECT * FROM ignored_media {where} ORDER BY ignored_at DESC LIMIT ?",  # nosec B608 - where built from hardcoded literal fragments, values bound
             params + [limit],
         )
     return rows

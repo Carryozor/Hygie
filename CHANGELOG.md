@@ -4,11 +4,15 @@ All notable changes to Hygie are documented here.
 
 ---
 
-## [Unreleased]
+## [4.2.1] — 2026-08-10
 
 ### Added
 
 - **A safety backup now runs automatically right before startup migrations**, on top of the existing scheduled/manual backups. `run_backup()` (SQLite online copy / MariaDB `mysqldump`) already existed but was only ever wired as a periodic job or a manual API trigger — never invoked immediately before `run_migrations()` touches the schema. A migration that fails or misbehaves mid-run (the class of bug behind the v4.1.1 regression) previously had no recovery path short of a manual restore. Skipped on a fresh install (nothing to snapshot yet) and when `backup_enabled` is off (only the periodic-interval throttle is bypassed, not an explicit opt-out); fails open (logs and continues) so a backup problem never blocks startup.
+
+### Changed
+
+- **Internal cleanup, no behavior change**: deduplicated the Radarr/Sonarr API clients (shared credential-fallback, poster-extraction, connection-test, and multi-server-lookup helpers moved to `arr_clients/shared.py`), and split the two largest functions in the codebase — FastAPI's startup/shutdown `lifespan()` and the Emby scanner's `_scan_library()` — into smaller, named steps. Both were flagged by the 2026-08-09 audit as the last deferred cleanup items.
 
 ---
 

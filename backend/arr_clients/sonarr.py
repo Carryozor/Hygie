@@ -8,7 +8,14 @@ import httpx
 from ..db.settings_store import get_setting
 from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG
 from .retry import with_retry
-from .shared import _arr_auth, _get_arr_servers
+from .shared import (
+    _arr_auth,
+    _extract_poster_url,
+    _first_from_servers,
+    _get_arr_servers,
+    _resolve_arr_creds,
+    _test_arr_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +33,7 @@ async def get_sonarr_servers() -> list[dict]:
 
 async def test_sonarr() -> tuple[bool, str]:
     url, key = await _sonarr_config()
-    if not url or not key:
-        return False, "Non configuré"
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            r = await c.get(f"{url}/api/v3/system/status", headers=_arr_auth(key))
-            if r.status_code == 200:
-                return True, f"Sonarr {r.json().get('version', '?')}"
-            return False, f"HTTP {r.status_code}"
-    except Exception as e:
-        return False, str(e)
+    return await _test_arr_connection(url, key, "Sonarr")
 
 
 async def build_sonarr_path_cache() -> dict:
@@ -67,13 +65,7 @@ async def build_sonarr_path_cache() -> dict:
                     return []
                 sid = series.get("id")
                 stitle = series.get("title", "")
-                poster_url = ""
-                for img in series.get("images", []):
-                    if img.get("coverType") == "poster":
-                        remote = img.get("remoteUrl") or ""
-                        if remote.startswith("http"):
-                            poster_url = remote
-                            break
+                poster_url = _extract_poster_url(series.get("images", []))
 
                 async def _fetch_eps(u=url, k=key, s=sid):
                     async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as c:
@@ -186,8 +178,7 @@ async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
 
 async def sonarr_get_series_by_id(series_id: int, url: str = "", key: str = "") -> Optional[dict]:
     """Get a Sonarr series by its series ID."""
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key or not series_id:
         return None
     try:
@@ -208,29 +199,21 @@ async def sonarr_get_series_by_id_any(series_id: int) -> Optional[dict]:
     series_id is only meaningful on the server that issued it.
     """
     servers = await get_sonarr_servers()
-    for srv in servers:
-        series = await sonarr_get_series_by_id(series_id, url=srv["url"].rstrip("/"), key=srv["api_key"])
-        if series:
-            return series
-    return None
+    return await _first_from_servers(
+        servers, lambda url, key: sonarr_get_series_by_id(series_id, url=url, key=key)
+    )
 
 
 async def sonarr_get_poster_url(episode_file_id: int) -> str:
     series = await sonarr_get_series(episode_file_id)
     if not series:
         return ""
-    for img in series.get("images", []):
-        if img.get("coverType") == "poster":
-            remote = img.get("remoteUrl") or ""
-            if remote.startswith("http"):
-                return remote
-    return ""
+    return _extract_poster_url(series.get("images", []))
 
 
 async def sonarr_delete_episode_file(episode_file_id: int, url: str = "", key: str = "") -> bool:
     """Delete an episode file from Sonarr."""
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key or not episode_file_id:
         return False
     try:
@@ -280,8 +263,7 @@ async def _episode_ids_for_files(
 
 async def sonarr_delete_season(series_id: int, season_number: int, url: str = "", key: str = "") -> bool:
     """Delete all episode files for a given season, then unmonitor those episodes."""
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key:
         return False
     try:
@@ -322,8 +304,7 @@ async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> 
     monitoring — otherwise Sonarr keeps treating the wiped episodes as
     "missing" and can re-grab them on its next RSS sync.
     """
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key:
         return False
     try:
@@ -367,8 +348,7 @@ async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> 
 
 async def sonarr_get_torrent_hash(episode_file_id: int, url: str = "", key: str = "") -> Optional[str]:
     """Get qBittorrent hash from Sonarr download history."""
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key or not episode_file_id:
         return None
     try:
@@ -415,8 +395,7 @@ async def sonarr_get_torrent_hashes_for_group(
     Must run BEFORE the bulk episodefile delete — Sonarr's episode/history
     records are looked up by the (still-existing) episode file IDs.
     """
-    if not url or not key:
-        url, key = await _sonarr_config()
+    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
     if not url or not key or not series_id:
         return set()
     try:

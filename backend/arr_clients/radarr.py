@@ -7,7 +7,15 @@ import httpx
 from ..db.settings_store import get_setting
 from ..db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM
 from .retry import with_retry
-from .shared import _arr_auth, _path_matches, _get_arr_servers
+from .shared import (
+    _arr_auth,
+    _extract_poster_url,
+    _first_from_servers,
+    _get_arr_servers,
+    _path_matches,
+    _resolve_arr_creds,
+    _test_arr_connection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +33,7 @@ async def get_radarr_servers() -> list[dict]:
 
 async def test_radarr() -> tuple[bool, str]:
     url, key = await _radarr_config()
-    if not url or not key:
-        return False, "Non configuré"
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
-            r = await c.get(f"{url}/api/v3/system/status", headers=_arr_auth(key))
-            if r.status_code == 200:
-                return True, f"Radarr {r.json().get('version', '?')}"
-            return False, f"HTTP {r.status_code}"
-    except Exception as e:
-        return False, str(e)
+    return await _test_arr_connection(url, key, "Radarr")
 
 
 async def build_radarr_path_cache() -> dict:
@@ -104,8 +103,7 @@ async def radarr_find_by_path(file_path: str) -> Optional[tuple]:
 
 async def radarr_get(radarr_id: int, url: str = "", key: str = "") -> Optional[dict]:
     """Get full movie details including images."""
-    if not url or not key:
-        url, key = await _radarr_config()
+    url, key = await _resolve_arr_creds(url, key, _radarr_config)
     if not url or not key or not radarr_id:
         return None
     try:
@@ -123,18 +121,12 @@ async def radarr_get_poster_url(radarr_id: int) -> str:
     movie = await radarr_get(radarr_id)
     if not movie:
         return ""
-    for img in movie.get("images", []):
-        if img.get("coverType") == "poster":
-            remote = img.get("remoteUrl") or ""
-            if remote.startswith("http"):
-                return remote
-    return ""
+    return _extract_poster_url(movie.get("images", []))
 
 
 async def radarr_delete(radarr_id: int, delete_files: bool = False, url: str = "", key: str = "") -> bool:
     """Delete a movie from Radarr (keeping files by default)."""
-    if not url or not key:
-        url, key = await _radarr_config()
+    url, key = await _resolve_arr_creds(url, key, _radarr_config)
     if not url or not key or not radarr_id:
         return False
     try:
@@ -154,8 +146,7 @@ async def radarr_delete(radarr_id: int, delete_files: bool = False, url: str = "
 
 async def radarr_get_torrent_hash(radarr_id: int, url: str = "", key: str = "") -> Optional[str]:
     """Get qBittorrent hash from Radarr download history."""
-    if not url or not key:
-        url, key = await _radarr_config()
+    url, key = await _resolve_arr_creds(url, key, _radarr_config)
     if not url or not key or not radarr_id:
         return None
     try:
@@ -208,18 +199,12 @@ async def radarr_get_any(radarr_id: int) -> Optional[dict]:
     meaningful on the server that issued it.
     """
     servers = await get_radarr_servers()
-    for srv in servers:
-        movie = await radarr_get(radarr_id, url=srv["url"].rstrip("/"), key=srv["api_key"])
-        if movie:
-            return movie
-    return None
+    return await _first_from_servers(servers, lambda url, key: radarr_get(radarr_id, url=url, key=key))
 
 
 async def radarr_get_torrent_hash_any(radarr_id: int) -> Optional[str]:
     """Get torrent hash from any configured Radarr server that has this movie."""
     servers = await get_radarr_servers()
-    for srv in servers:
-        h = await radarr_get_torrent_hash(radarr_id, url=srv["url"].rstrip("/"), key=srv["api_key"])
-        if h:
-            return h
-    return None
+    return await _first_from_servers(
+        servers, lambda url, key: radarr_get_torrent_hash(radarr_id, url=url, key=key)
+    )

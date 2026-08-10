@@ -121,56 +121,65 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     return now + timedelta(seconds=30)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle."""
-    # Startup
-    # init_db_pool() MUST run before init_db()/run_migrations(): on MariaDB the
-    # schema init and migrations go through get_db(), which raises if the pool
-    # is not yet initialized. (No-op for SQLite.)
-    #
-    # It can raise on bad DATABASE_URL (host unreachable, bad credentials,
-    # malformed URL). Previously this crashed with a raw traceback before the
-    # StartupValidator could report it as a structured CRITICAL. We capture the
-    # error and inject it into the validator so the operator sees a clean message.
-    from .db.engine import init_db_pool, close_db_pool
-    _db_pool_init_error: str = ""
+async def _init_database_and_migrate() -> str:
+    """Init the DB pool, back up, init schema, and run migrations. Returns the
+    pool init error message (empty string if it succeeded).
+
+    init_db_pool() MUST run before init_db()/run_migrations(): on MariaDB the
+    schema init and migrations go through get_db(), which raises if the pool
+    is not yet initialized. (No-op for SQLite.)
+
+    It can raise on bad DATABASE_URL (host unreachable, bad credentials,
+    malformed URL). Previously this crashed with a raw traceback before the
+    StartupValidator could report it as a structured CRITICAL. We capture the
+    error and return it so the caller can inject it into the validator so the
+    operator sees a clean message.
+    """
+    from .db.engine import init_db_pool
+    db_pool_init_error = ""
     try:
         await init_db_pool()
     except Exception as _pool_err:
-        _db_pool_init_error = str(_pool_err)
+        db_pool_init_error = str(_pool_err)
         logger.critical("MariaDB pool initialization failed — startup will report CRITICAL: %s", _pool_err)
 
     # Skip schema init / migrations if the pool failed — they would raise the
     # same unhelpful error; the StartupValidator reports the real cause below.
-    if not _db_pool_init_error:
+    if not db_pool_init_error:
         from .backup import backup_before_migrations
         await backup_before_migrations()
         await init_db()
         from .db.migrations import run_migrations
         await run_migrations()
 
-    # Configure log level from settings
+    return db_pool_init_error
+
+
+async def _configure_log_level() -> None:
     try:
         log_level = (await get_setting("log_level") or "INFO").upper()
         logging.getLogger("hygie").setLevel(getattr(logging, log_level, logging.INFO))
     except Exception:
         pass
 
-    # Recover items left in 'deleting' by a crash mid-deletion — they would
-    # otherwise be skipped by every future deletion run.
+
+async def _recover_stale_deletions() -> None:
+    """Recover items left in 'deleting' by a crash mid-deletion — they would
+    otherwise be skipped by every future deletion run."""
     try:
         from .deletion import reset_stale_deleting
         await reset_stale_deleting()
     except Exception as e:
         logger.warning(f"reset_stale_deleting: {e}")
 
-    # Validate configuration — log WARN issues, block on CRITICAL
+
+async def _run_startup_validation(db_pool_init_error: str) -> None:
+    """Validate configuration — log WARN issues, block (exit) on CRITICAL."""
     from .startup_validator import StartupValidator
-    _validator = StartupValidator(db_pool_init_error=_db_pool_init_error)
-    _issues    = await _validator.run()
-    _can_start = await _validator.log_results(_issues)
-    if not _can_start:
+    validator  = StartupValidator(db_pool_init_error=db_pool_init_error)
+    issues     = await validator.run()
+    can_start  = await validator.log_results(issues)
+    if not can_start:
         logger.critical(
             "Hygie startup aborted due to CRITICAL configuration issues. "
             "Fix the issues reported above and restart."
@@ -178,7 +187,13 @@ async def lifespan(app: FastAPI):
         import sys
         sys.exit(1)
 
-    # Schedule jobs — intervals stored in minutes, clamped to [1, 10080]
+
+async def _schedule_recurring_jobs() -> tuple[int, int]:
+    """Register scan/deletion/cleanup/backup jobs on the scheduler.
+
+    Returns (scan_min, del_min) for the startup log line.
+    """
+    # Intervals stored in minutes, clamped to [1, 10080]
     try:
         scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))
         del_min  = max(1, min(10080, int(await get_setting("deletion_check_interval_minutes") or "60")))
@@ -213,32 +228,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"backup job setup: {e}")
 
-    # Pre-warm storage cache in background so first navigation is instant.
-    # Keep a reference so we can cancel it cleanly on shutdown (avoids pending-task
-    # warnings and event-loop teardown hangs in Python 3.12 asyncio).
-    _prewarm_task: asyncio.Task | None = None
+    return scan_min, del_min
+
+
+def _start_storage_prewarm() -> asyncio.Task | None:
+    """Pre-warm storage cache in background so first navigation is instant.
+
+    Returns the task (or None on failure) so the caller can cancel it cleanly
+    on shutdown — avoids pending-task warnings and event-loop teardown hangs
+    in Python 3.12 asyncio.
+    """
     try:
         from .routers.storage import _fetch_storage_data
-        _prewarm_task = asyncio.create_task(_fetch_storage_data())
+        return asyncio.create_task(_fetch_storage_data())
     except Exception:
-        pass
+        return None
 
-    scheduler.start()
-    app.state.scheduler = scheduler
-    health_router.set_scheduler(scheduler)
 
+async def _log_startup_complete(scan_min: int, del_min: int) -> None:
     logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
     if not os.environ.get("HYGIE_ENCRYPTION_KEY"):
         logger.warning("HYGIE_ENCRYPTION_KEY not set — sensitive settings stored in plaintext")
     await add_log("INFO", lm("system.started", version=VERSION), "system")
 
-    yield
 
-    # Shutdown
-    if _prewarm_task is not None and not _prewarm_task.done():
-        _prewarm_task.cancel()
+async def _shutdown_lifespan(prewarm_task: asyncio.Task | None) -> None:
+    from .db.engine import close_db_pool
+    if prewarm_task is not None and not prewarm_task.done():
+        prewarm_task.cancel()
         try:
-            await _prewarm_task
+            await prewarm_task
         except (asyncio.CancelledError, Exception):
             pass
     try:
@@ -247,6 +266,30 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown(wait=False)
     await close_db_pool()
     logger.info("Hygie shutdown")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle."""
+    # Startup
+    db_pool_init_error = await _init_database_and_migrate()
+    await _configure_log_level()
+    await _recover_stale_deletions()
+    await _run_startup_validation(db_pool_init_error)
+
+    scan_min, del_min = await _schedule_recurring_jobs()
+    prewarm_task = _start_storage_prewarm()
+
+    scheduler.start()
+    app.state.scheduler = scheduler
+    health_router.set_scheduler(scheduler)
+
+    await _log_startup_complete(scan_min, del_min)
+
+    yield
+
+    # Shutdown
+    await _shutdown_lifespan(prewarm_task)
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────

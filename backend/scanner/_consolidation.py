@@ -41,7 +41,11 @@ async def _consolidate_and_insert(
         added = 0
         for (sid, sn), eps in groups.items():
             total = season_totals.get((sid, sn), 0)
-            if total > 0 and len(eps) >= total:
+            # Strict equality: "eligible" must match Sonarr's own file count
+            # exactly. More eligible entries than known files is a data
+            # anomaly (duplicate scan pagination, stale cache) — treat it as
+            # incomplete rather than silently over-accepting the group.
+            if total > 0 and len(eps) == total:
                 anchor       = max(eps, key=lambda e: e["delete_at"])
                 series_title = (sonarr_cache.get(anchor["file_path"]) or {}).get(
                     "series_title", anchor["title"]
@@ -72,7 +76,8 @@ async def _consolidate_and_insert(
         added = 0
         for sid, eps in groups_s.items():
             total = series_totals.get(sid, 0)
-            if total > 0 and len(eps) >= total:
+            # See the season branch above for why this is strict equality.
+            if total > 0 and len(eps) == total:
                 anchor      = max(eps, key=lambda e: e["delete_at"])
                 cache_entry = next(
                     (v for v in sonarr_cache.values()

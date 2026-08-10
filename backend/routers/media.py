@@ -1,4 +1,5 @@
 """Media queue — listing, search, sort, bulk actions, manual deletion."""
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -19,7 +20,7 @@ from ..db.repositories import (
 )
 from ..deletion import _delete_media
 from ..rules.legacy_conditions import _get_poster_url
-from ..arr_clients import seerr_find_request_by_tmdb
+from ..arr_clients import build_seerr_request_cache
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 logger = logging.getLogger(__name__)
@@ -250,6 +251,10 @@ async def enrich_seerr(
     """Re-fetch Seerr requester info AND regenerate poster URLs for all items."""
     async def _enrich():
         rows = await get_all_for_enrichment()
+        # One paginated Seerr scan up front instead of one full re-scan per
+        # item needing enrichment (seerr_find_request_by_tmdb was O(total
+        # Seerr requests) per call — see 2026-08-10 audit).
+        seerr_cache = await build_seerr_request_cache()
         enriched = 0
         for row in rows:
             updates = {}
@@ -263,7 +268,7 @@ async def enrich_seerr(
             if new_url:
                 updates["poster_url"] = new_url
             if row.get("tmdb_id") and not row.get("seerr_username"):
-                seerr_data = await seerr_find_request_by_tmdb(row["tmdb_id"])
+                seerr_data = seerr_cache.get(row["tmdb_id"])
                 if seerr_data:
                     updates["seerr_id"] = seerr_data["seerr_id"]
                     updates["seerr_user_id"] = seerr_data["user_id"]
@@ -291,20 +296,30 @@ async def regenerate_posters(
     background_tasks: BackgroundTasks, user: str = Depends(require_auth)
 ):
     """Regenerate poster URLs for pending queue items (Radarr/Sonarr TMDB), in batches."""
+    _FETCH_CONCURRENCY = 5  # bound Radarr/Sonarr/Emby load, per batch
+
+    async def _fetch(row: dict, sem: asyncio.Semaphore) -> tuple[dict, str]:
+        async with sem:
+            new_url = await _get_poster_url(
+                row["emby_id"],
+                tmdb_id=row.get("tmdb_id") or "",
+                media_type=row.get("media_type") or "Movie",
+                radarr_id=row.get("radarr_id"),
+                sonarr_id=row.get("sonarr_id"),
+            )
+        return row, new_url
+
     async def _regen():
         rows = await get_pending_for_poster_regen()
         total = len(rows)
         updated = 0
+        sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
         for batch_start in range(0, total, _REGEN_BATCH):
             batch = rows[batch_start : batch_start + _REGEN_BATCH]
-            for row in batch:
-                new_url = await _get_poster_url(
-                    row["emby_id"],
-                    tmdb_id=row.get("tmdb_id") or "",
-                    media_type=row.get("media_type") or "Movie",
-                    radarr_id=row.get("radarr_id"),
-                    sonarr_id=row.get("sonarr_id"),
-                )
+            # Poster lookups are read-only HTTP calls — safe to run concurrently
+            # (bounded). DB writes stay sequential to avoid SQLite write contention.
+            results = await asyncio.gather(*[_fetch(row, sem) for row in batch])
+            for row, new_url in results:
                 if new_url:
                     await update_poster(row["id"], new_url)
                     updated += 1

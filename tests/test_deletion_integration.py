@@ -111,16 +111,20 @@ async def _seed_queue_item(db_path: str, emby_id: str = "EMB-001") -> None:
 # ─── Test 1: run_deletion marks an overdue item as "deleted" ──────────────────
 
 async def test_deletion_marks_item_deleted(deletion_db):
-    """run_deletion() must set status='deleted' for a past-due pending item."""
+    """run_deletion() must set status='deleted' for a past-due pending item
+    when the media server AND arr deletion both genuinely succeed."""
     emby_id = "EMB-001"
     await _seed_queue_item(deletion_db, emby_id)
 
     with (
-        patch("backend.deletion.delete_item", new_callable=AsyncMock),
+        # media_server_factory.delete_server_item() calls emby_client.delete_item()
+        # directly — patching backend.deletion.delete_item (a dead re-import kept
+        # only for older mock.patch targets) does NOT intercept the real call.
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock, return_value=True),
         patch("backend.deletion.send_notification", new_callable=AsyncMock),
         patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
         patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
         patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
         patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
         patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
@@ -137,6 +141,38 @@ async def test_deletion_marks_item_deleted(deletion_db):
 
     assert row is not None, "Queue entry not found in DB"
     assert row[0] == "deleted", f"Expected status='deleted', got '{row[0]}'"
+
+
+async def test_deletion_marks_item_error_when_media_server_delete_fails(deletion_db):
+    """A failed Emby deletion (server down, timeout, non-2xx) must leave the
+    item as status='error', never 'deleted' — regression test for the
+    2026-08-10 fix: MediaServerStep used to discard delete_item()'s return
+    value and the pipeline reported success regardless."""
+    emby_id = "EMB-002"
+    await _seed_queue_item(deletion_db, emby_id)
+
+    with (
+        patch("backend.emby_client.delete_item", new_callable=AsyncMock, return_value=False),
+        patch("backend.deletion.send_notification", new_callable=AsyncMock),
+        patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
+        patch("backend.deletion._send_pending_notifications", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
+        patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
+        patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
+        patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
+        patch("backend.deletion.send_alert", new_callable=AsyncMock),
+    ):
+        from backend.deletion import run_deletion
+        await run_deletion()
+
+    async with aiosqlite.connect(deletion_db) as db:
+        async with db.execute(
+            "SELECT status FROM media_queue WHERE emby_id=?", (emby_id,)
+        ) as cur:
+            row = await cur.fetchone()
+
+    assert row is not None, "Queue entry not found in DB"
+    assert row[0] == "error", f"Expected status='error' on a failed Emby delete, got '{row[0]}'"
 
 
 # ─── Test 2: dry_run prevents delete_item from being called ───────────────────

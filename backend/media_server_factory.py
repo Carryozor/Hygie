@@ -51,5 +51,4 @@ async def delete_server_item(
         from .emby_client import delete_item
         emby_id = item.get("emby_id", "")
         sid = server_id or str(server.get("id", "0"))
-        await delete_item(emby_id, server_id=sid)
-        return True
+        return await delete_item(emby_id, server_id=sid)

@@ -229,7 +229,9 @@ class MediaServerStep(DeletionStep):
         from .logmsg import lm
 
         server = ctx.server or {}
-        await delete_server_item(server, ctx.item, server_id=ctx.server_id)
+        ok = await delete_server_item(server, ctx.item, server_id=ctx.server_id)
+        if not ok:
+            raise RuntimeError(f"media server delete failed for '{ctx.title}'")
         if is_plex(server):
             item_id = get_server_item_id(server, ctx.item)
             await add_log("DEBUG", lm("plex.deleted", key=item_id), "deletion")
@@ -276,6 +278,8 @@ class MediaServerStep(DeletionStep):
             lm("emby.consolidated_ok" if ok else "emby.consolidated_err", title=ctx.title),
             "deletion",
         )
+        if not ok:
+            raise RuntimeError(f"media server delete failed for consolidated '{ctx.title}'")
 
 
 class ArrStep(DeletionStep):
@@ -285,7 +289,9 @@ class ArrStep(DeletionStep):
         if ctx.dry_run:
             return
         from .deletion import _delete_from_arr
-        await _delete_from_arr(ctx.item)
+        ok = await _delete_from_arr(ctx.item)
+        if not ok:
+            raise RuntimeError(f"arr delete failed for '{ctx.title}'")
 
 
 class SeerrStep(DeletionStep):

@@ -231,10 +231,11 @@ async def test_delete_fires_after_grace(isolated_db):
 
     async def _capture_delete(emby_id_, server_id=None):
         emby_deleted.append(emby_id_)
+        return True
 
     with (
         patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
         patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
         patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
         patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
@@ -323,10 +324,11 @@ async def test_full_scan_then_delete(isolated_db):
 
     async def _capture_delete(eid, server_id=None):
         emby_deleted.append(eid)
+        return True
 
     with (
         patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock),
+        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
         patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
         patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
         patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),

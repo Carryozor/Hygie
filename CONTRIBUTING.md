@@ -9,18 +9,19 @@ make dev        # starts uvicorn with --reload on :8000
 make test       # runs the full test suite
 ```
 
-Requirements: Python 3.11+, pip.
+Requirements: Python 3.12, pip.
 
 ## Project structure
 
 ```
 backend/        FastAPI app, scheduler, arr/media clients
-  db/           SQLite layer (utils, settings_store, repositories, …)
+  db/           SQLite/MariaDB layer (engine, settings_store, repositories, …)
   arr_clients/  Radarr, Sonarr, Seerr, qBittorrent
   routers/      One file per API route group
 frontend/
-  static/       CSS, JS (vanilla), images
-  templates/    Jinja2 index.html
+  vue/          Vue 3 + Vite SPA (the current frontend — `npm run dev` / `npm run build`)
+  static/       CSS, JS (legacy, vanilla), images
+  templates/    Jinja2 index.html (SPA shell)
 tests/          pytest — run with `make test`
 docs/superpowers/plans/  Implementation plans (historical)
 ```
@@ -28,11 +29,12 @@ docs/superpowers/plans/  Implementation plans (historical)
 ## Running tests
 
 ```bash
-make test                          # full suite (fast, ~3s)
+make test                          # backend suite
 python3 -m pytest tests/test_repositories.py -v   # single module
+cd frontend/vue && npm run test:unit               # frontend suite
 ```
 
-Tests use an in-memory SQLite via `tmp_path` — no external services needed. The suite must pass before a PR is merged.
+Tests use an in-memory SQLite via `tmp_path` — no external services needed. The suite must pass before a PR is merged. If your change touches the database schema, also run `make check-schema` — it must pass and a migration must exist for both SQLite and MariaDB (see `backend/db/migrations.py`).
 
 ## Pull request process
 

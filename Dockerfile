@@ -23,12 +23,15 @@ LABEL org.opencontainers.image.title="Hygie" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="MIT"
 
-# System dependencies: fonts for poster overlays, tini for clean shutdown, curl for asset bundling
+# System dependencies: fonts for poster overlays, tini for clean shutdown, curl for
+# asset bundling, mariadb-client for mysqldump (backup.py's MariaDB backup path —
+# needed against any external MariaDB, not just the embedded-mode build below).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         fonts-dejavu-core \
         tini \
         curl \
+        mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Optional: MariaDB server (embedded mode) ──────────────────────────────────

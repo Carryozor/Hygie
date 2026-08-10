@@ -242,8 +242,10 @@ def _is_consolidated_row(row: dict) -> bool:
     return bool(row.get("sonarr_series_id")) and not row.get("sonarr_id")
 
 
-async def _delete_from_arr(row: dict) -> None:
-    """Remove media from Radarr or Sonarr."""
+async def _delete_from_arr(row: dict) -> bool:
+    """Remove media from Radarr or Sonarr. Returns False only on a genuine
+    removal failure — an item with no arr link to begin with (never matched,
+    or already removed) is not a failure."""
     file_path = row.get("file_path", "")
     media_type = row.get("media_type", "")
     title = row.get("title", "?")
@@ -254,27 +256,34 @@ async def _delete_from_arr(row: dict) -> None:
     if media_type == "Movie":
         rid_stored = row.get("radarr_id")
         if rid_stored:
-            await radarr_delete_by_id(int(rid_stored), delete_files=False)
-            await add_log("DEBUG", lm("radarr.removed", title=title), "deletion")
+            ok = await radarr_delete_by_id(int(rid_stored), delete_files=False)
+            await add_log("DEBUG" if ok else "WARN", lm("radarr.removed" if ok else "radarr.remove_err", title=title), "deletion")
+            return ok
         else:
             found = await radarr_find_by_path(file_path)
             if found:
                 rid, r_url, r_key = found
-                await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
-                await add_log("DEBUG", lm("radarr.removed", title=title), "deletion")
+                ok = await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
+                await add_log("DEBUG" if ok else "WARN", lm("radarr.removed" if ok else "radarr.remove_err", title=title), "deletion")
+                return ok
+            return True
     elif consolidated and season_number is not None:
         # Season-level consolidated entry — try all servers if no cache info
         ok = await sonarr_delete_season(int(sonarr_series_id), int(season_number))
         await add_log("DEBUG" if ok else "WARN", lm("sonarr.season_ok" if ok else "sonarr.season_err", title=title, n=season_number), "deletion")
+        return ok
     elif consolidated:
         # Series-level consolidated entry
         ok = await sonarr_delete_series(int(sonarr_series_id))
         await add_log("DEBUG" if ok else "WARN", lm("sonarr.series_ok" if ok else "sonarr.series_err", title=title), "deletion")
+        return ok
     else:
         sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
         if sid:
-            await sonarr_delete_episode_file(int(sid))
-            await add_log("DEBUG", lm("sonarr.removed", title=title), "deletion")
+            ok = await sonarr_delete_episode_file(int(sid))
+            await add_log("DEBUG" if ok else "WARN", lm("sonarr.removed" if ok else "sonarr.remove_err", title=title), "deletion")
+            return ok
+        return True
 
 
 async def _delete_from_seerr(row: dict) -> None:

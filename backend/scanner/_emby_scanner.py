@@ -189,13 +189,27 @@ async def _collect_eligible_items(
     # Seerr matching works for series. Fetched lazily on the first episode
     # encountered: movie-only libraries never pay the extra HTTP call.
     series_tmdb_map: Optional[dict] = None
+    # get_items_in_library() returns ([], 0) both when a library is genuinely
+    # exhausted AND when a page fetch fails (circuit breaker open, timeout) —
+    # it never raises. Track the last known total so a mid-scan failure can be
+    # told apart from a real end-of-library and logged instead of silently
+    # truncating the scan.
+    last_known_total: Optional[int] = None
 
     while True:
         items, total = await get_items_in_library(
             emby_library_id, limit=500, start=start, server_id=server_id
         )
         if not items:
+            if last_known_total is not None and start < last_known_total:
+                logger.warning(
+                    "Library %s scan stopped early at item %d/%d — a page fetch "
+                    "failed (see get_items_in_library warning above); remaining "
+                    "items will be picked up on the next scheduled scan.",
+                    emby_library_id, start, last_known_total,
+                )
             break
+        last_known_total = total
         for item in items:
             if series_tmdb_map is None and (item.get("Type") or "") == "Episode":
                 series_tmdb_map = await get_series_tmdb_map(emby_library_id, server_id)

@@ -52,7 +52,7 @@ in `db/engine.py` translates `?` placeholders to `%s` for MariaDB and provides
 a uniform API. MariaDB is recommended for multi-user deployments or when backup
 via `mysqldump` is preferred.
 
-The `migrations.py` runner is dialect-aware (m001–m008). All new migrations
+The `migrations.py` runner is dialect-aware (m001–m015+, append-only). All new migrations
 must use `db.table_columns()` instead of `PRAGMA table_info()`.
 
 ### In-process APScheduler (v3.0)

@@ -4,6 +4,31 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.0] — 2026-08-10
+
+### Fixed
+
+- **A failed deletion on Emby/Radarr/Sonarr was silently reported as successful.** The deletion pipeline discarded the boolean success/failure return of the media-server and arr-removal steps and only aborted on an unhandled exception — but those clients already caught their own errors internally and returned `False` instead of raising. A transient failure (server down, timeout, non-2xx response) during a Movie or single-Episode deletion (the two most common cases) meant the queue item was still marked `deleted`, while the file could still exist on the media server and/or Radarr/Sonarr could still be tracking it — a silently orphaned entry with no indication anything went wrong. Only the consolidated season/series delete path computed the right outcome (and even there, the pipeline didn't act on it). Every step now correctly propagates failure; a genuinely failed deletion is marked `error`, not `deleted`.
+- **`mysqldump` was never installed in the Docker image** — `backup.py`'s MariaDB backup path (both the scheduled job and the pre-migration safety snapshot added in 4.2.1) would fail with `FileNotFoundError` the first time anyone actually ran it against MariaDB with `backup_enabled=true`. `mariadb-client` is now installed unconditionally (previously only pulled in by the separate embedded-MariaDB build mode, which most deployments don't use).
+- **Season/series consolidated deletion accepted more eligible episodes than Sonarr's own file count for the group** (`len(eligible) >= total` instead of `== total`) — a data-consistency anomaly (duplicate scan pagination, stale cache) would have been silently treated as "complete" instead of falling back to per-episode handling.
+- **A mid-scan Emby pagination failure (circuit breaker open, timeout) looked identical to reaching the end of the library** — both return zero items, so the scan just stopped with no indication remaining items were never evaluated. Now logs a distinct warning naming how many items were covered vs. the library's known total.
+
+### Performance
+
+- **`POST /api/media/enrich-seerr`** resolved each item's Seerr requester via a full paginated re-scan of Seerr's request list — for an N-item queue, that's up to N full scans to find N matches. Now builds one cached lookup table up front (the same helper the scanner already uses).
+- **`POST /api/media/regenerate-posters`** now fetches poster URLs concurrently (bounded, 5 at a time) instead of one HTTP round-trip at a time; database writes stay sequential.
+
+### Added
+
+- **Test coverage for previously-untested surfaces** found in the 2026-08-10 audit: `backend/backup.py`'s core functions (`run_backup`, `list_backups`, SQLite/MariaDB backup internals, path validation) and five API routers that had zero direct endpoint tests (`backup`, `calendar`, `database`, `expert_rules`, `ignored`).
+
+### Changed
+
+- `requirements-dev.txt`: `pytest-cov` and `ruff` are now pinned to exact versions, matching the rest of the project's dependency discipline.
+- Documentation accuracy pass: `CONTRIBUTING.md` (missing `frontend/vue/`, stale Python version), `.env.example` (`HYGIE_ENCRYPTION_KEY` is recommended not required, `WORKERS` constraint clarified), `ARCHITECTURE.md` (stale migration range).
+
+---
+
 ## [4.2.1] — 2026-08-10
 
 ### Added

@@ -144,6 +144,8 @@ async def lifespan(app: FastAPI):
     # Skip schema init / migrations if the pool failed — they would raise the
     # same unhelpful error; the StartupValidator reports the real cause below.
     if not _db_pool_init_error:
+        from .backup import backup_before_migrations
+        await backup_before_migrations()
         await init_db()
         from .db.migrations import run_migrations
         await run_migrations()

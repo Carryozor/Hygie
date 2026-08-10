@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .db.engine import DIALECT, SQLITE_PATH
+from .db.engine import DIALECT, SQLITE_PATH, get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
 from .logmsg import lm
@@ -139,6 +139,48 @@ async def _mariadb_backup(backup_dir: str, ts: str) -> str:
     except Exception as e:
         logger.debug("gzip compression failed (%s) — keeping plain SQL dump", e)
         return f"hygie_{ts}.sql"
+
+
+# ─── Pre-migration safety backup ───────────────────────────────────────────────
+
+async def _db_already_exists() -> bool:
+    """Whether the DB has been initialized by a prior boot (vs. a fresh install).
+
+    SQLite: the file exists on disk. MariaDB: the schema_migrations bookkeeping
+    table exists (the target database itself is created ahead of time by the
+    MariaDB container — an empty schema is indistinguishable from "fresh" until
+    a table shows up). Any check failure fails open (returns False, i.e.
+    "treat as fresh, skip the backup") — never let this block startup.
+    """
+    if DIALECT == "sqlite":
+        return SQLITE_PATH != ":memory:" and os.path.exists(SQLITE_PATH)
+    try:
+        async with get_db() as db:
+            return await db.table_exists("schema_migrations")
+    except Exception as e:
+        logger.warning("_db_already_exists check failed, assuming fresh install: %s", e)
+        return False
+
+
+async def backup_before_migrations() -> None:
+    """Snapshot the DB before run_migrations() touches it, if it already exists.
+
+    A migration that fails or misbehaves mid-run (see CLAUDE.md piège 2 — the
+    v4.1.1 regression) currently has no recovery path short of a manual
+    restore. force=True bypasses only the periodic *interval* throttle (a
+    migration is a rare, high-value moment to snapshot regardless of the
+    schedule) — it still honors backup_enabled: an admin who explicitly
+    turned backups off (disk-constrained host, external backup solution,
+    read-only storage) must not see one appear on every restart anyway.
+    """
+    if not await _db_already_exists():
+        return
+    if not await get_bool_setting("backup_enabled"):
+        return
+    try:
+        await run_backup(force=True)
+    except Exception as e:
+        logger.error("Pre-migration backup failed, continuing startup anyway: %s", e)
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────

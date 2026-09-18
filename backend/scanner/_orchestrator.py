@@ -19,7 +19,7 @@ from ..arr_clients import (
     build_seerr_request_cache,
     build_sonarr_path_cache,
 )
-from ..exceptions import ArrClientError
+from ..exceptions import ArrClientError, MediaServerUnreachable
 from ..discord_client import send_alert
 from ..notifications import _send_pending_notifications
 from ..collection import sync_emby_collection
@@ -150,6 +150,9 @@ async def _do_scan_one_library(
     # ── Emby / Jellyfin path ─────────────────────────────────────────────────
     users    = await get_users(server_id=server_id)
     user_ids = [u["Id"] for u in users] if users else []
+    if not user_ids:
+        await _abort_scan_no_users(server_id, server_name)
+        return "error", "no users returned by media server", 0
 
     if radarr_cache is None:
         radarr_cache = await build_radarr_path_cache()
@@ -176,6 +179,31 @@ async def _do_scan_one_library(
     )
     await add_log("INFO", lm("scan.done", n=added), "job")
     return "success", f"{added} queued", added
+
+
+async def _abort_scan_no_users(server_id: str, server_name: str) -> None:
+    """Log + alert that a scan was refused because the user list is empty.
+
+    An empty user list means the watch state of every item is unknown. The
+    scanner cannot tell that apart from "nobody ever watched anything", so it
+    would mark an entire library never-watched and queue it for deletion —
+    exactly what happened on 2026-09-15. Refusing to scan is the safe default.
+    """
+    label = server_name or server_id
+    await add_log(
+        "ERROR",
+        f"Scan annulé : aucun utilisateur retourné par le serveur '{label}' — "
+        "l'historique de visionnage est inconnu, rien ne sera mis en file",
+        "scan",
+    )
+    await send_alert(
+        "🛑 Scan annulé : utilisateurs introuvables",
+        f"Le serveur **{label}** n'a retourné aucun utilisateur. Sans historique "
+        "de visionnage, tous les médias seraient considérés comme jamais vus — "
+        "le scan a été annulé.",
+        "error",
+        template_vars={"detail": f"aucun utilisateur sur {label}"},
+    )
 
 
 async def _scan_single_server(
@@ -212,6 +240,10 @@ async def _scan_single_server(
 
     users    = await get_users(server_id=server_id)
     user_ids = [u["Id"] for u in users] if users else []
+    if not user_ids:
+        await _abort_scan_no_users(server_id, server_name)
+        return 0
+
     queued_ids, ignored_ids = await get_queued_and_ignored_ids()
 
     server_activity_log: dict = {}
@@ -245,6 +277,18 @@ async def _scan_single_server(
             added += r
         elif isinstance(r, Exception):
             await add_log("ERROR", lm("scan.lib_error", detail=r), "scan")
+            # A library whose watch data is unreadable stops refreshing its
+            # queue entirely — a silent failure here is what let a watched
+            # series sit in the queue unnoticed. Surface it like a scan failure.
+            if isinstance(r, MediaServerUnreachable) and await get_bool_setting("discord_alert_scan_failure"):
+                await send_alert(
+                    "🛑 Bibliothèque non scannée : historique de visionnage illisible",
+                    f"Le serveur **{server_name or server_id}** n'a pas pu fournir "
+                    f"les données de visionnage : {r}. La bibliothèque concernée n'a "
+                    "pas été scannée — aucun média n'a été mis en file pour elle.",
+                    "error",
+                    template_vars={"detail": str(r)},
+                )
     return added
 
 

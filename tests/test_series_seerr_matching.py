@@ -122,7 +122,11 @@ def _scan_patches(emby_items: list):
     stack.enter_context(patch(
         "backend.scanner._orchestrator.get_users",
         new_callable=AsyncMock,
-        return_value=[],
+        # One user who has watched nothing. An EMPTY user list now cancels the
+        # scan on purpose: it is indistinguishable from an Emby auth/API
+        # failure, and treating it as "nobody ever watched anything" is what
+        # queued a fully-watched series for deletion (incident 2026-09-15).
+        return_value=[{"Id": "user-1", "Name": "Tester"}],
     ))
     stack.enter_context(patch(
         "backend.scanner._emby_scanner.get_library_user_data",

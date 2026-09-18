@@ -459,6 +459,15 @@ async def update_queue_item_dates(
         await db.commit()
 
 
+# Raise view_count to `?` without ever lowering it. A two-argument MAX() would
+# read better but is a syntax error on MariaDB (MAX is an aggregate there, one
+# argument only) — and SQLite accepts it, so the test suite cannot catch the
+# breakage. CASE is portable to both dialects.
+_VIEW_COUNT_RAISE = (
+    "view_count=CASE WHEN COALESCE(view_count,0) < ? THEN ? ELSE view_count END"
+)
+
+
 async def update_activity_log_batch(params: list[tuple]) -> None:
     """Batch-update last_played/view_count from scan activity log via executemany.
 
@@ -469,10 +478,33 @@ async def update_activity_log_batch(params: list[tuple]) -> None:
         return
     async with get_db() as db:
         await db.executemany(
-            "UPDATE media_queue SET last_played=?, view_count=MAX(COALESCE(view_count,0),1) "
+            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "
             "WHERE emby_id=? AND status='pending' "
             "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
-            params,
+            [(lp, 1, 1, eid, guard) for lp, eid, guard in params],
+        )
+        await db.commit()
+
+
+async def update_consolidated_watch_state(params: list[tuple]) -> None:
+    """Batch-update watch state for consolidated season/series queue entries.
+
+    Consolidated rows carry a synthetic emby_id ("sonarr-series:304"), so the
+    activity-log refresh — which matches real Emby item ids — can never reach
+    them. Without this they stay at last_played=NULL / view_count=0 forever and
+    display as "never watched" no matter how much of the series is watched.
+
+    Each param tuple is (last_played_iso, view_count, emby_id, last_played_iso);
+    the last value guards the update so the timestamp only ever advances.
+    """
+    if not params:
+        return
+    async with get_db() as db:
+        await db.executemany(
+            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "
+            "WHERE emby_id=? AND status='pending' "
+            "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
+            [(lp, vc, vc, eid, guard) for lp, vc, eid, guard in params],
         )
         await db.commit()
 

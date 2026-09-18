@@ -19,6 +19,7 @@ from .db.media_servers import get_media_servers, save_media_servers
 from .db.utils import TIMEOUT_SHORT, TIMEOUT_MEDIUM, TIMEOUT_LONG, http_retry
 from .db.encryption import _decrypt_value
 from .arr_clients.circuit_breaker import get_breaker, CircuitOpenError
+from .exceptions import MediaServerUnreachable
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,13 @@ async def get_users(server_id: str = "0") -> List[dict]:
             )
             if r.status_code == 200:
                 return r.json()
+            # An empty user list is indistinguishable from "no user ever watched
+            # anything" downstream, which makes a whole library eligible for
+            # deletion — never let that happen without a trace.
+            logger.warning(
+                "get_users: emby:%s returned HTTP %s — no user list available",
+                server_id, r.status_code,
+            )
     except CircuitOpenError:
         logger.warning("Circuit breaker OPEN for emby:%s — get_users skipped", server_id)
     except Exception as e:
@@ -292,10 +300,19 @@ async def get_library_user_data(user_id: str, library_id: str, server_id: str = 
     """Return {emby_item_id: UserData} for all items in a library for one user.
 
     Paginates in batches of 500 to avoid truncation on large libraries.
+
+    Raises MediaServerUnreachable on any fetch failure. This function used to
+    swallow errors and return whatever it had collected so far, but a missing
+    item in this mapping means "never watched" to every caller — a truncated or
+    empty result silently makes watched media eligible for deletion (incident
+    2026-09-15: a fully-watched series queued for deletion). Failing loudly and
+    aborting the library scan is the only safe behavior.
     """
     url, key = await get_client(server_id)
     if not url or not key:
-        return {}
+        raise MediaServerUnreachable(
+            f"emby:{server_id} is not configured (missing url or api key)"
+        )
 
     result: dict = {}
     start_index = 0
@@ -319,17 +336,22 @@ async def get_library_user_data(user_id: str, library_id: str, server_id: str = 
                     )
                 )
                 if r.status_code != 200:
-                    break
+                    raise MediaServerUnreachable(
+                        f"emby:{server_id} user-data fetch for library {library_id} "
+                        f"returned HTTP {r.status_code}"
+                    )
                 body = r.json()
-            except CircuitOpenError:
-                logger.warning(
-                    "Circuit breaker OPEN for emby:%s — get_library_user_data skipped (lib=%s)",
-                    server_id, library_id,
-                )
-                break
+            except CircuitOpenError as e:
+                raise MediaServerUnreachable(
+                    f"Circuit breaker OPEN for emby:{server_id} — user data for "
+                    f"library {library_id} unavailable"
+                ) from e
+            except MediaServerUnreachable:
+                raise
             except Exception as e:
-                logger.warning(f"get_library_user_data error: {e}")
-                break
+                raise MediaServerUnreachable(
+                    f"emby:{server_id} user-data fetch for library {library_id} failed: {e}"
+                ) from e
             items = body.get("Items", [])
             for item in items:
                 result[item["Id"]] = item.get("UserData") or {}
@@ -369,6 +391,11 @@ async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
     NOTE: the activity log UserId is a short numeric string (e.g. "3"), NOT the
     full UUID from /Users. We therefore store only the most-recent date across
     ALL users per item so callers don't need to match user ID formats.
+
+    Raises MediaServerUnreachable on a fetch failure. A partial activity log is
+    indistinguishable from "these items were never played", and the deletion
+    guard relies on it — callers that can tolerate a missing log catch this and
+    continue with an empty one.
     """
     from datetime import datetime, timedelta, timezone
     url, key = await get_client(server_id)
@@ -394,14 +421,20 @@ async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
                     lambda p=params: client.get(f"{url}/System/ActivityLog/Entries", headers=_auth(key), params=p)
                 )
                 if r.status_code != 200:
-                    break
+                    raise MediaServerUnreachable(
+                        f"emby:{server_id} activity log returned HTTP {r.status_code}"
+                    )
                 body = r.json()
-            except CircuitOpenError:
-                logger.warning("Circuit breaker OPEN for emby:%s — get_play_activity skipped", server_id)
-                break
+            except CircuitOpenError as e:
+                raise MediaServerUnreachable(
+                    f"Circuit breaker OPEN for emby:{server_id} — activity log unavailable"
+                ) from e
+            except MediaServerUnreachable:
+                raise
             except Exception as e:
-                logger.warning("get_play_activity error: %s", e)
-                break
+                raise MediaServerUnreachable(
+                    f"emby:{server_id} activity log fetch failed: {e}"
+                ) from e
             items = body.get("Items", [])
             for entry in items:
                 if entry.get("Type") not in ("playback.stop",):

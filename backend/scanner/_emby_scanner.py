@@ -38,6 +38,7 @@ from ..db.repositories import (
     get_expert_rules as _get_expert_rules,
     get_pending_by_library,
     update_activity_log_batch,
+    update_consolidated_watch_state,
     delete_by_id as _delete_queue_item,
 )
 from ._consolidation import _consolidate_and_insert
@@ -91,6 +92,63 @@ async def _apply_activity_log_updates(activity_log: dict) -> None:
         await update_activity_log_batch(params)
     except Exception as _upd_err:
         logger.warning("activity log DB update failed: %s", _upd_err)
+
+
+async def _accumulate_consolidated_watch(
+    item: dict, watch: dict, *,
+    user_ids: list, user_data_cache: dict, activity_log: dict,
+    sonarr_cache: Optional[dict],
+) -> None:
+    """Record one episode's watch state under its season and series keys.
+
+    Consolidated queue entries have a synthetic emby_id ("sonarr-series:304"),
+    so the activity-log refresh — which matches real Emby item ids — can never
+    reach them. Collecting the per-episode state here lets the scan push the
+    group's real watch state onto those rows afterwards.
+    """
+    if not sonarr_cache:
+        return
+    entry = sonarr_get_cache_entry(item.get("Path") or "", sonarr_cache)
+    if not entry:
+        return
+    sid = entry.get("series_id")
+    if sid is None:
+        return
+
+    emby_id = item.get("Id")
+    if not emby_id:
+        return
+    play_count, never_watched, last_played = await _aggregate_user_data(
+        user_ids, emby_id, user_data_cache, activity_log
+    )
+    if never_watched and not play_count:
+        return
+
+    keys = [f"sonarr-series:{sid}"]
+    sn = entry.get("season_number")
+    if sn is not None:
+        keys.append(f"sonarr-season:{sid}:{sn}")
+    for key in keys:
+        prev_played, prev_count = watch.get(key, (None, 0))
+        best = prev_played
+        if last_played is not None and (best is None or last_played > best):
+            best = last_played
+        watch[key] = (best, max(prev_count, play_count))
+
+
+async def _apply_consolidated_watch_updates(watch: dict) -> None:
+    """Push collected season/series watch state onto pending consolidated rows."""
+    params = [
+        (played.isoformat(), count, key, played.isoformat())
+        for key, (played, count) in watch.items()
+        if played is not None
+    ]
+    if not params:
+        return
+    try:
+        await update_consolidated_watch_state(params)
+    except Exception as e:
+        logger.warning("consolidated watch-state update failed: %s", e)
 
 
 async def _evaluate_expert_rules_fallback(
@@ -166,6 +224,7 @@ async def _evaluate_expert_rules_fallback(
         radarr_id=radarr_id_val, sonarr_id=sonarr_id_val,
         sonarr_series_id=sonarr_series_id_val,
         season_number=season_number_val,
+        view_count=play_count,
     )
     await add_log("INFO", lm("scan.expert_match", title=item.get('Name') or emby_id), "scan")
     return expert_entry
@@ -178,10 +237,16 @@ async def _collect_eligible_items(
     radarr_cache: Optional[dict], sonarr_cache: Optional[dict], seerr_cache: Optional[dict],
     queued_ids: Optional[set], ignored_ids: Optional[set],
     seerr_ext_url: str, expert_rules_cache: list,
+    consolidated_watch: Optional[dict] = None,
 ) -> list:
     """Page through the library's items (500 at a time). Each item is checked
     against the library's legacy conditions first, then — on no match — its
     expert rules. Returns the list of queue-entry dicts eligible for insertion.
+
+    consolidated_watch: when provided, it is filled with
+    {"sonarr-series:<id>"/"sonarr-season:<id>:<n>": (last_played, view_count)}
+    for every episode seen — eligible or not — so the caller can refresh pending
+    consolidated queue rows, which no other code path can reach.
     """
     eligible: list = []
     start = 0
@@ -213,6 +278,12 @@ async def _collect_eligible_items(
         for item in items:
             if series_tmdb_map is None and (item.get("Type") or "") == "Episode":
                 series_tmdb_map = await get_series_tmdb_map(emby_library_id, server_id)
+            if consolidated_watch is not None:
+                await _accumulate_consolidated_watch(
+                    item, consolidated_watch,
+                    user_ids=user_ids, user_data_cache=user_data_cache,
+                    activity_log=activity_log, sonarr_cache=sonarr_cache,
+                )
             entry = await _evaluate_item(
                 item, lib, conditions, logic, grace_days, user_ids, seerr_conditions,
                 user_data_cache=user_data_cache,
@@ -308,6 +379,9 @@ async def _scan_library(
     seerr_ext_url: str = await get_setting("seerr_external_url") or ""
     dry_run = await get_bool_setting("dry_run")
 
+    # Only season/series libraries produce consolidated rows worth refreshing.
+    consolidated_watch: Optional[dict] = {} if deletion_unit in ("season", "series") else None
+
     eligible = await _collect_eligible_items(
         lib, conditions, logic, grace_days, user_ids, seerr_conditions,
         emby_library_id, server_id,
@@ -315,7 +389,10 @@ async def _scan_library(
         radarr_cache=radarr_cache, sonarr_cache=sonarr_cache, seerr_cache=seerr_cache,
         queued_ids=queued_ids, ignored_ids=ignored_ids,
         seerr_ext_url=seerr_ext_url, expert_rules_cache=expert_rules_cache,
+        consolidated_watch=consolidated_watch,
     )
+    if consolidated_watch:
+        await _apply_consolidated_watch_updates(consolidated_watch)
 
     added = await _insert_eligible_entries(lib, eligible, deletion_unit, sonarr_cache, queued_ids, dry_run)
 

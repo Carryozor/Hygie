@@ -4,6 +4,24 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.1] — 2026-09-18
+
+### Fixed
+
+- **A series being actively watched was queued for deletion and displayed as "never watched".** Four independent defects combined to produce it (found investigating a 123-episode series, 78 of them watched, whose most recent play was the day before it was scheduled for deletion):
+  - **`update_activity_log_batch()` used a two-argument `MAX()`**, which is an aggregate on MariaDB and takes exactly one argument — the statement failed with a syntax error on every scan. In production the refresh of `last_played` / `view_count` from the Emby activity log **never ran at all**. SQLite accepts the two-argument form, so the test suite could not catch it; the SQL now uses a portable `CASE` expression, and a test asserts no two-argument `MAX()` survives in `repositories.py`.
+  - **`get_library_user_data()` swallowed every fetch error** — a non-200 response or a transport failure mid-pagination returned whatever had been collected so far (possibly nothing) with no log. A missing entry in that mapping means "never watched" to every caller, so a transient Emby failure silently made watched media eligible for deletion. It now raises `MediaServerUnreachable` and aborts the library scan. `get_users()` returning `[]` on a non-200 is now logged, and a scan that gets an empty user list for an Emby/Jellyfin server is cancelled outright (ERROR log + Discord alert) instead of treating the whole library as unwatched.
+  - **Consolidated season/series queue entries copied their watch state from an arbitrary anchor episode** (the one with the highest `delete_at`) instead of aggregating the group, and their synthetic `emby_id` (`sonarr-series:304`) meant the activity-log refresh — keyed on real Emby ids — could never reach them. They now carry the most recent play and the highest view count of the group, and each scan of a season/series library refreshes the watch state of the pending consolidated rows it covers.
+  - **Nothing re-checked the watch state before deleting.** Queueing happens once, at scan time; a pending row is never re-evaluated afterwards, so a media someone started watching during the grace period was still deleted on its `delete_at`. A last-chance guard now drops from the deletion batch — and removes from the queue — every item played after its `detected_at`. Because the stored `last_played` is only as fresh as the last scan (6 h by default) while the deletion job runs hourly, the guard first re-reads the watch state of the due items from the media server (one activity-log fetch per server, plus a Series/Season resolution for each consolidated row — a handful of requests, not a library sweep). A server whose watch state cannot be read has its items left queued for the next run rather than deleted on unknown state.
+
+### Changed
+
+- **`get_play_activity()` now raises instead of returning a partial activity log.** A truncated log means "these items were never played" to its callers; the scan paths that can tolerate a missing log still catch it and continue with an empty one, while the deletion guard uses it to postpone.
+- **A library skipped mid-scan because its watch data is unreadable now raises a Discord alert** (when `discord_alert_scan_failure` is on), not just an ERROR log. Such a library stops refreshing its queue entirely — the silence around that is what let the incident go unnoticed.
+- **`backend/routers/libraries.py` never defined `logger`** while using it in three places: `POST /api/libraries/test/{service}` raised `NameError` instead of returning its 404 / failure message whenever a service test failed or an unknown service was requested. (`ruff` does not select `F821` in this project, so it went unflagged.)
+
+---
+
 ## [4.3.0] — 2026-08-10
 
 ### Fixed

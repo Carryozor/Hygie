@@ -6,16 +6,17 @@ from datetime import timedelta
 from typing import Optional
 
 from .db.utils import (
-    DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc,
+    DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc, parse_iso_dt,
 )
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _current_job_id
-from .emby_client import delete_item, get_client  # noqa: F401 - unused in this module's own code, but mock.patch("backend.deletion.delete_item"/"get_client") targets require them re-imported here
+from .emby_client import delete_item, get_client, get_play_activity  # noqa: F401 - delete_item is unused in this module's own code, but mock.patch("backend.deletion.delete_item") targets require it re-imported here
 from .db.repositories import (
     get_pending_queue, update_queue_status,
     reset_deleting_to_pending, claim_for_deletion,
-    delete_stale_deleted,
+    delete_stale_deleted, delete_by_id,
+    update_activity_log_batch, update_consolidated_watch_state,
 )
 from .arr_clients import (
     radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,
@@ -35,6 +36,151 @@ logger = logging.getLogger(__name__)
 
 
 # ═══ Deletion ════════════════════════════════════════════════════════════════
+
+_CONSOLIDATED_PREFIXES = ("sonarr-series:", "sonarr-season:")
+
+
+def _advance_last_played(row: dict, played: str) -> None:
+    """Move a row's last_played forward, never backward.
+
+    ISO strings are compared as datetimes: a raw string comparison would be
+    wrong across differing UTC offsets.
+    """
+    current = parse_iso_dt(row.get("last_played"))
+    fresh   = parse_iso_dt(played)
+    if fresh is not None and (current is None or fresh > current):
+        row["last_played"] = played
+
+
+async def _consolidated_last_play(row: dict, server_id: str, activity: dict) -> Optional[str]:
+    """Most recent play among the episodes a consolidated row stands for.
+
+    Consolidated rows carry a synthetic emby_id, so they never appear in the
+    activity log themselves. Resolve the Series/Season library item from its
+    on-disk path — the same resolution the deletion pipeline already performs —
+    then look its episodes up in the activity log.
+    """
+    import os
+
+    from .arr_clients import sonarr_get_series_by_id_any
+    from .emby_client import find_item_by_path, get_items_in_library
+
+    series_id = row.get("sonarr_series_id")
+    if not series_id:
+        return None
+    series      = await sonarr_get_series_by_id_any(int(series_id))
+    series_path = (series or {}).get("path") or ""
+    if row.get("season_number") is not None:
+        season_path = os.path.dirname(row.get("file_path") or "")
+        target = await find_item_by_path(season_path, include_types="Season", server_id=server_id) if season_path else None
+    else:
+        target = await find_item_by_path(series_path, include_types="Series", server_id=server_id) if series_path else None
+    if not target:
+        return None
+
+    episodes, _ = await get_items_in_library(str(target.get("Id")), limit=500, start=0, server_id=server_id)
+    plays = [activity[str(ep.get("Id"))] for ep in episodes if str(ep.get("Id")) in activity]
+    return max(plays) if plays else None
+
+
+async def _refresh_watch_state_before_deletion(rows: list, lib_server_map: dict) -> list:
+    """Refresh last_played for the items due for deletion, from the media server.
+
+    The DB's last_played is only as fresh as the last scan (6 h by default) while
+    the deletion job runs hourly — a play in between is invisible to the rescue
+    guard below. Only the due rows are refreshed, so this costs one activity-log
+    fetch per server plus two lookups per consolidated row, not a library sweep.
+
+    A server whose watch state cannot be read has its rows dropped from this
+    batch: deleting on unknown watch state is what caused incident 2026-09-15.
+    They stay queued and the next run retries.
+    """
+    by_server: dict = {}
+    for row in rows:
+        by_server.setdefault(lib_server_map.get(row.get("library_id"), "0"), []).append(row)
+
+    keep: list = []
+    for server_id, server_rows in by_server.items():
+        url, key = await get_client(server_id)
+        if not url or not key:
+            # Nothing to read from (unconfigured or Plex server): keep whatever
+            # the last scan wrote — the guard below still applies to it.
+            keep.extend(server_rows)
+            continue
+        try:
+            activity = await get_play_activity(server_id=server_id, days=90)
+        except Exception as e:
+            logger.warning(
+                "Deletion postponed for %d item(s) on server %s — watch state "
+                "unavailable: %s", len(server_rows), server_id, e,
+            )
+            await add_log(
+                "WARN",
+                f"Suppression reportée pour {len(server_rows)} média(s) : "
+                "historique de visionnage indisponible",
+                "deletion",
+            )
+            continue
+
+        direct: list = []
+        consolidated: list = []
+        for row in server_rows:
+            emby_id = row.get("emby_id") or ""
+            if emby_id.startswith(_CONSOLIDATED_PREFIXES):
+                played = await _consolidated_last_play(row, server_id, activity)
+                if played:
+                    consolidated.append(
+                        (played, max(int(row.get("view_count") or 0), 1), emby_id, played)
+                    )
+                    _advance_last_played(row, played)
+            else:
+                played = activity.get(emby_id)
+                if played:
+                    direct.append((played, emby_id, played))
+                    _advance_last_played(row, played)
+            keep.append(row)
+
+        try:
+            await update_activity_log_batch(direct)
+            await update_consolidated_watch_state(consolidated)
+        except Exception as e:
+            logger.warning("Pre-deletion watch-state write failed: %s", e)
+
+    return keep
+
+
+async def _rescue_watched_since_queued(rows: list) -> list:
+    """Drop from the deletion batch every item played after it was queued.
+
+    Last-chance guard. Queueing happens once, at scan time; nothing afterwards
+    re-evaluates a pending row, so a media someone started watching during the
+    grace period was still deleted on its delete_at (incident 2026-09-15). A
+    play recorded after `detected_at` is unambiguous evidence the item is in
+    use: it is removed from the queue and left alone. The next scan re-queues it
+    only if it genuinely still matches the library's conditions.
+
+    Returns the rows that may proceed to deletion.
+    """
+    keep: list = []
+    for row in rows:
+        detected = parse_iso_dt(row.get("detected_at"))
+        played   = parse_iso_dt(row.get("last_played"))
+        if detected is None or played is None or played <= detected:
+            keep.append(row)
+            continue
+        title = row.get("title", "?")
+        await add_log(
+            "INFO",
+            f"Suppression annulée : « {title} » a été vu le "
+            f"{played.strftime('%d/%m/%Y')}, après sa mise en file — retiré de la file",
+            "deletion",
+        )
+        try:
+            await delete_by_id(row["id"])
+        except Exception as e:
+            logger.warning("Rescue of '%s' failed to clear the queue row: %s", title, e)
+    return keep
+
 
 async def run_deletion() -> None:
     """Process queue: send threshold notifications, delete items past their delete_at.
@@ -67,9 +213,16 @@ async def run_deletion() -> None:
                     _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
                 _lib_server_map = {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
 
+                # Last-chance guard before any file is touched: the watch state
+                # of the due items is re-read from the media server, then
+                # anything played since it was queued is rescued, never deleted.
+                _due = await _refresh_watch_state_before_deletion(
+                    [dict(r) for r in await get_pending_queue()], _lib_server_map
+                )
+                _due = await _rescue_watched_since_queued(_due)
                 to_delete = [
                     {**dict(r), "_server_id": _lib_server_map.get(r.get("library_id"), "0")}
-                    for r in await get_pending_queue()
+                    for r in _due
                 ]
 
                 # Read qbit settings once for the whole batch

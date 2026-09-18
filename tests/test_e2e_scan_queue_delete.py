@@ -121,7 +121,9 @@ def _scan_patches(emby_items: list):
     stack.enter_context(patch(
         "backend.scanner._orchestrator.get_users",
         new_callable=AsyncMock,
-        return_value=[],  # no user data needed — conditions only use DateCreated
+        # Conditions only use DateCreated, but the scan refuses to run at all
+        # without a user list (see _abort_scan_no_users).
+        return_value=[{"Id": "user-1", "Name": "Tester"}],
     ))
     stack.enter_context(patch(
         "backend.scanner._emby_scanner.get_library_user_data",

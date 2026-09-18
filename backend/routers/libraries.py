@@ -1,5 +1,6 @@
 """Libraries — CRUD operations + Emby library listing."""
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
@@ -13,6 +14,7 @@ from ..db.logs import add_log
 from ..logmsg import lm
 
 from ..emby_client import get_libraries as emby_get_libraries
+from ..exceptions import MediaServerUnreachable
 from ..db.media_servers import is_plex as _is_plex
 from ..scheduler import (
     is_scan_running,
@@ -20,6 +22,8 @@ from ..scheduler import (
     run_scan_library,
     run_scan_libraries,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/libraries", tags=["libraries"])
 
@@ -266,7 +270,17 @@ async def scan_multi_endpoint(
 @router.post("/{library_id}/reevaluate")
 async def reevaluate(library_id: str, user: str = Depends(require_auth)):
     """Re-check pending items in this library against current conditions."""
-    removed = await reevaluate_library_queue(library_id)
+    try:
+        removed = await reevaluate_library_queue(library_id)
+    except MediaServerUnreachable as e:
+        # Without watch data every item would look never-watched — nothing is
+        # removed from the queue rather than acting on unknown state.
+        logger.warning("Reevaluation of library %s aborted: %s", library_id, e)
+        raise HTTPException(
+            503,
+            "Impossible de récupérer l'historique de visionnage : serveur média "
+            "injoignable. La file n'a pas été modifiée.",
+        ) from e
     return {"removed": removed}
 
 

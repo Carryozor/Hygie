@@ -109,7 +109,9 @@ def _expert_scan_patches(emby_items: list):
     stack.enter_context(patch(
         "backend.scanner._orchestrator.get_users",
         new_callable=AsyncMock,
-        return_value=[],  # no users — play_count stays 0
+        # One user with no watch data — play_count stays 0. An empty user list
+        # now cancels the scan (see _abort_scan_no_users).
+        return_value=[{"Id": "user-1", "Name": "Tester"}],
     ))
     stack.enter_context(patch(
         "backend.scanner._emby_scanner.get_library_user_data",

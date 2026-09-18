@@ -3,7 +3,33 @@
 from collections import defaultdict
 from typing import Optional
 
+from ..db.utils import parse_iso_dt
 from ._queue_entry import _insert_queue_entry
+
+
+def _group_watch_state(eps: list) -> tuple[Optional[str], int]:
+    """Return (most recent last_played iso, highest view_count) across a group.
+
+    A consolidated season/series entry stands for ALL its episodes, so its watch
+    state must be the aggregate of the group. Copying it from the anchor episode
+    (the one with the highest delete_at, i.e. an arbitrary one) made a series
+    with 78 watched episodes display as "never watched" whenever the anchor
+    happened to be unwatched.
+    """
+    best_iso: Optional[str] = None
+    best_dt = None
+    view_count = 0
+    for ep in eps:
+        view_count = max(view_count, int(ep.get("view_count") or 0))
+        raw = ep.get("last_played")
+        if not raw:
+            continue
+        parsed = parse_iso_dt(raw) if isinstance(raw, str) else raw
+        if parsed is None:
+            continue
+        if best_dt is None or parsed > best_dt:
+            best_dt, best_iso = parsed, raw
+    return best_iso, view_count
 
 
 async def _consolidate_and_insert(
@@ -51,6 +77,7 @@ async def _consolidate_and_insert(
                     "series_title", anchor["title"]
                 )
                 poster = (sonarr_cache.get(anchor["file_path"]) or {}).get("poster_url", "")
+                group_last_played, group_view_count = _group_watch_state(eps)
                 consolidated = {
                     **anchor,
                     "emby_id":         f"sonarr-season:{sid}:{sn}",
@@ -60,6 +87,8 @@ async def _consolidate_and_insert(
                     "season_number":   sn,
                     "poster_url":      poster or anchor["poster_url"],
                     "file_path":       anchor["file_path"],
+                    "last_played":     group_last_played,
+                    "view_count":      group_view_count,
                 }
                 if queued_ids is None or consolidated["emby_id"] not in queued_ids:
                     await _insert_queue_entry(consolidated, queued_ids, dry_run)
@@ -86,6 +115,7 @@ async def _consolidate_and_insert(
                 )
                 series_title = cache_entry.get("series_title", anchor["title"])
                 poster        = cache_entry.get("poster_url", "")
+                group_last_played, group_view_count = _group_watch_state(eps)
                 consolidated  = {
                     **anchor,
                     "emby_id":         f"sonarr-series:{sid}",
@@ -95,6 +125,8 @@ async def _consolidate_and_insert(
                     "season_number":   None,
                     "poster_url":      poster or anchor["poster_url"],
                     "file_path":       anchor["file_path"],
+                    "last_played":     group_last_played,
+                    "view_count":      group_view_count,
                 }
                 if queued_ids is None or consolidated["emby_id"] not in queued_ids:
                     await _insert_queue_entry(consolidated, queued_ids, dry_run)

@@ -22,6 +22,16 @@ async def get_pending_queue() -> list[dict]:
         )
 
 
+async def get_last_job_run(job_type: str) -> Optional[dict]:
+    """Most recent completed run of a scheduled job, or None."""
+    async with get_db() as db:
+        return await db.fetch_one(
+            "SELECT * FROM job_history WHERE job_type=? AND finished_at IS NOT NULL "
+            "ORDER BY id DESC",
+            (job_type,),
+        )
+
+
 async def get_queued_and_ignored_ids() -> tuple[set, set]:
     """Return (queued_emby_ids, ignored_emby_ids) from a single DB connection."""
     async with get_db() as db:
@@ -478,7 +488,7 @@ async def update_activity_log_batch(params: list[tuple]) -> None:
         return
     async with get_db() as db:
         await db.executemany(
-            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "
+            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "  # nosec B608 - _VIEW_COUNT_RAISE is a module constant, every value is bound
             "WHERE emby_id=? AND status='pending' "
             "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
             [(lp, 1, 1, eid, guard) for lp, eid, guard in params],
@@ -501,7 +511,7 @@ async def update_consolidated_watch_state(params: list[tuple]) -> None:
         return
     async with get_db() as db:
         await db.executemany(
-            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "
+            f"UPDATE media_queue SET last_played=?, {_VIEW_COUNT_RAISE} "  # nosec B608 - _VIEW_COUNT_RAISE is a module constant, every value is bound
             "WHERE emby_id=? AND status='pending' "
             "AND (last_played IS NULL OR last_played='' OR last_played < ?)",
             [(lp, vc, vc, eid, guard) for lp, vc, eid, guard in params],

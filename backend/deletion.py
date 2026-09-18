@@ -30,6 +30,7 @@ from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
 from ._job_state import _deletion_lock
 from ._lock_backend import LockNotAvailable
+from ._job_health import warn_if_job_starved
 from .logmsg import lm
 
 logger = logging.getLogger(__name__)
@@ -326,6 +327,10 @@ async def _run_deletion_guarded() -> None:
     try:
         await run_deletion()
     except LockNotAvailable:
+        await warn_if_job_starved(
+            "deletion_check", "deletion_check_interval_minutes", 60,
+            "Vérification des suppressions",
+        )
         logger.debug("run_deletion: another worker holds the deletion lock — skipping")
 
 

@@ -88,6 +88,14 @@ class MariaDBAdvisoryLockBackend:
     LockNotAvailable — callers must catch this to skip the job for this
     cycle (the worker that holds the lock will run it instead).
 
+    GET_LOCK is bound to the CONNECTION that issued it, so the lock holds its
+    connection for its whole lifetime instead of borrowing one per statement.
+    Returning the connection to the pool between GET_LOCK and RELEASE_LOCK left
+    the lock held by an idle pooled connection while RELEASE_LOCK ran on a
+    different one (MariaDB then returns 0 and releases nothing) — every later
+    acquire failed and the scheduled scans were skipped silently until the
+    stranded connection happened to be closed (incident 2026-09-18).
+
     Falls back to "always acquired" if the pool is not yet initialized,
     so startup tasks (reset_stale_deleting) work before APScheduler fires.
     """
@@ -95,6 +103,7 @@ class MariaDBAdvisoryLockBackend:
     def __init__(self, name: str) -> None:
         self._name = name
         self._held = False
+        self._conn = None
 
     def locked(self) -> bool:
         return self._held
@@ -104,35 +113,48 @@ class MariaDBAdvisoryLockBackend:
             from .db.engine import _pool
             if _pool is None:
                 raise RuntimeError("pool not ready")
-            async with _pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("SELECT GET_LOCK(%s, 0)", (self._name,))
-                    row = await cur.fetchone()
-                    if not row or row[0] != 1:
-                        raise LockNotAvailable(self._name)
-            self._held = True
-        except LockNotAvailable:
-            raise
         except (RuntimeError, ImportError):
             logger.debug("MariaDBAdvisoryLockBackend: pool unavailable, proceeding without lock")
             self._held = True
+            return
+
+        conn = await _pool.acquire()
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT GET_LOCK(%s, 0)", (self._name,))
+                row = await cur.fetchone()
+            acquired = bool(row) and row[0] == 1
+        except Exception:
+            await _pool.release(conn)
+            raise
+        if not acquired:
+            await _pool.release(conn)
+            raise LockNotAvailable(self._name)
+
+        # Keep the connection: the lock dies with it, and only it can release.
+        self._conn = conn
+        self._held = True
 
     def release(self) -> None:
         self._held = False
 
     async def _release_async(self) -> None:
-        if not self._held:
-            return
+        conn, self._conn = self._conn, None
         self._held = False
+        if conn is None:
+            return
         try:
-            from .db.engine import _pool
-            if _pool is None:
-                return
-            async with _pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("SELECT RELEASE_LOCK(%s)", (self._name,))
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT RELEASE_LOCK(%s)", (self._name,))
         except Exception as e:
             logger.warning("MariaDBAdvisoryLockBackend release error: %s", e)
+        finally:
+            try:
+                from .db.engine import _pool
+                if _pool is not None:
+                    await _pool.release(conn)
+            except Exception as e:
+                logger.warning("MariaDBAdvisoryLockBackend: returning connection failed: %s", e)
 
     async def __aenter__(self):
         await self.acquire()

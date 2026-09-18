@@ -4,6 +4,20 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.2] — 2026-09-18
+
+### Fixed
+
+- **The MariaDB advisory lock was never released, silently stopping the scheduled jobs.** `GET_LOCK()` is bound to the connection that issues it. `MariaDBAdvisoryLockBackend.acquire()` ran it inside `async with _pool.acquire()`, so the connection went back to the pool still holding the lock, and `_release_async()` then ran `RELEASE_LOCK()` on a *different* pooled connection — which returns 0 and releases nothing. Every subsequent `GET_LOCK(name, 0)` returned 0, `run_scan()` / `run_deletion()` raised `LockNotAvailable` and returned at debug level with no `job_history` row, and the job simply stopped happening until the stranded connection was closed by MariaDB's `wait_timeout`. Observed in production: `IS_USED_LOCK('hygie_scan_lock')` pointing at an idle `Sleep` connection with no scan running, four consecutive scheduled scans skipped over 24 h, and chronic hourly gaps in the deletion check. The lock now keeps its connection for its whole lifetime and releases on that same connection.
+- **A job skipped on every cycle looked exactly like a job skipped once.** In a multi-worker deployment one worker always loses the lock race, so the skip is debug-level by design — which is what made the above invisible. `warn_if_job_starved()` now turns "skipped again" into a claim that can fail: when the last completed run of a job is older than three configured intervals, it logs an ERROR and raises a Discord alert.
+- **`bandit` flagged the two new `executemany()` statements** (B608, f-string SQL) — the interpolated fragment is a module constant and every value is bound; annotated `# nosec B608` like the rest of the project's dynamic-column SQL. This broke the `Tests` workflow on `main` for v4.3.1 (the image build on the tag was unaffected).
+
+### Known issue
+
+- The `Tests` workflow's `npm audit` step fails on frontend **devDependencies** (`browserslist`, `postcss-selector-parser`, `vitest`/`@vitest/mocker`, `baseline-browser-mapping`). None of them ship in the runtime image. Unrelated to this release.
+
+---
+
 ## [4.3.1] — 2026-09-18
 
 ### Fixed

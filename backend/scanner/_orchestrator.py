@@ -24,6 +24,7 @@ from ..discord_client import send_alert
 from ..notifications import _send_pending_notifications
 from ..collection import sync_emby_collection
 from ..logmsg import lm
+from .._job_health import warn_if_job_starved
 from ..emby_client import get_play_activity
 from ._emby_scanner import _scan_library
 from ._plex_scanner import _scan_plex_library
@@ -384,6 +385,7 @@ async def run_scan() -> None:
                 await finish_job_run(run_id, status, msg)
     except LockNotAvailable:
         logger.debug("run_scan: another worker holds the scan lock — skipping this cycle")
+        await warn_if_job_starved("scan", "scan_interval_minutes", 360, "Scan de la médiathèque")
 
 
 async def run_scan_library(library_id: str) -> None:

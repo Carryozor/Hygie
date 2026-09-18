@@ -23,6 +23,24 @@ def _reset_circuit_breakers():
     circuit_breaker._registry.clear()
 
 
+@pytest.fixture(autouse=True)
+async def _cancel_storage_refresh_task():
+    """Never let a test end with the storage refresh task still pending.
+
+    get_storage() spawns it with create_task() and hands ownership to nobody.
+    A task left suspended inside `async with get_db()` when the loop closes
+    leaks its aiosqlite.Connection — a non-daemon thread that blocks the
+    interpreter at exit. That is what hung a CI run for 10 minutes *after*
+    pytest had reported every test as passed (2026-09-18).
+    """
+    yield
+    try:
+        from backend.routers.storage import cancel_storage_refresh
+        await cancel_storage_refresh()
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def test_client(tmp_path_factory):
     """Synchronous TestClient for lightweight route tests. Auth dependency is bypassed."""

@@ -28,6 +28,29 @@ def invalidate_storage_cache() -> None:
     _storage_cache.update({"data": None, "ts": 0.0})
 
 
+async def cancel_storage_refresh() -> None:
+    """Cancel and await the background refresh task, if one is running.
+
+    The stale-while-revalidate refresh is spawned with create_task() and
+    returns immediately, so nothing else owns it. If the event loop goes away
+    while it is suspended inside `async with get_db()`, that context manager
+    never runs its __aexit__ — and under SQLite it owns an aiosqlite.Connection,
+    which is a non-daemon thread. The thread then blocks interpreter exit
+    forever (observed 2026-09-18: a CI test step hung for 10 minutes after
+    pytest had already reported success). Whoever tears the loop down must call
+    this first.
+    """
+    global _storage_refresh_task
+    task, _storage_refresh_task = _storage_refresh_task, None
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 async def _fetch_storage_data() -> dict:
     """Fetch fresh storage data from Radarr/Sonarr + SQLite. Updates cache in place."""
 

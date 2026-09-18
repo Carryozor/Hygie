@@ -1,14 +1,17 @@
 """Tests for the SQLite→MariaDB migration script (dry-run mode only — no live MariaDB)."""
-import asyncio
 import pytest
 import aiosqlite
 from backend.tools.migrate_to_mariadb import read_sqlite_table, validate_sqlite_db
 
 
 @pytest.fixture
-def sqlite_db(tmp_path):
+async def sqlite_db(tmp_path):
+    """Async fixture on purpose: asyncio.run() here would close the event loop
+    pytest-asyncio set up for the test, leaving "no current event loop" behind
+    for anything that runs after it.
+    """
     db_path = str(tmp_path / "source.db")
-    asyncio.run(_bootstrap_sqlite(db_path))
+    await _bootstrap_sqlite(db_path)
     return db_path
 
 

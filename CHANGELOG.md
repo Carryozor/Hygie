@@ -4,6 +4,19 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.3] — 2026-09-18
+
+### Fixed
+
+- **The CI test step hung for 10 minutes after pytest had already reported every test as passed**, which skipped the image build and the release for v4.3.2. Root cause: `get_storage()` spawns its stale-while-revalidate refresh with `asyncio.create_task(_fetch_storage_data())` and hands ownership to nobody. When the event loop goes away while that task is suspended inside `async with get_db()`, the context manager's `__aexit__` never runs — and under SQLite it owns an `aiosqlite.Connection`, which is a `threading.Thread` created **without** `daemon=True`. The thread stays blocked on its queue and `threading._shutdown()` joins it at interpreter exit, forever. A leak probe over the suite measured 2361 aiosqlite connections created and 2 still alive at the end, both traced to `routers/storage.py` → `db/engine.py:get_db`; whether a given run leaks depends on where the abandoned task was suspended, which is why it looked like a flake. `cancel_storage_refresh()` now owns the task, the app shutdown calls it, and a conftest fixture cancels it after every test. Probe re-run: 0 connections alive.
+- **`tests/test_migrate_to_mariadb.py`'s `sqlite_db` fixture called `asyncio.run()`**, closing the event loop pytest-asyncio had set up and leaving "no current event loop" for anything ordered after it. Converted to an async fixture.
+
+### Security
+
+- **`vitest` 4 → 5** (with `@vitest/coverage-v8`), clearing GHSA-82fw-gwwq-j7x9 (path traversal / arbitrary file read via `@vitest/mocker` redirect mock) and the two advisories it dragged in transitively. `npm audit` now reports **0 vulnerabilities** at every severity, down from 6. The 41 frontend unit tests, lint and build all pass on vitest 5.
+
+---
+
 ## [4.3.2] — 2026-09-18
 
 ### Fixed

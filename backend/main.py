@@ -260,6 +260,8 @@ async def _shutdown_lifespan(prewarm_task: asyncio.Task | None) -> None:
             await prewarm_task
         except (asyncio.CancelledError, Exception):
             pass
+    from .routers.storage import cancel_storage_refresh
+    await cancel_storage_refresh()
     try:
         scheduler.shutdown(wait=True)
     except Exception:

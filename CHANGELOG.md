@@ -12,9 +12,10 @@ All notable changes to Hygie are documented here.
 - **A job skipped on every cycle looked exactly like a job skipped once.** In a multi-worker deployment one worker always loses the lock race, so the skip is debug-level by design — which is what made the above invisible. `warn_if_job_starved()` now turns "skipped again" into a claim that can fail: when the last completed run of a job is older than three configured intervals, it logs an ERROR and raises a Discord alert.
 - **`bandit` flagged the two new `executemany()` statements** (B608, f-string SQL) — the interpolated fragment is a module constant and every value is bound; annotated `# nosec B608` like the rest of the project's dynamic-column SQL. This broke the `Tests` workflow on `main` for v4.3.1 (the image build on the tag was unaffected).
 
-### Known issue
+### Security
 
-- The `Tests` workflow's `npm audit` step fails on frontend **devDependencies** (`browserslist`, `postcss-selector-parser`, `vitest`/`@vitest/mocker`, `baseline-browser-mapping`). None of them ship in the runtime image. Unrelated to this release.
+- **`npm audit --audit-level=high` was failing the `Tests` workflow** on a high-severity `browserslist` advisory (GHSA-c83g-rgw3-j3cx unbounded memory growth, GHSA-73wf-gq98-2v4g prototype write via untrusted `browserslist-stats.json`), reached transitively through the build toolchain. `npm audit fix` aborts on this lockfile (`Cannot read properties of null (reading 'edgesOut')`), so the three affected transitive packages are pinned through `overrides` instead — reproducible in CI, unlike an `audit fix` run: `browserslist >=4.29.0`, `baseline-browser-mapping >=2.11.25`, `postcss-selector-parser >=7.1.6`. Frontend unit tests (41), lint and build all pass on the updated tree.
+- Remaining after this: 3 **moderate** advisories on `vitest` / `@vitest/mocker` / `@vitest/coverage-v8` (GHSA-82fw-gwwq-j7x9). They are below the CI threshold, affect only the test runner, and the fix is a major upgrade (vitest 4 → 5) — deliberately left for its own change.
 
 ---
 

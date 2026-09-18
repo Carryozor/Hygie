@@ -43,5 +43,10 @@
     "vite": "^6.4.3",
     "vitest": "^4.1.7",
     "vue-eslint-parser": "^10.4.0"
+  },
+  "overrides": {
+    "browserslist": ">=4.29.0",
+    "baseline-browser-mapping": ">=2.11.25",
+    "postcss-selector-parser": ">=7.1.6"
   }
 }

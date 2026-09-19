@@ -304,3 +304,12 @@ async def get_db():
             except Exception:
                 await raw.rollback()
                 raise
+            # autocommit=False: even a bare SELECT opens a REPEATABLE-READ
+            # transaction, and aiomysql's pool only discards a connection whose
+            # server_status says IN_TRANS (set by writes, not by SELECTs). End
+            # the transaction here so a pooled connection never carries a frozen
+            # snapshot into its next read (this made warn_if_job_starved() read
+            # a stale job_history). Rollback, not commit: callers commit
+            # explicitly, and work they left uncommitted was already discarded
+            # (the pool closed such a connection) — that must stay true.
+            await raw.rollback()

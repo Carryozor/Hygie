@@ -4,6 +4,14 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.4] — 2026-09-19
+
+### Fixed
+
+- **`get_db()` left a MariaDB read snapshot open on every pooled connection, producing false "job at a standstill" alerts.** The pool runs with `autocommit=False`, so even a bare `SELECT` opens a REPEATABLE-READ transaction; `get_db()` handed the connection back to the pool without ending it, and every later read on that connection saw the frozen snapshot until some unrelated write happened to commit. Observed in production on 2026-09-18/19: `warn_if_job_starved()` (added in 4.3.2), running on the worker that lost the advisory-lock race, read a stale `job_history` and logged ERROR + fired a Discord alert "Vérification des suppressions : aucune exécution depuis 180/240/300/360 min" eight times, while `job_history` showed the deletion check completing every single hour. `get_db()` now rolls back when the block exits cleanly (rollback on error is unchanged), ending the transaction before the connection is released. Rollback rather than commit keeps the existing semantics: callers commit explicitly, and work left uncommitted was already discarded (aiomysql's pool closes a connection whose `server_status` is `IN_TRANS`, which writes set and SELECTs do not — exactly why the read snapshot slipped through). SQLite was never affected (a connection per call), which is why no test could see it: the new suite pins the contract on the MariaDB branch with a fake pool, and two live-MariaDB tests (`TEST_MARIADB_URL`) replay the reproduction — the freshness test fails with `assert 1 == 2` without the fix, while the "uncommitted write is still discarded" test passes both before and after.
+
+---
+
 ## [4.3.3] — 2026-09-18
 
 ### Fixed

@@ -10,6 +10,7 @@ data/
 *.db-wal
 *.db-shm
 .secret
+.encryption_key
 
 # Python
 __pycache__/

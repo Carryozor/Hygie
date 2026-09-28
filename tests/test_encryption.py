@@ -57,11 +57,119 @@ def test_decrypt_corrupted_encrypted_value_degrades_gracefully():
 
 # ─── _get_fernet — key presence / validity ────────────────────────────────────
 
-def test_get_fernet_returns_none_when_key_not_configured(monkeypatch):
+@pytest.fixture
+def isolated_key_dir(monkeypatch, tmp_path):
+    """Point the encryption-key-file mechanism at a throwaway directory so
+    these tests never touch the real (gitignored) .encryption_key next to
+    the repo's .secret file, and so each test starts with no key file."""
+    import backend.db.utils as _db_utils
+    monkeypatch.setattr(_db_utils, "DB_PATH", str(tmp_path / "hygie.db"))
+    return tmp_path
+
+
+def test_get_fernet_without_env_var_falls_back_to_a_persisted_key_file(monkeypatch, isolated_key_dir):
+    """Without HYGIE_ENCRYPTION_KEY, secrets must NOT silently stay in
+    plaintext forever: a key is generated and persisted (mirrors
+    auth._load_or_create_secret()), so _get_fernet() returns a usable
+    Fernet instance instead of None."""
     monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
     enc._fernet_loaded = False
     enc._fernet_instance = None
-    assert _get_fernet() is None
+
+    fernet = _get_fernet()
+
+    assert fernet is not None
+    key_file = isolated_key_dir / ".encryption_key"
+    assert key_file.exists()
+
+
+def test_encryption_key_file_is_created_with_mode_600(monkeypatch, isolated_key_dir):
+    import stat
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    _get_fernet()
+
+    key_file = isolated_key_dir / ".encryption_key"
+    mode = stat.S_IMODE(key_file.stat().st_mode)
+    assert mode == 0o600
+
+
+def test_encryption_key_file_is_reused_across_calls_restarts(monkeypatch, isolated_key_dir):
+    """A second 'process' (simulated by resetting the cached Fernet
+    instance, the only in-memory state) must load the SAME key from disk
+    rather than generating a new one — otherwise every value encrypted by
+    the first process becomes undecryptable."""
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    first = _get_fernet()
+    encrypted = first.encrypt(b"secret-value")
+
+    # Simulate a restart: forget the cached instance, but the file on disk survives.
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+    second = _get_fernet()
+
+    assert second.decrypt(encrypted) == b"secret-value"
+
+
+def test_invalid_key_file_is_not_overwritten_and_falls_back_to_plaintext(monkeypatch, isolated_key_dir):
+    """An existing-but-corrupt key file must never be silently replaced —
+    that would orphan any values already encrypted with the real key. Must
+    degrade to plaintext mode (None) instead of crashing."""
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    key_file = isolated_key_dir / ".encryption_key"
+    key_file.write_bytes(b"not-a-valid-fernet-key")
+    original_content = key_file.read_bytes()
+
+    fernet = _get_fernet()
+
+    assert fernet is None
+    assert key_file.read_bytes() == original_content  # untouched, not regenerated
+
+
+def test_env_var_wins_over_persisted_key_file(monkeypatch, isolated_key_dir):
+    """HYGIE_ENCRYPTION_KEY, when set, must always be used even if a key
+    file already exists on disk."""
+    from cryptography.fernet import Fernet
+
+    file_key = Fernet.generate_key()
+    key_file = isolated_key_dir / ".encryption_key"
+    key_file.write_bytes(file_key)
+
+    env_key = Fernet.generate_key()
+    monkeypatch.setenv("HYGIE_ENCRYPTION_KEY", env_key.decode())
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    fernet = _get_fernet()
+    encrypted = fernet.encrypt(b"x")
+
+    # Decryptable with the env key, NOT with the on-disk file key.
+    assert Fernet(env_key).decrypt(encrypted) == b"x"
+    with pytest.raises(Exception):
+        Fernet(file_key).decrypt(encrypted)
+
+
+def test_legacy_plaintext_value_remains_readable_with_file_backed_key(monkeypatch, isolated_key_dir):
+    """A value written before any key existed (plain, no enc: prefix) must
+    still decrypt (pass through) once a file-backed key is generated."""
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    assert _decrypt_value("plain-legacy-value") == "plain-legacy-value"
+
+    # And a fresh write now gets encrypted under the generated key.
+    encrypted = _encrypt_value("new-value")
+    assert encrypted.startswith("enc:")
+    assert _decrypt_value(encrypted) == "new-value"
 
 
 def test_get_fernet_returns_none_when_key_malformed(monkeypatch):
@@ -81,10 +189,17 @@ def test_get_fernet_caches_instance_across_calls(monkeypatch):
     assert first is second  # same cached instance, not re-parsed from env
 
 
-def test_encrypt_value_is_noop_without_key(monkeypatch):
+def test_encrypt_value_falls_back_to_plaintext_when_key_file_cannot_be_persisted(monkeypatch, isolated_key_dir):
+    """Genuine 'no key available' case now requires key-file persistence
+    itself to fail (env var absent no longer means plaintext by default —
+    that's exactly the bug being fixed here). Simulated by making the write
+    raise — chmod-based read-only dirs don't block root, and tests run as
+    root in this environment."""
     monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
     enc._fernet_loaded = False
     enc._fernet_instance = None
+    monkeypatch.setattr(enc.os, "makedirs", lambda *a, **k: (_ for _ in ()).throw(OSError("read-only filesystem")))
+
     assert _encrypt_value("some-secret") == "some-secret"
 
 
@@ -170,7 +285,10 @@ async def test_migrate_encrypt_settings_leaves_already_encrypted_values_alone(mo
     assert row["value"] == already_encrypted
 
 
-async def test_migrate_encrypt_settings_is_noop_without_key(monkeypatch):
+async def test_migrate_encrypt_settings_uses_generated_key_when_env_var_absent(monkeypatch):
+    """Without HYGIE_ENCRYPTION_KEY, a key is now generated/persisted
+    automatically (this fix's whole point), so the migration must actually
+    encrypt plaintext sensitive settings rather than silently no-op."""
     from backend.db.engine import get_db
 
     monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
@@ -183,7 +301,33 @@ async def test_migrate_encrypt_settings_is_noop_without_key(monkeypatch):
             ("radarr_api_key", "plaintext-radarr-key"),
         )
         await db.commit()
-        await _migrate_encrypt_settings(db)  # must return early, no key configured
+        await _migrate_encrypt_settings(db)
+
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT value FROM settings WHERE `key`='radarr_api_key'")
+    assert row["value"].startswith("enc:")
+    assert _decrypt_value(row["value"]) == "plaintext-radarr-key"
+
+
+async def test_migrate_encrypt_settings_is_noop_when_truly_no_key_available(monkeypatch):
+    """Genuine no-key case: env var absent AND the key file cannot be
+    persisted — must still no-op, not crash. Simulated by making the key
+    directory creation raise (chmod-based read-only dirs don't block root,
+    and tests run as root in this environment)."""
+    from backend.db.engine import get_db
+
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+    monkeypatch.setattr(enc.os, "makedirs", lambda *a, **k: (_ for _ in ()).throw(OSError("read-only filesystem")))
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO settings (`key`, value) VALUES (?, ?)",
+            ("radarr_api_key", "plaintext-radarr-key"),
+        )
+        await db.commit()
+        await _migrate_encrypt_settings(db)
 
     async with get_db() as db:
         row = await db.fetch_one("SELECT value FROM settings WHERE `key`='radarr_api_key'")

@@ -553,6 +553,28 @@ async def _m015_fix_remaining_mariadb_column_gaps():
         await db.commit()
 
 
+async def _m016_add_arr_server_url_to_media_queue():
+    """Add media_queue.arr_server_url (both dialects).
+
+    Records which configured Radarr/Sonarr instance a stored radarr_id/
+    sonarr_id/sonarr_series_id actually belongs to. Without it, deletion
+    couldn't tell servers apart in a multi-instance setup: Radarr's delete
+    tried the same numeric id on every configured server until one
+    succeeded (could delete an unrelated movie on another instance that
+    reused the id), and Sonarr's delete silently used "the" default/legacy
+    server regardless of which one actually owned the episode file. NULL
+    on existing rows (pre-dates this column) — deletion falls back to the
+    single configured server, or a file-path match, and refuses to guess
+    when neither resolves.
+    """
+    async with get_db() as db:
+        cols = await db.table_columns("media_queue")
+        if "arr_server_url" not in cols:
+            col_type = "TEXT DEFAULT NULL" if DIALECT == "mariadb" else "TEXT DEFAULT NULL"
+            await db.execute(f"ALTER TABLE media_queue ADD COLUMN arr_server_url {col_type}")
+            await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -569,4 +591,5 @@ _MIGRATIONS = [
     ("m013", "Purge verbose per-item scan log entries",                  _m013_purge_verbose_scan_logs),
     ("m014", "Add library_ids to seerr_user_rules (missing from MariaDB DDL)", _m014_add_library_ids_to_seerr_user_rules),
     ("m015", "Fix remaining MariaDB column gaps (seerr_user_rules.name, etc.)", _m015_fix_remaining_mariadb_column_gaps),
+    ("m016", "Add media_queue.arr_server_url (multi-Radarr/Sonarr deletion routing)", _m016_add_arr_server_url_to_media_queue),
 ]

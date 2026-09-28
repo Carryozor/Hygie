@@ -59,8 +59,8 @@ _INSERT_SQL = """INSERT INTO media_queue
     (emby_id, title, media_type, library_id, library_name, file_path,
      poster_url, tmdb_id, seerr_id, seerr_user_id, seerr_username,
      seerr_request_url, radarr_id, sonarr_id, sonarr_series_id, season_number,
-     detected_at, delete_at, added_date, last_played, view_count, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"""
+     detected_at, delete_at, added_date, last_played, view_count, arr_server_url, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"""
 
 # Single-row inserts use OR IGNORE so a duplicate emby_id during a scan does
 # not abort the entire library loop — the scanner's pre-filter (queued_ids) is
@@ -79,6 +79,7 @@ def _entry_params(entry: dict) -> tuple:
         entry["detected_at"], entry["delete_at"],
         entry["added_date"], entry["last_played"],
         entry.get("view_count", 0),
+        entry.get("arr_server_url"),
     )
 
 

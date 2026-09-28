@@ -34,3 +34,4 @@ class QueueEntry(TypedDict, total=False):
     sonarr_id:         Optional[int]
     sonarr_series_id:  Optional[int]
     season_number:     Optional[int]
+    arr_server_url:    Optional[str]  # which configured Radarr/Sonarr instance owns the id(s) above

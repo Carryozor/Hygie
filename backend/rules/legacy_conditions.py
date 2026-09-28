@@ -29,7 +29,7 @@ from ..arr_clients import (
     radarr_find_by_path_cached,
     radarr_get_poster_url,
     seerr_find_request_by_tmdb,
-    sonarr_find_by_path,
+    sonarr_find_by_path_full,
     sonarr_get_cache_entry,
     sonarr_get_poster_url,
 )
@@ -322,26 +322,43 @@ async def _resolve_arr_ids(
     radarr_cache: Optional[dict],
     sonarr_cache: Optional[dict],
 ) -> tuple:
-    """Return (radarr_id, sonarr_id, sonarr_series_id, season_number) from caches or HTTP."""
+    """Return (radarr_id, sonarr_id, sonarr_series_id, season_number, arr_server_url)
+    from caches or HTTP.
+
+    arr_server_url records which configured Radarr/Sonarr instance actually
+    owns the resolved id — required so deletion targets the right server in
+    a multi-instance setup instead of brute-forcing/guessing (see
+    media_queue.arr_server_url migration comment). radarr_find_by_path(_cached)
+    and sonarr_find_by_path_full both return (id, url, api_key) — previously
+    the whole tuple was assigned directly to radarr_id_val here instead of
+    being unpacked, silently breaking int(radarr_id) callers (poster lookup)
+    for every movie resolved via this path.
+    """
     radarr_id_val: Optional[int] = None
     sonarr_id_val: Optional[int] = None
     sonarr_series_id_val: Optional[int] = None
     season_number_val: Optional[int] = None
+    arr_server_url_val: Optional[str] = None
     if media_type == "Movie":
-        radarr_id_val = (
+        found = (
             radarr_find_by_path_cached(file_path, radarr_cache)
             if radarr_cache is not None
             else await radarr_find_by_path(file_path)
         )
+        if found:
+            radarr_id_val, arr_server_url_val = found[0], found[1]
     else:
         sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
         if sonarr_entry:
             sonarr_id_val        = sonarr_entry["ef_id"]
             sonarr_series_id_val = sonarr_entry["series_id"]
             season_number_val    = sonarr_entry["season_number"]
+            arr_server_url_val   = sonarr_entry.get("srv_url")
         else:
-            sonarr_id_val = await sonarr_find_by_path(file_path)
-    return radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val
+            found = await sonarr_find_by_path_full(file_path)
+            if found:
+                sonarr_id_val, arr_server_url_val = found[0], found[1]
+    return radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val, arr_server_url_val
 
 
 # ─── Item evaluation — helpers ────────────────────────────────────────────────
@@ -498,7 +515,7 @@ async def _evaluate_item(
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)
     delete_at = now_utc() + timedelta(days=effective_grace)
 
-    radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val = await _resolve_arr_ids(
+    radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val, arr_server_url_val = await _resolve_arr_ids(
         file_path, media_type, radarr_cache, sonarr_cache
     )
 
@@ -534,6 +551,7 @@ async def _evaluate_item(
         "sonarr_id": sonarr_id_val,
         "sonarr_series_id": sonarr_series_id_val,
         "season_number": season_number_val,
+        "arr_server_url": arr_server_url_val,
         "detected_at": now_utc().isoformat(),
         "delete_at": delete_at.isoformat(),
         "added_date": added_date.isoformat(),

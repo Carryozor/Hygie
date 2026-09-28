@@ -96,6 +96,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             season_number       INT          DEFAULT NULL,
             plex_rating_key     VARCHAR(64)  DEFAULT NULL,
             view_count          INT          DEFAULT 0,
+            arr_server_url      TEXT         DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY uq_mq_emby_id (emby_id)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",

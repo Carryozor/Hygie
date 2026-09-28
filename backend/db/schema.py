@@ -105,7 +105,8 @@ _TABLES = [
             sonarr_series_id INTEGER,
             season_number INTEGER,
             plex_rating_key TEXT DEFAULT '',
-            view_count INTEGER DEFAULT 0
+            view_count INTEGER DEFAULT 0,
+            arr_server_url TEXT DEFAULT NULL
         )""",
         [
             ("poster_url", "TEXT DEFAULT ''"),
@@ -131,6 +132,7 @@ _TABLES = [
             ("torrent_hash", "TEXT DEFAULT ''"),
             ("seerr_discord_id", "TEXT DEFAULT ''"),
             ("ignored", "INTEGER DEFAULT 0"),
+            ("arr_server_url", "TEXT DEFAULT NULL"),
         ],
     ),
     (

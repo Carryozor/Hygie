@@ -153,6 +153,7 @@ async def _scan_plex_library(*, server: dict, library: dict, seerr_cache: dict |
             "radarr_id":         None,
             "sonarr_id":         None,
             "sonarr_series_id":  None,
+            "arr_server_url":    None,
             "season_number":     item.get("season_number"),
             "detected_at":       detected_at,
             "delete_at":         delete_at,

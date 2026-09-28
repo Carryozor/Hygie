@@ -49,6 +49,40 @@ async def _test_arr_connection(url: str, key: str, service_name: str) -> tuple[b
         return False, str(e)
 
 
+def _normalize_arr_url(url: str) -> str:
+    """Normalize a Radarr/Sonarr base URL for equality comparison."""
+    return (url or "").strip().rstrip("/").lower()
+
+
+async def _resolve_arr_server(
+    servers: list[dict], arr_server_url: Optional[str]
+) -> Optional[tuple[str, str]]:
+    """Resolve which configured server (url, api_key) a stored arr id belongs to.
+
+    - arr_server_url set (recorded on the queue row at scan time): must match
+      a currently configured server's url exactly (normalized). No match
+      (server removed/reconfigured since) means unresolved — never falls
+      back to guessing a different server.
+    - arr_server_url is None (legacy row, predates this column): unambiguous
+      only when exactly one server is configured. With zero or 2+ candidate
+      servers this returns None; the caller may attempt a file-path-based
+      fallback, and must otherwise refuse to delete rather than guess.
+
+    This never returns a server chosen by trying the same numeric id across
+    every configured server — that brute-force pattern is exactly the bug
+    being fixed (see CHANGELOG / arr_server_url migration comment).
+    """
+    if arr_server_url:
+        target = _normalize_arr_url(arr_server_url)
+        for srv in servers:
+            if _normalize_arr_url(srv.get("url", "")) == target:
+                return srv["url"].rstrip("/"), srv["api_key"]
+        return None
+    if len(servers) == 1:
+        return servers[0]["url"].rstrip("/"), servers[0]["api_key"]
+    return None
+
+
 async def _first_from_servers(
     servers: list[dict], fetch_fn: Callable[[str, str], Awaitable[Optional[T]]]
 ) -> Optional[T]:

@@ -4,6 +4,16 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.6] — 2026-09-28
+
+### Fixed
+
+- **Every MariaDB backup failed — manual and scheduled.** The dump command passed `--set-gtid-purged=OFF`, a MySQL-only option; the image ships the MariaDB client, which rejects it: `mysqldump: unknown variable 'set-gtid-purged=OFF'` (exit 7, empty file). Reproduced in the production container with its own client and credentials: the same dump without that option completes (`rc=0`, `-- Dump completed`). The tests mocked `subprocess` and never inspected the command line; a new test forbids MySQL-only options in it.
+- **With `WORKERS>1`, every worker ran schema init and migrations at the same time.** Observed while upgrading production to 4.3.5: both workers applied `m016`, the second died at startup on `Duplicate column name 'arr_server_url'` (uvicorn respawned it). Two processes booting on an empty database reproduce it on 4.3.5 (`Duplicate entry … for key 'PRIMARY'` in `init_db()`), and a non-idempotent data migration would have been applied twice instead of crashing. Startup now takes a blocking MariaDB `GET_LOCK` (held on a dedicated connection, 10-minute bound) around backup + schema init + migrations: the other workers wait, then find nothing left to do. A live-MariaDB test runs a slow non-idempotent migration from two concurrent "workers" — applied once with the lock, twice without it.
+- **The pre-migration backup ran on every restart, once per worker.** It now runs only when a migration is actually pending.
+
+---
+
 ## [4.3.5] — 2026-09-28
 
 Full developer / architect / pentest review of 4.3.4. Every item below was reproduced or traced end-to-end before being fixed, and each fix landed test-first.

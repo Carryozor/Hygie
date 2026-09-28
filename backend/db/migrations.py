@@ -575,6 +575,45 @@ async def _m016_add_arr_server_url_to_media_queue():
             await db.commit()
 
 
+async def _m017_ensure_plex_overlays_table():
+    """Ensure plex_overlays table exists.
+
+    Persists which Plex ratingKeys currently have the "deleted in Xj" poster
+    overlay applied. Previously this lived only in a module-level dict
+    (plex_collection._overlay_applied) — process memory, lost on every
+    restart and not shared between WORKERS=2 workers (whichever one wins the
+    scheduler lock for a given sync can differ run to run). Either way, an
+    item leaving the pending queue had its overlay tracked as applied by a
+    process that no longer remembers it, so the original poster was never
+    restored. `key` is a MariaDB reserved word but this table uses
+    `rating_key`, so no backticks are needed here.
+    """
+    async with get_db() as db:
+        if not await db.table_exists("plex_overlays"):
+            if DIALECT == "mariadb":
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS plex_overlays (
+                        id          INT          NOT NULL AUTO_INCREMENT,
+                        server_id   VARCHAR(255) NOT NULL,
+                        rating_key  VARCHAR(255) NOT NULL,
+                        applied_at  VARCHAR(32)  NOT NULL,
+                        PRIMARY KEY (id),
+                        UNIQUE KEY uq_plex_overlays (server_id, rating_key)
+                    ) ENGINE=InnoDB CHARSET=utf8mb4
+                """)
+            else:
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS plex_overlays (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_id  TEXT NOT NULL,
+                        rating_key TEXT NOT NULL,
+                        applied_at TEXT NOT NULL,
+                        UNIQUE (server_id, rating_key)
+                    )
+                """)
+            await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -592,4 +631,5 @@ _MIGRATIONS = [
     ("m014", "Add library_ids to seerr_user_rules (missing from MariaDB DDL)", _m014_add_library_ids_to_seerr_user_rules),
     ("m015", "Fix remaining MariaDB column gaps (seerr_user_rules.name, etc.)", _m015_fix_remaining_mariadb_column_gaps),
     ("m016", "Add media_queue.arr_server_url (multi-Radarr/Sonarr deletion routing)", _m016_add_arr_server_url_to_media_queue),
+    ("m017", "Ensure plex_overlays table (persist Plex overlay tracking)", _m017_ensure_plex_overlays_table),
 ]

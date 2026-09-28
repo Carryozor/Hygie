@@ -221,6 +221,17 @@ MARIADB_TABLES: list[tuple[str, str]] = [
                 REFERENCES media_queue (id) ON DELETE CASCADE
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
     ),
+    (
+        "plex_overlays",
+        """CREATE TABLE IF NOT EXISTS plex_overlays (
+            id         INT          NOT NULL AUTO_INCREMENT,
+            server_id  VARCHAR(255) NOT NULL,
+            rating_key VARCHAR(255) NOT NULL,
+            applied_at VARCHAR(32)  NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_plex_overlays (server_id, rating_key)
+        ) ENGINE=InnoDB CHARSET=utf8mb4""",
+    ),
 ]
 
 #  `CREATE INDEX IF NOT EXISTS` is only valid on MariaDB >= 10.5 and is a hard
@@ -244,4 +255,5 @@ MARIADB_INDEXES: list[str] = [
     "CREATE INDEX idx_media_radarr_id ON media_queue(radarr_id)",
     "CREATE INDEX idx_media_sonarr_id ON media_queue(sonarr_id)",
     "CREATE INDEX idx_media_tmdb_id ON media_queue(tmdb_id)",
+    "CREATE INDEX idx_plex_overlays_server ON plex_overlays(server_id)",
 ]

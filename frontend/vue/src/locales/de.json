@@ -404,6 +404,9 @@
       "libraries": "Bibl.:",
       "noneSelected": "keine ausgewählt",
       "allLibraries": "Alle Bibliotheken"
+    },
+    "error": {
+      "deleteFailed": "Regel konnte nicht gelöscht werden"
     }
   },
   "queue": {
@@ -423,7 +426,10 @@
     "confirmPurge": "Alle gelöschten Einträge aus der Warteschlange bereinigen?",
     "purge": "Bereinigen",
     "error": {
-      "loadFailed": "Warteschlange kann nicht geladen werden."
+      "loadFailed": "Warteschlange kann nicht geladen werden.",
+      "ignoreFailed": "Dieses Medium konnte nicht ignoriert werden",
+      "deleteFailed": "Dieses Medium konnte nicht gelöscht werden",
+      "purgeFailed": "Gelöschte Einträge konnten nicht bereinigt werden"
     },
     "filters": {
       "all": "Alle",
@@ -451,7 +457,9 @@
     "confirmRemove": "Dieses Medium aus der Ignorierliste entfernen?",
     "removeBtn": "Entfernen",
     "error": {
-      "loadFailed": "Ignorierte Medien können nicht geladen werden."
+      "loadFailed": "Ignorierte Medien können nicht geladen werden.",
+      "requeueFailed": "Dieses Medium konnte nicht erneut eingereiht werden",
+      "removeFailed": "Dieses Medium konnte nicht entfernt werden"
     },
     "columns": {
       "title": "Titel",

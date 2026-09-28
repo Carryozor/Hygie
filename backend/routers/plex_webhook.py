@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 
-from ..auth import get_client_ip, rate_limit
+from ..auth import get_client_ip, is_rate_limited, record_failure
 from ..db.repositories import update_last_played_scrobble
 from ..db.settings_store import get_setting
 
@@ -21,21 +21,25 @@ _HANDLED_EVENTS = {"media.scrobble", "media.play", "media.pause", "media.resume"
 async def _process_webhook(request: Request, payload: str, secret: str) -> Response:
     """Shared implementation for both webhook endpoints."""
     ip = get_client_ip(request)
-    # Rate limit before the secret comparison — same reasoning as login: an
-    # unauthenticated network attacker could otherwise brute-force the
-    # webhook secret with no limit at all.
-    if await asyncio.to_thread(rate_limit, f"plex_webhook:{ip}"):
+    # Rate limit check before the secret comparison — same reasoning as
+    # login: an unauthenticated network attacker could otherwise brute-force
+    # the webhook secret with no limit at all. Only wrong/missing secrets
+    # record a failure, so Plex's legitimate play/pause/resume/stop/scrobble
+    # events (which can easily exceed 5 per 5 minutes) are never blocked.
+    if await asyncio.to_thread(is_rate_limited, f"plex_webhook:{ip}"):
         raise HTTPException(status_code=429, detail="Trop de tentatives — réessayez dans 5 minutes")
 
     configured_secret = await get_setting("plex_webhook_secret") or ""
     # Fail closed: without a configured secret anyone could forge scrobble
     # events and shift last_played, delaying or preventing deletions.
     if not configured_secret:
+        await asyncio.to_thread(record_failure, f"plex_webhook:{ip}")
         raise HTTPException(
             status_code=403,
             detail="Webhook secret not configured — set plex_webhook_secret in settings",
         )
     if not _secrets.compare_digest(secret, configured_secret):
+        await asyncio.to_thread(record_failure, f"plex_webhook:{ip}")
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     try:

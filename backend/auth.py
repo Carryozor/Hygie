@@ -7,7 +7,9 @@ Public API:
   hash_password(pwd) -> str
   verify_password(pwd, hash) -> bool
   require_auth — FastAPI dependency
-  rate_limit(key) -> bool   — True if rate limited
+  rate_limit(key) -> bool         — True if rate limited; records every call (setup only)
+  is_rate_limited(key) -> bool    — True if already limited; records nothing (check)
+  record_failure(key) -> None     — records one failed attempt (record)
   get_client_ip(request) -> str
 """
 import hashlib
@@ -280,6 +282,35 @@ def _memory_rate_limit(key: str, now: float, cutoff: float) -> bool:
         return len(bucket) > RATE_LIMIT_MAX
 
 
+def _memory_is_rate_limited(key: str, cutoff: float) -> bool:
+    """Check-only variant — purges expired entries but records nothing.
+
+    Uses >= (not >, unlike the record+check combo in _memory_rate_limit)
+    because this check never adds an entry for the attempt being tested:
+    once RATE_LIMIT_MAX failures are on record, the very next attempt must
+    already be blocked, matching rate_limit()'s "the (MAX+1)th call is
+    blocked" behavior without recording that blocked attempt itself.
+    """
+    with _rate_lock:
+        bucket = [t for t in _rate_buckets.get(key, []) if t > cutoff]
+        _rate_buckets[key] = bucket
+        return len(bucket) >= RATE_LIMIT_MAX
+
+
+def _memory_record_failure(key: str, now: float, cutoff: float) -> None:
+    """Record-only variant — appends this failure, purging expired entries."""
+    global _rate_call_counter
+    with _rate_lock:
+        bucket = [t for t in _rate_buckets.get(key, []) if t > cutoff]
+        bucket.append(now)
+        _rate_buckets[key] = bucket
+        _rate_call_counter += 1
+        if _rate_call_counter % 500 == 0:
+            stale = [k for k, v in list(_rate_buckets.items()) if not v or v[-1] <= cutoff]
+            for k in stale:
+                del _rate_buckets[k]
+
+
 def rate_limit(key: str) -> bool:
     """Returns True if the key has exceeded the limit. Records this attempt.
 
@@ -316,6 +347,77 @@ def rate_limit(key: str) -> bool:
     except Exception as e:
         logger.warning(f"rate_limit DB error, falling back to in-memory: {e}")
         return _memory_rate_limit(key, now, cutoff)
+
+
+def is_rate_limited(key: str) -> bool:
+    """Returns True if the key has already exceeded the limit. Records nothing.
+
+    Use this to check a request BEFORE deciding whether it succeeds — so a
+    burst of legitimate calls (successful logins, token refreshes, webhook
+    events, public dashboard visits) never trips the limiter. Pair with
+    record_failure() on the failure path only.
+    """
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+
+    if DB_PATH == ":memory:":
+        return _memory_is_rate_limited(key, cutoff)
+
+    from .db.engine import DIALECT
+    if DIALECT == "mariadb":
+        try:
+            from ._rate_limit_backend import mariadb_is_rate_limited
+            return mariadb_is_rate_limited(key, cutoff, RATE_LIMIT_MAX)
+        except Exception as e:
+            logger.warning(f"is_rate_limited MariaDB error, falling back to in-memory: {e}")
+            return _memory_is_rate_limited(key, cutoff)
+
+    try:
+        with _sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute("DELETE FROM rate_limit WHERE ts < ?", (cutoff,))
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM rate_limit WHERE key = ? AND ts > ?",
+                (key, cutoff),
+            )
+            count = cur.fetchone()[0]
+            # >= : this check never records the attempt itself — see
+            # _memory_is_rate_limited docstring for why this differs from
+            # the record+check combo's `>`.
+            return count >= RATE_LIMIT_MAX
+    except Exception as e:
+        logger.warning(f"is_rate_limited DB error, falling back to in-memory: {e}")
+        return _memory_is_rate_limited(key, cutoff)
+
+
+def record_failure(key: str) -> None:
+    """Record one failed attempt for this key. Never returns blocked status —
+    call is_rate_limited() first to decide whether to even attempt the action.
+    """
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+
+    if DB_PATH == ":memory:":
+        _memory_record_failure(key, now, cutoff)
+        return
+
+    from .db.engine import DIALECT
+    if DIALECT == "mariadb":
+        try:
+            from ._rate_limit_backend import mariadb_record_failure
+            mariadb_record_failure(key, now, cutoff)
+            return
+        except Exception as e:
+            logger.warning(f"record_failure MariaDB error, falling back to in-memory: {e}")
+            _memory_record_failure(key, now, cutoff)
+            return
+
+    try:
+        with _sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute("DELETE FROM rate_limit WHERE ts < ?", (cutoff,))
+            conn.execute("INSERT INTO rate_limit (key, ts) VALUES (?, ?)", (key, now))
+    except Exception as e:
+        logger.warning(f"record_failure DB error, falling back to in-memory: {e}")
+        _memory_record_failure(key, now, cutoff)
 
 
 _warned_untrusted_forwarded_for = False

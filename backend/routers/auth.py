@@ -11,7 +11,9 @@ from ..auth import (
     create_user,
     get_client_ip,
     get_user,
+    is_rate_limited,
     rate_limit,
+    record_failure,
     require_auth,
     retire_refresh_token,
     revoke_all_refresh_tokens,
@@ -113,9 +115,11 @@ _DUMMY_HASH = (
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    # Rate limit AVANT la vérification — empêche le bypass par alternance
-    # succès/échec et protège toutes les tentatives, valides ou non.
-    if await asyncio.to_thread(rate_limit, f"login:{ip}"):
+    # Check AVANT la vérification — empêche le bypass par alternance
+    # succès/échec et protège toutes les tentatives, valides ou non. Seuls
+    # les échecs sont comptabilisés (record_failure), pour qu'un utilisateur
+    # légitime qui recharge la page ou tape juste ne soit jamais bloqué.
+    if await asyncio.to_thread(is_rate_limited, f"login:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(body.username)
     # Toujours appeler verify_password pour éliminer le timing side-channel :
@@ -127,6 +131,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         user["password_hash"] if user else _DUMMY_HASH,
     )
     if not user or not password_ok:
+        await asyncio.to_thread(record_failure, f"login:{ip}")
         raise HTTPException(401, "Identifiants invalides")
     access_token  = create_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
@@ -150,13 +155,15 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     working at the next legitimate refresh instead of lasting 30 days.
     """
     ip = get_client_ip(request)
-    if await asyncio.to_thread(rate_limit, f"refresh:{ip}"):
+    if await asyncio.to_thread(is_rate_limited, f"refresh:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
     if not raw:
+        await asyncio.to_thread(record_failure, f"refresh:{ip}")
         raise HTTPException(401, "Refresh token requis")
     username = await verify_refresh_token(raw)
     if not username:
+        await asyncio.to_thread(record_failure, f"refresh:{ip}")
         raise HTTPException(401, "Refresh token invalide ou expiré")
     access_token = create_access_token(username)
 

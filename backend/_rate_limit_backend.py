@@ -43,3 +43,50 @@ def mariadb_rate_limit(key: str, now: float, cutoff: float, rate_limit_max: int)
             conn.close()
 
     return asyncio.run(_do())
+
+
+def mariadb_is_rate_limited(key: str, cutoff: float, rate_limit_max: int) -> bool:
+    """Check-only variant of mariadb_rate_limit — purges expired rows, records nothing."""
+
+    async def _do() -> bool:
+        import aiomysql
+        from .db.engine import _parse_mariadb_url, DATABASE_URL
+
+        kwargs = _parse_mariadb_url(DATABASE_URL)
+        conn = await aiomysql.connect(**kwargs, autocommit=True, charset="utf8mb4")
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM rate_limit WHERE ts < %s", (cutoff,))
+                await cur.execute(
+                    "SELECT COUNT(*) FROM rate_limit WHERE `key` = %s AND ts > %s",
+                    (key, cutoff),
+                )
+                row = await cur.fetchone()
+                # >= : this check never records the attempt itself — mirrors
+                # auth._memory_is_rate_limited's reasoning.
+                return (row[0] if row else 0) >= rate_limit_max
+        finally:
+            conn.close()
+
+    return asyncio.run(_do())
+
+
+def mariadb_record_failure(key: str, now: float, cutoff: float) -> None:
+    """Record-only variant of mariadb_rate_limit — inserts this failure, no count returned."""
+
+    async def _do() -> None:
+        import aiomysql
+        from .db.engine import _parse_mariadb_url, DATABASE_URL
+
+        kwargs = _parse_mariadb_url(DATABASE_URL)
+        conn = await aiomysql.connect(**kwargs, autocommit=True, charset="utf8mb4")
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM rate_limit WHERE ts < %s", (cutoff,))
+                await cur.execute(
+                    "INSERT INTO rate_limit (`key`, ts) VALUES (%s, %s)", (key, now)
+                )
+        finally:
+            conn.close()
+
+    asyncio.run(_do())

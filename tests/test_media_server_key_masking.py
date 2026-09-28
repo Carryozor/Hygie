@@ -37,10 +37,17 @@ async def ms_client(tmp_path):
     from backend.db.schema import init_db
     await init_db()
 
-    import backend.auth as auth_mod
     from backend.routers import settings as settings_router
     app = FastAPI()
-    app.dependency_overrides[auth_mod.require_auth] = lambda: "testuser"
+    # Override the exact require_auth object settings.py's routes captured via
+    # `from ..auth import require_auth` (settings_router.require_auth) — not
+    # backend.auth.require_auth directly. Other test modules in the full suite
+    # call importlib.reload(backend.auth), which rebinds backend.auth.require_auth
+    # to a new function object while settings_router (imported earlier, never
+    # reloaded here) keeps its own captured reference. Overriding the wrong
+    # object makes the override silently not apply — a 401 in isolation-passing
+    # tests that only shows up when the full suite runs in a different order.
+    app.dependency_overrides[settings_router.require_auth] = lambda: "testuser"
     app.include_router(settings_router.router)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:

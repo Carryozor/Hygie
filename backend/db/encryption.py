@@ -40,11 +40,33 @@ _fernet_instance = None
 _fernet_loaded   = False
 
 
+def _may_auto_generate_key() -> bool:
+    """True only when a generated key would live on the same persistence as
+    the database itself.
+
+    SQLite: the key file sits next to hygie.db, on the same volume — safe.
+    MariaDB: the database lives in a separate server; the key file's
+    directory (e.g. /app/data) may not be a persistent volume at all, so a
+    freshly generated key can be lost on the very next container recreate,
+    permanently orphaning every value encrypted with it — worse than the
+    plaintext-with-a-WARN behavior it would replace.
+    DB_PATH == ':memory:' (tests, or any ephemeral SQLite setup) is also
+    excluded: os.path.dirname(':memory:') is '', which would place the key
+    file in the current working directory — not a real data directory, and
+    not something that should ever hold a persisted secret.
+    """
+    from .engine import DIALECT
+    from .utils import DB_PATH
+    return DIALECT == "sqlite" and DB_PATH != ":memory:"
+
+
 def _load_or_create_encryption_key() -> Optional[bytes]:
     """Resolve the Fernet key: HYGIE_ENCRYPTION_KEY env var if set (always
-    wins), else load/generate one persisted next to auth.py's JWT .secret
-    file — mirroring auth._load_or_create_secret() so secrets-at-rest don't
-    silently degrade to plaintext just because the env var was never set.
+    wins), else load an existing key file, else — only when it's safe to do
+    so (see _may_auto_generate_key) — generate and persist one next to
+    auth.py's JWT .secret file, mirroring auth._load_or_create_secret() so
+    secrets-at-rest don't silently degrade to plaintext just because the env
+    var was never set.
 
     Never generates a new key over an existing (even if invalid) key file:
     doing so would orphan every value already encrypted with the old key.
@@ -71,6 +93,20 @@ def _load_or_create_encryption_key() -> Optional[bytes]:
                 "setting permanently undecryptable"
             )
             return None
+
+    if not _may_auto_generate_key():
+        from .engine import DIALECT
+        if DIALECT == "mariadb":
+            logger.warning(
+                "HYGIE_ENCRYPTION_KEY is not set and MariaDB is in use — "
+                "auto-generating a key here is unsafe (it would live outside "
+                "the database's own persistence and be lost on the next "
+                "container recreate, permanently orphaning every encrypted "
+                "value). Storing settings in plaintext instead. Set "
+                "HYGIE_ENCRYPTION_KEY explicitly to enable encryption at "
+                "rest with MariaDB."
+            )
+        return None
 
     try:
         from cryptography.fernet import Fernet

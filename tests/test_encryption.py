@@ -5,6 +5,8 @@ keys/webhooks in prod (Hygie becomes unusable until manually fixed) or silently
 leaves secrets in plaintext. See CLAUDE.md piège 4 (SSRF) — this module carries
 the same "must not silently misbehave" weight for secret handling.
 """
+import os
+
 import pytest
 
 import backend.db.encryption as enc
@@ -65,6 +67,66 @@ def isolated_key_dir(monkeypatch, tmp_path):
     import backend.db.utils as _db_utils
     monkeypatch.setattr(_db_utils, "DB_PATH", str(tmp_path / "hygie.db"))
     return tmp_path
+
+
+def test_mariadb_dialect_without_env_var_and_no_existing_file_stays_plaintext(monkeypatch, isolated_key_dir):
+    """Auto-generating a key is only safe when it shares the DB's own
+    persistence. With SQLite the key file sits next to hygie.db, on the same
+    volume. With MariaDB the database lives in a separate server — if the
+    key file's directory (e.g. /app/data) is not itself a persistent
+    volume, a freshly generated key is lost on the next container recreate
+    and every value encrypted with the old key becomes permanently
+    unreadable, which is worse than the old plaintext-with-a-WARN behavior.
+    Must stay in plaintext (logging a clear WARNING) instead of generating."""
+    import backend.db.engine as _db_engine
+    monkeypatch.setattr(_db_engine, "DIALECT", "mariadb")
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    fernet = _get_fernet()
+
+    assert fernet is None
+    key_file = isolated_key_dir / ".encryption_key"
+    assert not key_file.exists()
+
+
+def test_mariadb_dialect_loads_an_existing_key_file_if_present(monkeypatch, isolated_key_dir):
+    """MariaDB must not regress someone who already has a key file (e.g.
+    migrated from SQLite, or placed there manually) — only NEW generation
+    is refused, not use of an existing file."""
+    from cryptography.fernet import Fernet
+    import backend.db.engine as _db_engine
+
+    existing_key = Fernet.generate_key()
+    key_file = isolated_key_dir / ".encryption_key"
+    key_file.write_bytes(existing_key)
+
+    monkeypatch.setattr(_db_engine, "DIALECT", "mariadb")
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    fernet = _get_fernet()
+
+    assert fernet is not None
+    assert fernet.decrypt(Fernet(existing_key).encrypt(b"x")) == b"x"
+
+
+def test_in_memory_db_path_never_writes_a_key_file(monkeypatch):
+    """DB_PATH == ':memory:' (tests, and any ephemeral SQLite setup) must
+    never generate a key file — dirname('') resolves to the current working
+    directory, which would litter the repo/CWD with a real secret."""
+    import backend.db.utils as _db_utils
+    monkeypatch.setattr(_db_utils, "DB_PATH", ":memory:")
+    monkeypatch.delenv("HYGIE_ENCRYPTION_KEY", raising=False)
+    enc._fernet_loaded = False
+    enc._fernet_instance = None
+
+    fernet = _get_fernet()
+
+    assert fernet is None
+    assert not os.path.exists(".encryption_key")
 
 
 def test_get_fernet_without_env_var_falls_back_to_a_persisted_key_file(monkeypatch, isolated_key_dir):

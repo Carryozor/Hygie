@@ -264,3 +264,28 @@ def test_list_backups_ignores_unrelated_files(tmp_path):
 
     result = backup_mod.list_backups(str(d))
     assert [b["filename"] for b in result] == ["hygie_1.db"]
+
+
+def test_mariadb_dump_command_has_no_mysql_only_options(tmp_path, monkeypatch):
+    """The image ships the MariaDB client: MySQL-only options make it exit 7.
+
+    `--set-gtid-purged=OFF` (MySQL-only) broke every MariaDB backup, manual
+    and scheduled: `mysqldump: unknown variable 'set-gtid-purged=OFF'` — seen
+    in production on 2026-09-28. Tests mocked subprocess and never looked at
+    the command line.
+    """
+    import subprocess as _sp
+    import backend.backup as backup_mod
+
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _sp.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(backup_mod.subprocess, "run", fake_run)
+    backup_mod._do_mariadb_backup(
+        "h", 3306, "u", "p", "db", str(tmp_path / "out.sql")
+    )
+    mysql_only = ("--set-gtid-purged", "--column-statistics", "--source-data", "--ssl-mode")
+    assert not [a for a in captured["cmd"] if a.startswith(mysql_only)]

@@ -9,6 +9,8 @@ Usage:
     await run_migrations()
 """
 import logging
+from contextlib import asynccontextmanager
+
 from .engine import get_db, DIALECT
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,60 @@ async def _mark_applied(migration_id: str, description: str) -> None:
                 (migration_id, ts, description),
             )
         await db.commit()
+
+
+async def pending_migration_ids() -> list[str]:
+    """IDs of registered migrations not yet recorded as applied."""
+    async with get_db() as db:
+        if not await db.table_exists("schema_migrations"):
+            return [mid for mid, _, _ in _MIGRATIONS]
+        rows = await db.fetch_all("SELECT id FROM schema_migrations")
+    applied = {r["id"] for r in rows}
+    return [mid for mid, _, _ in _MIGRATIONS if mid not in applied]
+
+
+MIGRATION_LOCK_NAME = "hygie_schema_migrations"
+MIGRATION_LOCK_TIMEOUT_S = 600
+
+
+@asynccontextmanager
+async def migration_lock():
+    """Serialize schema init + migrations across uvicorn workers.
+
+    Every worker runs the startup lifespan. Without this, WORKERS=2 ran
+    run_migrations() twice concurrently: on 2026-09-28 both workers applied
+    m016, the second died on `Duplicate column name 'arr_server_url'`, and a
+    non-idempotent data migration would have run twice. MariaDB GET_LOCK is
+    bound to its connection, so the lock holds a dedicated pooled connection
+    for its whole lifetime and waits (bounded) instead of skipping. SQLite
+    refuses WORKERS>1 at startup, so it needs no lock.
+    """
+    from . import engine
+    if DIALECT != "mariadb" or engine._pool is None:
+        yield
+        return
+    conn = await engine._pool.acquire()
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT GET_LOCK(%s, %s)", (MIGRATION_LOCK_NAME, MIGRATION_LOCK_TIMEOUT_S)
+            )
+            row = await cur.fetchone()
+        if not row or row[0] != 1:
+            raise RuntimeError(
+                f"Could not acquire the migration lock within {MIGRATION_LOCK_TIMEOUT_S}s "
+                "— another worker is still migrating"
+            )
+        try:
+            yield
+        finally:
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT RELEASE_LOCK(%s)", (MIGRATION_LOCK_NAME,))
+            except Exception as e:
+                logger.warning("migration_lock release failed: %s", e)
+    finally:
+        await engine._pool.release(conn)
 
 
 async def run_migrations() -> int:

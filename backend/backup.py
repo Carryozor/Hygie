@@ -95,7 +95,8 @@ def _do_mariadb_backup(host: str, port: int, user: str, password: str, db: str, 
             "--single-transaction",
             "--routines",
             "--triggers",
-            "--set-gtid-purged=OFF",
+            # No MySQL-only options (e.g. --set-gtid-purged): the image ships
+            # the MariaDB client, which rejects them and exits 7.
             db,
         ]
         with open(dst_path, "wb") as f:
@@ -177,6 +178,11 @@ async def backup_before_migrations() -> None:
     if not await _db_already_exists():
         return
     if not await get_bool_setting("backup_enabled"):
+        return
+    # Every uvicorn worker runs startup: without this, each restart would dump
+    # the DB once per worker even when there is nothing to migrate.
+    from .db import migrations
+    if not await migrations.pending_migration_ids():
         return
     try:
         await run_backup(force=True)

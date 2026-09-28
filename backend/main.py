@@ -146,11 +146,13 @@ async def _init_database_and_migrate() -> str:
     # Skip schema init / migrations if the pool failed — they would raise the
     # same unhelpful error; the StartupValidator reports the real cause below.
     if not db_pool_init_error:
-        from .backup import backup_before_migrations
-        await backup_before_migrations()
-        await init_db()
-        from .db.migrations import run_migrations
-        await run_migrations()
+        from . import backup
+        from .db import migrations
+        # One worker at a time: every uvicorn worker runs this lifespan.
+        async with migrations.migration_lock():
+            await backup.backup_before_migrations()
+            await init_db()
+            await migrations.run_migrations()
 
     return db_pool_init_error
 

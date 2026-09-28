@@ -14,6 +14,7 @@ from .shared import (
     _first_from_servers,
     _get_arr_servers,
     _resolve_arr_creds,
+    _resolve_arr_server,
     _test_arr_connection,
 )
 
@@ -121,8 +122,8 @@ def sonarr_get_cache_entry(file_path: str, cache: dict) -> Optional[dict]:
     return None
 
 
-async def sonarr_find_by_path(file_path: str) -> Optional[int]:
-    """Find Sonarr episode file ID by matching the file path across all servers."""
+async def sonarr_find_by_path_full(file_path: str) -> Optional[tuple]:
+    """Find (episode_file_id, url, api_key) by matching the file path across all servers."""
     if not file_path:
         return None
     servers = await get_sonarr_servers()
@@ -146,10 +147,16 @@ async def sonarr_find_by_path(file_path: str) -> Optional[int]:
                     if rf.status_code == 200:
                         for ef in rf.json():
                             if ef.get("path") == file_path:
-                                return ef.get("id")
+                                return ef.get("id"), url, key
         except Exception as e:
             logger.warning(f"sonarr_find_by_path [{url}]: {e}")
     return None
+
+
+async def sonarr_find_by_path(file_path: str) -> Optional[int]:
+    """Find Sonarr episode file ID by matching the file path across all servers."""
+    found = await sonarr_find_by_path_full(file_path)
+    return found[0] if found else None
 
 
 async def sonarr_get_series(episode_file_id: int) -> Optional[dict]:
@@ -211,9 +218,38 @@ async def sonarr_get_poster_url(episode_file_id: int) -> str:
     return _extract_poster_url(series.get("images", []))
 
 
-async def sonarr_delete_episode_file(episode_file_id: int, url: str = "", key: str = "") -> bool:
-    """Delete an episode file from Sonarr."""
-    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
+async def sonarr_delete_episode_file(
+    episode_file_id: int,
+    url: str = "",
+    key: str = "",
+    arr_server_url: Optional[str] = None,
+    file_path: str = "",
+) -> bool:
+    """Delete an episode file from Sonarr.
+
+    When url/key are given explicitly (e.g. a pre-resolved server), they're
+    used as-is. Otherwise the target server is resolved from arr_server_url
+    (recorded on the queue row at scan time) — this no longer falls back to
+    "the" single legacy sonarr_url/sonarr_api_key default, which in a
+    multi-Sonarr setup can be a different server than the one that actually
+    owns this episode file (deleting the wrong server's episode file is a
+    silent no-op there, and can even 200 on a coincidentally-valid id).
+    """
+    if not url or not key:
+        servers = await get_sonarr_servers()
+        target = await _resolve_arr_server(servers, arr_server_url)
+        if not target and file_path:
+            found = await sonarr_find_by_path_full(file_path)
+            if found:
+                target = (found[1], found[2])
+        if not target:
+            logger.warning(
+                "sonarr_delete_episode_file: cannot resolve target server for id=%s "
+                "(arr_server_url=%r, %d server(s) configured) — refusing to delete",
+                episode_file_id, arr_server_url, len(servers),
+            )
+            return False
+        url, key = target
     if not url or not key or not episode_file_id:
         return False
     try:
@@ -261,9 +297,35 @@ async def _episode_ids_for_files(
     return [ep["id"] for ep in re_.json() if ep.get("episodeFileId") in ef_ids]
 
 
-async def sonarr_delete_season(series_id: int, season_number: int, url: str = "", key: str = "") -> bool:
-    """Delete all episode files for a given season, then unmonitor those episodes."""
-    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
+async def sonarr_delete_season(
+    series_id: int,
+    season_number: int,
+    url: str = "",
+    key: str = "",
+    arr_server_url: Optional[str] = None,
+    file_path: str = "",
+) -> bool:
+    """Delete all episode files for a given season, then unmonitor those episodes.
+
+    See sonarr_delete_episode_file for why url/key are resolved from
+    arr_server_url (or a file-path match) instead of falling back to a
+    single legacy default server.
+    """
+    if not url or not key:
+        servers = await get_sonarr_servers()
+        target = await _resolve_arr_server(servers, arr_server_url)
+        if not target and file_path:
+            found = await sonarr_find_by_path_full(file_path)
+            if found:
+                target = (found[1], found[2])
+        if not target:
+            logger.warning(
+                "sonarr_delete_season: cannot resolve target server for series=%s season=%s "
+                "(arr_server_url=%r, %d server(s) configured) — refusing to delete",
+                series_id, season_number, arr_server_url, len(servers),
+            )
+            return False
+        url, key = target
     if not url or not key:
         return False
     try:
@@ -296,15 +358,39 @@ async def sonarr_delete_season(series_id: int, season_number: int, url: str = ""
         return False
 
 
-async def sonarr_delete_series(series_id: int, url: str = "", key: str = "") -> bool:
+async def sonarr_delete_series(
+    series_id: int,
+    url: str = "",
+    key: str = "",
+    arr_server_url: Optional[str] = None,
+    file_path: str = "",
+) -> bool:
     """Delete all files of an entire series, then unmonitor the series.
 
     Keeps the series entry itself (matching Hygie's per-episode behavior of
     never touching arr bookkeeping beyond what's needed), but disables
     monitoring — otherwise Sonarr keeps treating the wiped episodes as
     "missing" and can re-grab them on its next RSS sync.
+
+    See sonarr_delete_episode_file for why url/key are resolved from
+    arr_server_url (or a file-path match) instead of falling back to a
+    single legacy default server.
     """
-    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
+    if not url or not key:
+        servers = await get_sonarr_servers()
+        target = await _resolve_arr_server(servers, arr_server_url)
+        if not target and file_path:
+            found = await sonarr_find_by_path_full(file_path)
+            if found:
+                target = (found[1], found[2])
+        if not target:
+            logger.warning(
+                "sonarr_delete_series: cannot resolve target server for series=%s "
+                "(arr_server_url=%r, %d server(s) configured) — refusing to delete",
+                series_id, arr_server_url, len(servers),
+            )
+            return False
+        url, key = target
     if not url or not key:
         return False
     try:

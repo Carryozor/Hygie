@@ -29,6 +29,7 @@ def _build_queue_entry(
     sonarr_id=None,
     sonarr_series_id=None,
     season_number=None,
+    arr_server_url=None,
     view_count: int = 0,
 ) -> QueueEntry:
     """Build a media_queue entry dict from an Emby/Plex item and enrichment data."""
@@ -49,6 +50,7 @@ def _build_queue_entry(
         "sonarr_id":         sonarr_id,
         "sonarr_series_id":  sonarr_series_id,
         "season_number":     season_number,
+        "arr_server_url":    arr_server_url,
         "detected_at":       detect_at.isoformat(),
         "delete_at":         delete_at.isoformat(),
         "added_date":        added_date.isoformat() if added_date else detect_at.isoformat(),

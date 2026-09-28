@@ -190,17 +190,20 @@ async def _evaluate_expert_rules_fallback(
     sonarr_id_val: Optional[int]        = None
     sonarr_series_id_val: Optional[int] = None
     season_number_val: Optional[int]    = None
+    arr_server_url_val: Optional[str]   = None
 
     if media_type_item == "Movie":
         _radarr_result = radarr_find_by_path_cached(file_path, radarr_cache) if radarr_cache is not None else None
         # radarr_find_by_path_cached returns (radarr_id, url, key) tuple or None
         radarr_id_val = _radarr_result[0] if _radarr_result else None
+        arr_server_url_val = _radarr_result[1] if _radarr_result else None
     else:
         sonarr_entry = sonarr_get_cache_entry(file_path, sonarr_cache) if sonarr_cache is not None else None
         if sonarr_entry:
             sonarr_id_val        = sonarr_entry["ef_id"]
             sonarr_series_id_val = sonarr_entry["series_id"]
             season_number_val    = sonarr_entry["season_number"]
+            arr_server_url_val   = sonarr_entry.get("srv_url")
 
     poster_url_val = await _get_poster_url(
         emby_id, tmdb_id=tmdb_id, media_type=media_type_item,
@@ -224,6 +227,7 @@ async def _evaluate_expert_rules_fallback(
         radarr_id=radarr_id_val, sonarr_id=sonarr_id_val,
         sonarr_series_id=sonarr_series_id_val,
         season_number=season_number_val,
+        arr_server_url=arr_server_url_val,
         view_count=play_count,
     )
     await add_log("INFO", lm("scan.expert_match", title=item.get('Name') or emby_id), "scan")
@@ -415,7 +419,17 @@ async def reevaluate_library_queue(library_id: str) -> int:
     logic      = lib.get("logic") or "AND"
     server_id  = str(lib.get("server_id") or "0")
     users      = await get_users(server_id=server_id)
-    user_ids   = [u["Id"] for u in users] if users else []
+    if not users:
+        # Same guard as the main scan's _abort_scan_no_users: an empty user
+        # list means every item's watch state is unknown. Without this,
+        # _aggregate_user_data([], ...) reports never_watched=True for
+        # everything, which can make a WATCHED item still look like it
+        # matches "never watched" conditions — keeping it queued for
+        # deletion instead of removing it from the queue as it should be.
+        from ._orchestrator import _abort_scan_no_users
+        await _abort_scan_no_users(server_id, str(lib.get("name") or server_id))
+        return 0
+    user_ids   = [u["Id"] for u in users]
     removed    = 0
 
     # Batch-fetch user data for ALL users in one pass — avoids N×M sequential HTTP calls.

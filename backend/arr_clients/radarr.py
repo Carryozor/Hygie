@@ -14,6 +14,7 @@ from .shared import (
     _get_arr_servers,
     _path_matches,
     _resolve_arr_creds,
+    _resolve_arr_server,
     _test_arr_connection,
 )
 
@@ -180,15 +181,41 @@ async def radarr_get_torrent_hash(radarr_id: int, url: str = "", key: str = "") 
     return None
 
 
-async def radarr_delete_by_id(radarr_id: int, delete_files: bool = False) -> bool:
-    """Delete a movie from any configured Radarr server that has this ID."""
+async def radarr_delete_by_id(
+    radarr_id: int,
+    delete_files: bool = False,
+    arr_server_url: Optional[str] = None,
+    file_path: str = "",
+) -> bool:
+    """Delete a movie from the single Radarr server that owns this id.
+
+    Resolves the target server from arr_server_url (recorded on the queue
+    row at scan time). Legacy rows (arr_server_url is None, predates that
+    column) resolve via the single configured server, or — with more than
+    one server configured — a file-path match against each server's library.
+
+    Deliberately never tries the same numeric id across every configured
+    server: a previous version looped every Radarr and stopped at the first
+    success, which in a multi-Radarr setup could delete an unrelated movie
+    that happened to reuse the same id on a different instance. If the
+    target server can't be resolved, this refuses to delete and returns
+    False rather than guess.
+    """
     servers = await get_radarr_servers()
-    for srv in servers:
-        ok = await radarr_delete(radarr_id, delete_files=delete_files,
-                                 url=srv["url"].rstrip("/"), key=srv["api_key"])
-        if ok:
-            return True
-    return False
+    target = await _resolve_arr_server(servers, arr_server_url)
+    if not target and file_path:
+        found = await radarr_find_by_path(file_path)
+        if found:
+            target = (found[1], found[2])
+    if not target:
+        logger.warning(
+            "radarr_delete_by_id: cannot resolve target server for id=%s "
+            "(arr_server_url=%r, %d server(s) configured) — refusing to delete",
+            radarr_id, arr_server_url, len(servers),
+        )
+        return False
+    url, key = target
+    return await radarr_delete(radarr_id, delete_files=delete_files, url=url, key=key)
 
 
 async def radarr_get_any(radarr_id: int) -> Optional[dict]:

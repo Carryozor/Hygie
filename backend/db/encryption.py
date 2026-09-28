@@ -1,10 +1,24 @@
 """Fernet encryption helpers for sensitive settings."""
 import logging
 import os
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 _ENC_PREFIX = "enc:"
+
+# Same directory as auth.py's SECRET_FILE (JWT signing secret) — computed
+# lazily from the current db.utils.DB_PATH rather than cached once at import
+# (auth.SECRET_FILE is a module-level constant baked in at first import,
+# which is fine for that module's needs but would make this file impossible
+# to point at a per-test tmp_path; reading DB_PATH at call time gives the
+# same "next to the data dir" placement without that limitation).
+_ENCRYPTION_KEY_FILENAME = ".encryption_key"
+
+
+def _encryption_key_file() -> str:
+    from .utils import DB_PATH
+    return os.path.join(os.path.dirname(DB_PATH), _ENCRYPTION_KEY_FILENAME)
 
 SENSITIVE_KEYS = frozenset({
     "emby_api_key",
@@ -26,21 +40,112 @@ _fernet_instance = None
 _fernet_loaded   = False
 
 
+def _may_auto_generate_key() -> bool:
+    """True only when a generated key would live on the same persistence as
+    the database itself.
+
+    SQLite: the key file sits next to hygie.db, on the same volume — safe.
+    MariaDB: the database lives in a separate server; the key file's
+    directory (e.g. /app/data) may not be a persistent volume at all, so a
+    freshly generated key can be lost on the very next container recreate,
+    permanently orphaning every value encrypted with it — worse than the
+    plaintext-with-a-WARN behavior it would replace.
+    DB_PATH == ':memory:' (tests, or any ephemeral SQLite setup) is also
+    excluded: os.path.dirname(':memory:') is '', which would place the key
+    file in the current working directory — not a real data directory, and
+    not something that should ever hold a persisted secret.
+    """
+    from .engine import DIALECT
+    from .utils import DB_PATH
+    return DIALECT == "sqlite" and DB_PATH != ":memory:"
+
+
+def _load_or_create_encryption_key() -> Optional[bytes]:
+    """Resolve the Fernet key: HYGIE_ENCRYPTION_KEY env var if set (always
+    wins), else load an existing key file, else — only when it's safe to do
+    so (see _may_auto_generate_key) — generate and persist one next to
+    auth.py's JWT .secret file, mirroring auth._load_or_create_secret() so
+    secrets-at-rest don't silently degrade to plaintext just because the env
+    var was never set.
+
+    Never generates a new key over an existing (even if invalid) key file:
+    doing so would orphan every value already encrypted with the old key.
+    An invalid file logs an ERROR and falls back to plaintext mode instead.
+    """
+    env_key = os.environ.get("HYGIE_ENCRYPTION_KEY", "").strip()
+    if env_key:
+        return env_key.encode()
+
+    key_file = _encryption_key_file()
+
+    if os.path.exists(key_file):
+        try:
+            with open(key_file, "rb") as f:
+                raw = f.read().strip()
+            from cryptography.fernet import Fernet
+            Fernet(raw)  # validate — raises if malformed
+            return raw
+        except Exception as e:
+            logger.error(
+                f"Encryption key file at {key_file} is invalid ({e}) — "
+                "falling back to plaintext storage rather than generating a "
+                "new key over it, which would make every already-encrypted "
+                "setting permanently undecryptable"
+            )
+            return None
+
+    if not _may_auto_generate_key():
+        from .engine import DIALECT
+        if DIALECT == "mariadb":
+            logger.warning(
+                "HYGIE_ENCRYPTION_KEY is not set and MariaDB is in use — "
+                "auto-generating a key here is unsafe (it would live outside "
+                "the database's own persistence and be lost on the next "
+                "container recreate, permanently orphaning every encrypted "
+                "value). Storing settings in plaintext instead. Set "
+                "HYGIE_ENCRYPTION_KEY explicitly to enable encryption at "
+                "rest with MariaDB."
+            )
+        return None
+
+    try:
+        from cryptography.fernet import Fernet
+        new_key = Fernet.generate_key()
+        key_dir = os.path.dirname(key_file)
+        if key_dir:
+            os.makedirs(key_dir, exist_ok=True)
+        with open(key_file, "wb") as f:
+            f.write(new_key)
+        os.chmod(key_file, 0o600)
+        logger.warning(
+            f"HYGIE_ENCRYPTION_KEY is not set — generated and persisted an "
+            f"encryption key at {key_file} (mode 600). Recommended: set "
+            f"HYGIE_ENCRYPTION_KEY explicitly in your environment and back "
+            f"up this file — losing it makes every encrypted setting "
+            f"permanently unrecoverable."
+        )
+        return new_key
+    except Exception as e:
+        logger.warning(f"Could not persist encryption key ({e}) — storing settings in plaintext")
+        return None
+
+
 def _get_fernet():
-    """Return a Fernet instance if HYGIE_ENCRYPTION_KEY is configured, else None."""
+    """Return a Fernet instance for the resolved encryption key, or None
+    when no usable key is available (settings then stay in plaintext)."""
     global _fernet_instance, _fernet_loaded
     if _fernet_loaded:
         return _fernet_instance
     _fernet_loaded = True
-    raw_key = os.environ.get("HYGIE_ENCRYPTION_KEY", "").strip()
+    raw_key = _load_or_create_encryption_key()
     if not raw_key:
         return None
     try:
         from cryptography.fernet import Fernet
-        _fernet_instance = Fernet(raw_key.encode())
-        logger.info("HYGIE_ENCRYPTION_KEY loaded — sensitive settings encrypted at rest")
+        _fernet_instance = Fernet(raw_key)
+        logger.info("Encryption key loaded — sensitive settings encrypted at rest")
     except Exception as e:
-        logger.warning(f"Invalid HYGIE_ENCRYPTION_KEY ({e}) — storing settings in plaintext")
+        logger.warning(f"Invalid encryption key ({e}) — storing settings in plaintext")
     return _fernet_instance
 
 

@@ -301,8 +301,33 @@ async def get_db():
             await raw.autocommit(False)
             try:
                 yield DbConn(raw, "mariadb")
-            except Exception:
-                await raw.rollback()
+            except BaseException:
+                # BaseException, not Exception: asyncio.CancelledError is a
+                # BaseException, and run_deletion's asyncio.timeout(3600) /
+                # run_scan's wait_for(7200) firing mid-block delivers exactly
+                # that. `except Exception` let it fall straight through
+                # without rolling back, leaving the pooled connection with an
+                # open REPEATABLE-READ transaction — the v4.3.4 stale-snapshot
+                # bug (see test_db_read_snapshot_freshness.py) through
+                # another door, this time reachable without any write at all.
+                try:
+                    await raw.rollback()
+                except BaseException:
+                    # The rollback itself can be interrupted (cancellation
+                    # re-delivered) or fail outright. Either way we can no
+                    # longer prove this connection is clean, so it must never
+                    # go back to the pool for reuse — close it instead of
+                    # letting `_pool.acquire()`'s __aexit__ release it dirty.
+                    logger.warning(
+                        "get_db (mariadb): rollback failed while unwinding — "
+                        "closing the connection instead of returning it dirty "
+                        "to the pool",
+                        exc_info=True,
+                    )
+                    try:
+                        raw.close()
+                    except Exception:
+                        pass
                 raise
             # autocommit=False: even a bare SELECT opens a REPEATABLE-READ
             # transaction, and aiomysql's pool only discards a connection whose

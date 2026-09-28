@@ -288,38 +288,54 @@ async def test_aggregate_user_data_max_play_count_across_users():
 
 @pytest.mark.asyncio
 async def test_resolve_arr_ids_movie_from_cache():
-    """Movie type uses radarr_cache when available."""
-    radarr_cache = {"/movies/Avatar.mkv": 42}
-    with patch("backend.rules.legacy_conditions.radarr_find_by_path_cached", return_value=42) as mock_cached:
-        rid, sid, ssid, snum = await _resolve_arr_ids(
+    """Movie type uses radarr_cache when available.
+
+    radarr_find_by_path_cached returns (radarr_id, url, api_key) — not a
+    bare id — so arr_server_url can be recorded alongside the id.
+    """
+    radarr_cache = {"/movies/Avatar.mkv": (42, "http://radarr.test", "key")}
+    with patch(
+        "backend.rules.legacy_conditions.radarr_find_by_path_cached",
+        return_value=(42, "http://radarr.test", "key"),
+    ) as mock_cached:
+        rid, sid, ssid, snum, arr_url = await _resolve_arr_ids(
             "/movies/Avatar.mkv", "Movie", radarr_cache, None
         )
     assert rid == 42
     assert sid is None
+    assert arr_url == "http://radarr.test"
 
 
 @pytest.mark.asyncio
 async def test_resolve_arr_ids_series_from_sonarr_cache():
-    """Episode type uses sonarr_cache entry."""
+    """Episode type uses sonarr_cache entry, including its srv_url."""
     sonarr_cache = {}
-    fake_entry = {"ef_id": 99, "series_id": 5, "season_number": 2}
+    fake_entry = {"ef_id": 99, "series_id": 5, "season_number": 2, "srv_url": "http://sonarr.test"}
     with patch("backend.rules.legacy_conditions.sonarr_get_cache_entry", return_value=fake_entry):
-        rid, sid, ssid, snum = await _resolve_arr_ids(
+        rid, sid, ssid, snum, arr_url = await _resolve_arr_ids(
             "/tv/Show/ep.mkv", "Episode", None, sonarr_cache
         )
     assert sid == 99
     assert ssid == 5
     assert snum == 2
+    assert arr_url == "http://sonarr.test"
 
 
 @pytest.mark.asyncio
 async def test_resolve_arr_ids_movie_no_cache_uses_http():
-    """Without cache, falls back to HTTP lookup for movies."""
-    with patch("backend.rules.legacy_conditions.radarr_find_by_path", new_callable=AsyncMock, return_value=77):
-        rid, sid, ssid, snum = await _resolve_arr_ids(
+    """Without cache, falls back to HTTP lookup for movies.
+
+    radarr_find_by_path returns (radarr_id, url, api_key).
+    """
+    with patch(
+        "backend.rules.legacy_conditions.radarr_find_by_path",
+        new_callable=AsyncMock, return_value=(77, "http://radarr.test", "key"),
+    ):
+        rid, sid, ssid, snum, arr_url = await _resolve_arr_ids(
             "/movies/Dune.mkv", "Movie", None, None
         )
     assert rid == 77
+    assert arr_url == "http://radarr.test"
 
 
 # ─── Equivalence contract for the engine unification ──────────────────────────

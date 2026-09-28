@@ -7,7 +7,7 @@ def test_all_tables_present():
     expected = {
         "settings", "users", "refresh_tokens", "libraries", "media_queue", "ignored_media",
         "seerr_user_rules", "logs", "job_history", "stats_history",
-        "rate_limit", "expert_rules", "notifications",
+        "rate_limit", "expert_rules", "notifications", "plex_overlays",
     }
     assert names == expected
 

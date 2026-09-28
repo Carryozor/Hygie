@@ -404,6 +404,9 @@
       "libraries": "Bibl.:",
       "noneSelected": "geen geselecteerd",
       "allLibraries": "Alle bibliotheken"
+    },
+    "error": {
+      "deleteFailed": "Kan de regel niet verwijderen"
     }
   },
   "queue": {
@@ -423,7 +426,10 @@
     "confirmPurge": "Alle verwijderde vermeldingen uit de wachtrij opschonen?",
     "purge": "Opschonen",
     "error": {
-      "loadFailed": "Kan wachtrij niet laden."
+      "loadFailed": "Kan wachtrij niet laden.",
+      "ignoreFailed": "Kan deze media niet negeren",
+      "deleteFailed": "Kan deze media niet verwijderen",
+      "purgeFailed": "Kan verwijderde media niet opschonen"
     },
     "filters": {
       "all": "Alle",
@@ -451,7 +457,9 @@
     "confirmRemove": "Dit medium uit de negeerlst verwijderen?",
     "removeBtn": "Verwijderen",
     "error": {
-      "loadFailed": "Kan genegeerde media niet laden."
+      "loadFailed": "Kan genegeerde media niet laden.",
+      "requeueFailed": "Kan deze media niet opnieuw in de wachtrij zetten",
+      "removeFailed": "Kan deze media niet verwijderen"
     },
     "columns": {
       "title": "Titel",

@@ -404,6 +404,9 @@
       "libraries": "Bibl.:",
       "noneSelected": "ninguna seleccionada",
       "allLibraries": "Todas las bibliotecas"
+    },
+    "error": {
+      "deleteFailed": "No se pudo eliminar la regla"
     }
   },
   "queue": {
@@ -423,7 +426,10 @@
     "confirmPurge": "¿Purgar todas las entradas eliminadas de la cola?",
     "purge": "Purgar",
     "error": {
-      "loadFailed": "No se puede cargar la cola."
+      "loadFailed": "No se puede cargar la cola.",
+      "ignoreFailed": "No se pudo ignorar este contenido",
+      "deleteFailed": "No se pudo eliminar este contenido",
+      "purgeFailed": "No se pudo purgar los elementos eliminados"
     },
     "filters": {
       "all": "Todos",
@@ -451,7 +457,9 @@
     "confirmRemove": "¿Retirar este medio de la lista de ignorados?",
     "removeBtn": "Retirar",
     "error": {
-      "loadFailed": "No se pueden cargar los medios ignorados."
+      "loadFailed": "No se pueden cargar los medios ignorados.",
+      "requeueFailed": "No se pudo volver a poner en cola este contenido",
+      "removeFailed": "No se pudo quitar este contenido"
     },
     "columns": {
       "title": "Título",

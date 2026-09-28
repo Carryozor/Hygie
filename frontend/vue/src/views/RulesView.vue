@@ -175,6 +175,7 @@ import { useRulesStore } from '@/stores/rules'
 import { useServersStore } from '@/stores/servers'
 import { useStatusStore } from '@/stores/status'
 import CreateRuleModal from '@/components/rules/CreateRuleModal.vue'
+import { runConfirmedAction } from '@/composables/useApiAction'
 
 const { t } = useI18n()
 const rules   = useRulesStore()
@@ -298,9 +299,11 @@ function confirmDelete(type, id) {
 async function doDelete() {
   if (!deleteTarget.value) return
   const { type, id } = deleteTarget.value
-  deleteTarget.value = null
-  if (type === 'simple') await rules.deleteSimpleRule(id)
-  else await rules.deleteExpertRule(id)
+  await runConfirmedAction({
+    action: () => (type === 'simple' ? rules.deleteSimpleRule(id) : rules.deleteExpertRule(id)),
+    onSuccess: () => { deleteTarget.value = null },
+    errorLabel: t('rules.error.deleteFailed'),
+  })
 }
 
 async function onSaved({ type, data, done }) {

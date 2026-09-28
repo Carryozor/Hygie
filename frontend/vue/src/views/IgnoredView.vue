@@ -111,6 +111,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
+import { runConfirmedAction } from '@/composables/useApiAction'
 
 const { t } = useI18n()
 
@@ -155,16 +156,23 @@ async function load() {
 }
 
 async function doRequeue(item) {
-  await api.post(`/ignored/${item.id}/requeue`)
-  load()
+  await runConfirmedAction({
+    action: () => api.post(`/ignored/${item.id}/requeue`),
+    reload: load,
+    errorLabel: t('ignored.error.requeueFailed'),
+  })
 }
 
 function confirmRemove(item) { removeTarget.value = item }
 async function doRemove() {
   if (!removeTarget.value) return
-  await api.delete(`/ignored/${removeTarget.value.id}`)
-  removeTarget.value = null
-  load()
+  const target = removeTarget.value
+  await runConfirmedAction({
+    action: () => api.delete(`/ignored/${target.id}`),
+    onSuccess: () => { removeTarget.value = null },
+    reload: load,
+    errorLabel: t('ignored.error.removeFailed'),
+  })
 }
 
 let timer = null

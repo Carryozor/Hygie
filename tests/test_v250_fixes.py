@@ -90,6 +90,20 @@ async def app_client(tmp_path, monkeypatch):
     import backend.routers.scheduler as _sched_router
     _sched_router.scheduler = mock_sched
 
+    # lifespan() runs backup_before_migrations() BEFORE init_db() creates the
+    # schema — backup_before_migrations() only skips the backup when the DB
+    # file itself is fresh (_db_already_exists() -> os.path.exists()), but
+    # init_db_pool() (also called by lifespan, right before
+    # backup_before_migrations) already creates that file via its WAL-mode
+    # PRAGMA connection. So the file exists but the `settings` table doesn't
+    # yet, and get_bool_setting("backup_enabled") crashes with "no such
+    # table: settings" — made worse here since this fixture explicitly
+    # clears db/settings_store.py's module-global settings cache above.
+    # Pre-creating the schema here makes the test deterministic regardless
+    # of run order.
+    from backend.db.schema import init_db as _init_db
+    await _init_db()
+
     app = main_mod.app
     async with main_mod.lifespan(app):
         transport = ASGITransport(app=app)

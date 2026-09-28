@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
-from ..auth import verify_token, is_rate_limited, record_failure, get_client_ip
+from ..auth import verify_token, rate_limit_attempt, release_attempt, get_client_ip
 from ..db.settings_store import get_setting
 from ..db.engine import get_db
 from ..db.media_servers import get_media_servers
@@ -37,14 +37,19 @@ async def public_upcoming(
     Note: query-param passwords were removed to avoid leaking credentials in access logs.
     """
     ip = get_client_ip(request)
-    # Check only — recording happens below, and only on an actual wrong
-    # slug or wrong password, so repeated legitimate visits to a public
-    # dashboard never trip the limiter.
-    if await asyncio.to_thread(is_rate_limited, f"public_upcoming:{ip}"):
+    # Atomic record-then-check on entry — closes the same burst/TOCTOU
+    # window described in auth.rate_limit_attempt's docstring. Released
+    # below on every non-guessing outcome (disabled, password not yet
+    # provided, or a real successful load) so repeated legitimate visits to
+    # a public dashboard never trip the limiter; left recorded only on an
+    # actual wrong slug or wrong password.
+    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, f"public_upcoming:{ip}")
+    if blocked:
         return JSONResponse({"error": "too_many_requests"}, status_code=429)
 
     enabled = await get_setting("public_dashboard_enabled")
     if enabled != "true":
+        await asyncio.to_thread(release_attempt, f"public_upcoming:{ip}", rl_token)
         return JSONResponse({"error": "disabled"}, status_code=403)
 
     cfg_slug = (await get_setting("public_dashboard_slug") or "").strip()
@@ -53,7 +58,6 @@ async def public_upcoming(
     # jitter, but there is no reason for this one comparison to be the odd
     # one out.
     if cfg_slug and not hmac.compare_digest(slug.encode(), cfg_slug.encode()):
-        await asyncio.to_thread(record_failure, f"public_upcoming:{ip}")
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     # Admins with a valid token bypass the public password requirement
@@ -65,10 +69,12 @@ async def public_upcoming(
     if cfg_pwd and not is_admin:
         provided = x_dashboard_password or ""
         if not provided:
+            await asyncio.to_thread(release_attempt, f"public_upcoming:{ip}", rl_token)
             return JSONResponse({"error": "password_required"}, status_code=401)
         if not hmac.compare_digest(provided.encode(), cfg_pwd.encode()):
-            await asyncio.to_thread(record_failure, f"public_upcoming:{ip}")
             return JSONResponse({"error": "wrong_password"}, status_code=403)
+
+    await asyncio.to_thread(release_attempt, f"public_upcoming:{ip}", rl_token)
 
     horizon = (now_utc() + timedelta(days=90)).isoformat()
     async with get_db() as db:

@@ -1,13 +1,27 @@
-"""Rate limiting must only lock out FAILURES, not every call.
+"""Rate limiting must only lock out FAILURES, not every call — and must stay
+burst-safe under concurrent requests.
 
-Regression: rate_limit() previously counted every call (success or failure).
-A legitimate user making 6 successful calls within the window (page reloads
-triggering /refresh, Plex sending play/pause/resume/stop/scrobble, repeated
-public dashboard visits) got locked out on the 6th call.
+Regression 1: rate_limit() previously counted every call (success or
+failure). A legitimate user making 6 successful calls within the window
+(page reloads triggering /refresh, Plex sending
+play/pause/resume/stop/scrobble, repeated public dashboard visits) got
+locked out on the 6th call.
 
-Fix: split into is_rate_limited(key) -> bool (check only, never records) and
-record_failure(key) -> None (records only, always called on the failure path).
-setup keeps the old count-every-call behaviour via rate_limit() (unchanged).
+Regression 2 (caught in review of the first fix): a naive
+check-then-later-record split (is_rate_limited() / record_failure(), with
+record_failure() only called after the slow Argon2 verify) is a TOCTOU — a
+burst of N concurrent wrong-password requests can all read the pre-record
+count before any of them records a failure, so N concurrent guesses get N
+attempts instead of RATE_LIMIT_MAX. See test_rate_limit_burst_safety.py for
+the concurrency regression test.
+
+Fix: rate_limit_attempt(key) -> (blocked, token) atomically records this
+attempt AND checks — same as the original combined rate_limit(), so a
+concurrent burst can't bypass it. release_attempt(key, token) deletes that
+recorded attempt on the SUCCESS path only, so a legitimate call never
+counts against the failure budget. setup keeps the old count-every-call
+behaviour via rate_limit() (unchanged, still atomic, no release needed —
+it's a one-shot endpoint).
 """
 import os
 import time
@@ -18,7 +32,7 @@ os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
 
 
-# ─── Unit level: auth.is_rate_limited / auth.record_failure ──────────────────
+# ─── Unit level: auth.rate_limit_attempt / auth.release_attempt ──────────────
 
 @pytest.fixture
 def clean_auth():
@@ -29,26 +43,34 @@ def clean_auth():
     auth_mod._rate_buckets.clear()
 
 
-def test_is_rate_limited_does_not_record(clean_auth):
-    """Calling is_rate_limited() repeatedly must never itself trip the limiter."""
-    key = f"check-only-{time.time()}"
+def test_released_attempts_never_lock_out(clean_auth):
+    """50 attempts, each immediately released (simulating success), must
+    never be blocked — release_attempt() must actually remove the recorded
+    row, not just decrement a counter that could drift."""
+    key = f"release-only-{time.time()}"
     for _ in range(50):
-        assert clean_auth.is_rate_limited(key) is False
+        blocked, token = clean_auth.rate_limit_attempt(key)
+        assert blocked is False
+        clean_auth.release_attempt(key, token)
 
 
-def test_record_failure_then_is_rate_limited_blocks_after_max(clean_auth):
-    key = f"record-{time.time()}"
+def test_unreleased_attempts_block_after_max(clean_auth):
+    """Attempts that are never released (simulating failures) must block
+    starting at the (RATE_LIMIT_MAX + 1)th — same threshold as the original
+    combined rate_limit()."""
+    key = f"no-release-{time.time()}"
     for _ in range(clean_auth.RATE_LIMIT_MAX):
-        assert clean_auth.is_rate_limited(key) is False
-        clean_auth.record_failure(key)
-    assert clean_auth.is_rate_limited(key) is True
+        blocked, _token = clean_auth.rate_limit_attempt(key)
+        assert blocked is False
+    blocked, _token = clean_auth.rate_limit_attempt(key)
+    assert blocked is True
 
 
-def test_successful_calls_never_lock_out(clean_auth):
-    """10 successful calls (check only, no record_failure) must never be blocked."""
-    key = f"success-only-{time.time()}"
-    for _ in range(10):
-        assert clean_auth.is_rate_limited(key) is False
+def test_release_attempt_with_none_token_is_a_noop(clean_auth):
+    """A caller that never obtained a token (e.g. skipped rate_limit_attempt)
+    must be able to call release_attempt(key, None) safely."""
+    key = f"none-token-{time.time()}"
+    clean_auth.release_attempt(key, None)  # must not raise
 
 
 # ─── Integration: /api/auth/login ─────────────────────────────────────────────

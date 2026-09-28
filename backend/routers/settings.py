@@ -258,8 +258,21 @@ def _validate_server_url(value: Optional[str], field: str) -> str:
 
 @router.get("/media-servers")
 async def list_media_servers(user: str = Depends(require_auth)):
+    """Return the media server list with api_key masked, like GET /api/settings.
+
+    get_media_servers() returns the process-wide 30s TTL cache — copy each
+    server dict before masking so this response never mutates the cached
+    list that other readers (the actual Emby/Jellyfin/Plex clients) rely on
+    for the real key.
+    """
     servers = await get_media_servers()
-    return servers
+    masked = []
+    for s in servers:
+        s2 = dict(s)
+        if s2.get("api_key"):
+            s2["api_key"] = _MASK
+        masked.append(s2)
+    return masked
 
 
 @router.post("/media-servers", status_code=201)
@@ -347,6 +360,20 @@ async def purge_server_queue_endpoint(server_id: str, user: str = Depends(requir
     """
     count = await _purge_server_queue(server_id)
     return {"purged": count}
+
+
+@router.get("/media-servers/{server_id}/reveal")
+async def reveal_media_server_key(server_id: str, user: str = Depends(require_auth)):
+    """Return the plaintext api_key for one media server, for the UI eye toggle.
+
+    Mirrors GET /reveal/{key} — GET /media-servers masks api_key, so the
+    frontend needs an explicit, authenticated call to show it on demand.
+    """
+    servers = await get_media_servers()
+    server = next((s for s in servers if str(s.get("id")) == server_id), None)
+    if not server:
+        raise HTTPException(status_code=404, detail="Serveur introuvable")
+    return {"api_key": server.get("api_key", "")}
 
 
 @router.post("/media-servers/{server_id}/test")

@@ -1,21 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { ROUTES } from './paths'
 
-const routes = [
-  { path: '/setup',       name: 'setup',     component: () => import('@/views/SetupView.vue'),    meta: { public: true } },
-  { path: '/login',       name: 'login',     component: () => import('@/views/LoginView.vue'),    meta: { public: true } },
-  { path: '/',            name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
-  { path: '/library/:id', name: 'library',   component: () => import('@/views/LibraryView.vue')  },
-  { path: '/queue',       name: 'queue',     component: () => import('@/views/QueueView.vue')     },
-  { path: '/calendar',    name: 'calendar',  component: () => import('@/views/CalendarView.vue')  },
-  { path: '/rules',       name: 'rules',     component: () => import('@/views/RulesView.vue')     },
-  { path: '/settings',    name: 'settings',  component: () => import('@/views/SettingsView.vue')  },
-  { path: '/logs',        name: 'logs',      component: () => import('@/views/LogsView.vue')      },
-  { path: '/ignored',     name: 'ignored',   component: () => import('@/views/IgnoredView.vue')   },
-  // Public calendar — catch-all for unknown paths. Must stay last.
-  // URL format: /myslug  (no /public/ prefix)
-  { path: '/:slug',    name: 'public',   component: () => import('@/views/PublicView.vue'),    meta: { public: true } },
-]
+// Route path/public-vs-protected data lives in ./paths.js (also consumed by
+// api/client.js) so the two can never drift. Only the lazy-loaded view
+// components are wired up here.
+const COMPONENTS = {
+  setup:     () => import('@/views/SetupView.vue'),
+  login:     () => import('@/views/LoginView.vue'),
+  dashboard: () => import('@/views/DashboardView.vue'),
+  library:   () => import('@/views/LibraryView.vue'),
+  queue:     () => import('@/views/QueueView.vue'),
+  calendar:  () => import('@/views/CalendarView.vue'),
+  rules:     () => import('@/views/RulesView.vue'),
+  settings:  () => import('@/views/SettingsView.vue'),
+  logs:      () => import('@/views/LogsView.vue'),
+  ignored:   () => import('@/views/IgnoredView.vue'),
+  // Public calendar — catch-all for unknown paths (/:slug). Must stay last;
+  // enforced by ROUTES' own ordering in paths.js. URL format: /myslug (no
+  // /public/ prefix).
+  public:    () => import('@/views/PublicView.vue'),
+}
+
+const routes = ROUTES.map(({ name, path, public: isPublic }) => ({
+  path,
+  name,
+  component: COMPONENTS[name],
+  meta: { public: isPublic },
+}))
 
 const router = createRouter({
   history: createWebHistory(),

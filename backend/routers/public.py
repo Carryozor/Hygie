@@ -91,7 +91,10 @@ async def public_upcoming(
             "id":         str(s.get("id", "")),
             "name":       s.get("name") or "Serveur",
             "type":       s.get("type", ""),
-            "ext_url":    _clean_url(s.get("ext_url", "") or s.get("url", "")),
+            # ext_url only — never fall back to the internal url (LAN
+            # address, often RFC1918/loopback), which this endpoint hands
+            # to unauthenticated visitors when no password is configured.
+            "ext_url":    _clean_url(s.get("ext_url", "") or ""),
             "server_uid": s.get("server_uid", ""),
         }
         for s in media_servers if s.get("enabled", True) is not False

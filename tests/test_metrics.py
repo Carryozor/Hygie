@@ -47,6 +47,19 @@ async def client_with_data(monkeypatch, tmp_path):
     mock_sched.get_jobs.return_value = []
     monkeypatch.setattr(main_mod, "scheduler", mock_sched)
 
+    # lifespan() runs backup_before_migrations() BEFORE init_db() creates the
+    # schema — backup_before_migrations() only skips the backup when the DB
+    # file itself is fresh (_db_already_exists() -> os.path.exists()), but
+    # init_db_pool() (also called by lifespan, right before
+    # backup_before_migrations) already creates that file via its WAL-mode
+    # PRAGMA connection. So the file exists but the `settings` table doesn't
+    # yet, and get_bool_setting("backup_enabled") crashes with "no such
+    # table: settings" the first time nothing has warmed
+    # db/settings_store.py's module-global settings cache. Pre-creating the
+    # schema here makes the test deterministic regardless of run order.
+    from backend.db.schema import init_db as _init_db
+    await _init_db()
+
     app = main_mod.app
     async with main_mod.lifespan(app):
         # Seed stats_history with known per-library data

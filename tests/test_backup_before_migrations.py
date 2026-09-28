@@ -193,3 +193,57 @@ async def test_backup_before_migrations_never_raises_on_backup_failure(monkeypat
     monkeypatch.setattr(backup_mod, "run_backup", _raising_run_backup)
 
     await backup_mod.backup_before_migrations()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_no_backup_when_no_migration_is_pending(monkeypatch):
+    """Every worker runs startup; with nothing to migrate a restart must not
+    produce a dump per worker."""
+    calls = []
+
+    async def _exists():
+        return True
+
+    async def _enabled(_key):
+        return True
+
+    async def _pending():
+        return []
+
+    async def _backup(**_):
+        calls.append("backup")
+
+    monkeypatch.setattr(backup_mod, "_db_already_exists", _exists)
+    monkeypatch.setattr(backup_mod, "get_bool_setting", _enabled)
+    monkeypatch.setattr(backup_mod, "run_backup", _backup)
+    import backend.db.migrations as mig
+    monkeypatch.setattr(mig, "pending_migration_ids", _pending)
+
+    await backup_mod.backup_before_migrations()
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_backup_when_a_migration_is_pending(monkeypatch):
+    calls = []
+
+    async def _exists():
+        return True
+
+    async def _enabled(_key):
+        return True
+
+    async def _pending():
+        return ["m999"]
+
+    async def _backup(**_):
+        calls.append("backup")
+
+    monkeypatch.setattr(backup_mod, "_db_already_exists", _exists)
+    monkeypatch.setattr(backup_mod, "get_bool_setting", _enabled)
+    monkeypatch.setattr(backup_mod, "run_backup", _backup)
+    import backend.db.migrations as mig
+    monkeypatch.setattr(mig, "pending_migration_ids", _pending)
+
+    await backup_mod.backup_before_migrations()
+    assert calls == ["backup"]

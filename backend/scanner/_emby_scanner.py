@@ -419,7 +419,17 @@ async def reevaluate_library_queue(library_id: str) -> int:
     logic      = lib.get("logic") or "AND"
     server_id  = str(lib.get("server_id") or "0")
     users      = await get_users(server_id=server_id)
-    user_ids   = [u["Id"] for u in users] if users else []
+    if not users:
+        # Same guard as the main scan's _abort_scan_no_users: an empty user
+        # list means every item's watch state is unknown. Without this,
+        # _aggregate_user_data([], ...) reports never_watched=True for
+        # everything, which can make a WATCHED item still look like it
+        # matches "never watched" conditions — keeping it queued for
+        # deletion instead of removing it from the queue as it should be.
+        from ._orchestrator import _abort_scan_no_users
+        await _abort_scan_no_users(server_id, str(lib.get("name") or server_id))
+        return 0
+    user_ids   = [u["Id"] for u in users]
     removed    = 0
 
     # Batch-fetch user data for ALL users in one pass — avoids N×M sequential HTTP calls.

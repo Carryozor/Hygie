@@ -75,7 +75,7 @@ class="text-xs px-3 py-1.5 rounded-lg border transition-colors"
           <label class="block text-xs text-[var(--muted)] mb-1">{{ srv.type === 'plex' ? t('settings.servers.plexToken') : t('settings.servers.apiKey') }}</label>
           <div class="flex gap-2">
             <input v-model="srv.api_key" :type="srv._showKey ? 'text' : 'password'" placeholder="••••••••" class="flex-1 field font-mono" />
-            <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="srv._showKey = !srv._showKey">
+            <button type="button" class="px-3 py-2 border border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-white" @click="toggleShowKey(srv)">
               <i :class="['fas', srv._showKey ? 'fa-eye-slash' : 'fa-eye', 'text-sm']" />
             </button>
           </div>
@@ -270,6 +270,19 @@ function serverHeaderClass(srv) {
 function serverBodyClass(srv) {
   const cfg = SERVER_CONFIG[srv.type] || DEF
   return srv._testOk === true ? cfg.bodyOk : cfg.body
+}
+
+// GET /settings/media-servers masks api_key as '***'. Revealing it requires
+// an explicit authenticated call — fetch the real value once, then just
+// toggle the input type locally (no need to re-fetch on every click).
+async function toggleShowKey(srv) {
+  if (!srv._showKey && srv.id && srv.api_key === '***') {
+    try {
+      const { data } = await api.get(`/settings/media-servers/${srv.id}/reveal`)
+      srv.api_key = data.api_key ?? ''
+    } catch { /* keep masked value on failure */ return }
+  }
+  srv._showKey = !srv._showKey
 }
 
 function addServer() {

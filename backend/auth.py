@@ -7,7 +7,9 @@ Public API:
   hash_password(pwd) -> str
   verify_password(pwd, hash) -> bool
   require_auth — FastAPI dependency
-  rate_limit(key) -> bool   — True if rate limited
+  rate_limit(key) -> bool                  — True if rate limited; records every call (setup only)
+  rate_limit_attempt(key) -> (bool, token) — atomically records+checks; burst-safe (see docstring)
+  release_attempt(key, token) -> None      — un-records an attempt on the SUCCESS path
   get_client_ip(request) -> str
 """
 import hashlib
@@ -280,6 +282,31 @@ def _memory_rate_limit(key: str, now: float, cutoff: float) -> bool:
         return len(bucket) > RATE_LIMIT_MAX
 
 
+def _memory_rate_limit_attempt(key: str, now: float, cutoff: float) -> tuple:
+    """Same atomic record-then-count as _memory_rate_limit, but also returns
+    a token identifying this attempt so a caller that turns out to succeed
+    can give it back via _memory_release_attempt() — see rate_limit_attempt()
+    for why the record must happen atomically, before any slow verification.
+    """
+    blocked = _memory_rate_limit(key, now, cutoff)
+    return (blocked, now)
+
+
+def _memory_release_attempt(key: str, token: float) -> None:
+    """Delete exactly the attempt recorded for `token` (its timestamp) —
+    call on the SUCCESS path only, so a legitimate call never counts against
+    the failure budget. No-op if it was already purged by the window.
+    """
+    with _rate_lock:
+        bucket = _rate_buckets.get(key)
+        if not bucket:
+            return
+        try:
+            bucket.remove(token)
+        except ValueError:
+            pass  # already purged — nothing to release
+
+
 def rate_limit(key: str) -> bool:
     """Returns True if the key has exceeded the limit. Records this attempt.
 
@@ -316,6 +343,93 @@ def rate_limit(key: str) -> bool:
     except Exception as e:
         logger.warning(f"rate_limit DB error, falling back to in-memory: {e}")
         return _memory_rate_limit(key, now, cutoff)
+
+
+def rate_limit_attempt(key: str) -> tuple:
+    """Atomically records this attempt and returns (blocked, token).
+
+    This is the SAME atomic record-then-count as rate_limit() — deliberately
+    NOT split into a check-then-later-record pair. A burst of N concurrent
+    requests must not be able to bypass the limit: if the record only
+    happened after a slow verification step (Argon2 hashing, ~170ms), every
+    one of the N concurrent requests would read the pre-record count and
+    pass the check before any of them recorded a failure — a TOCTOU that
+    turns "5 attempts per window" into "N concurrent attempts per window".
+    Recording immediately, before the slow step, closes that window: the
+    (MAX+1)th concurrent request to reach the DB sees the earlier ones'
+    rows and is blocked immediately, without even attempting verification.
+
+    token identifies the row this call inserted, so a caller whose request
+    turns out to be legitimate can hand it to release_attempt() to delete
+    it — a successful call must not permanently count against the budget.
+    """
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+
+    if DB_PATH == ":memory:":
+        return _memory_rate_limit_attempt(key, now, cutoff)
+
+    from .db.engine import DIALECT
+    if DIALECT == "mariadb":
+        try:
+            from ._rate_limit_backend import mariadb_rate_limit_attempt
+            return mariadb_rate_limit_attempt(key, now, cutoff, RATE_LIMIT_MAX)
+        except Exception as e:
+            logger.warning(f"rate_limit_attempt MariaDB error, falling back to in-memory: {e}")
+            return _memory_rate_limit_attempt(key, now, cutoff)
+
+    try:
+        with _sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute("DELETE FROM rate_limit WHERE ts < ?", (cutoff,))
+            conn.execute("INSERT INTO rate_limit (key, ts) VALUES (?, ?)", (key, now))
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM rate_limit WHERE key = ? AND ts > ?",
+                (key, cutoff),
+            )
+            count = cur.fetchone()[0]
+            return (count > RATE_LIMIT_MAX, now)
+    except Exception as e:
+        logger.warning(f"rate_limit_attempt DB error, falling back to in-memory: {e}")
+        return _memory_rate_limit_attempt(key, now, cutoff)
+
+
+def release_attempt(key: str, token) -> None:
+    """Delete exactly the attempt recorded by rate_limit_attempt (token is
+    its timestamp). Call this on the SUCCESS path only, so a legitimate
+    call never counts against the failure budget. No-op if token is None
+    (e.g. a caller that never called rate_limit_attempt).
+    """
+    if token is None:
+        return
+
+    if DB_PATH == ":memory:":
+        _memory_release_attempt(key, token)
+        return
+
+    from .db.engine import DIALECT
+    if DIALECT == "mariadb":
+        try:
+            from ._rate_limit_backend import mariadb_release_attempt
+            mariadb_release_attempt(key, token)
+            return
+        except Exception as e:
+            logger.warning(f"release_attempt MariaDB error, falling back to in-memory: {e}")
+            _memory_release_attempt(key, token)
+            return
+
+    try:
+        with _sqlite3.connect(DB_PATH, timeout=5) as conn:
+            # Plain SQLite DELETE has no LIMIT clause (only with a non-default
+            # compile flag) — the rowid subquery guarantees at most one row
+            # is removed even if two attempts happened to share a timestamp.
+            conn.execute(
+                "DELETE FROM rate_limit WHERE rowid IN "
+                "(SELECT rowid FROM rate_limit WHERE key = ? AND ts = ? LIMIT 1)",
+                (key, token),
+            )
+    except Exception as e:
+        logger.warning(f"release_attempt DB error, falling back to in-memory: {e}")
+        _memory_release_attempt(key, token)
 
 
 _warned_untrusted_forwarded_for = False

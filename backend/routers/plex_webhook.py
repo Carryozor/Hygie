@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 
-from ..auth import get_client_ip, rate_limit
+from ..auth import get_client_ip, rate_limit_attempt, release_attempt
 from ..db.repositories import update_last_played_scrobble
 from ..db.settings_store import get_setting
 
@@ -21,10 +21,15 @@ _HANDLED_EVENTS = {"media.scrobble", "media.play", "media.pause", "media.resume"
 async def _process_webhook(request: Request, payload: str, secret: str) -> Response:
     """Shared implementation for both webhook endpoints."""
     ip = get_client_ip(request)
-    # Rate limit before the secret comparison — same reasoning as login: an
-    # unauthenticated network attacker could otherwise brute-force the
-    # webhook secret with no limit at all.
-    if await asyncio.to_thread(rate_limit, f"plex_webhook:{ip}"):
+    # Atomic record-then-check before the secret comparison — same reasoning
+    # as login: an unauthenticated network attacker could otherwise
+    # brute-force the webhook secret with no limit at all, including via a
+    # concurrent burst (see rate_limit_attempt's docstring). The attempt is
+    # released below on a correct secret, so Plex's legitimate
+    # play/pause/resume/stop/scrobble events (which can easily exceed 5 per
+    # 5 minutes) are never blocked.
+    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, f"plex_webhook:{ip}")
+    if blocked:
         raise HTTPException(status_code=429, detail="Trop de tentatives — réessayez dans 5 minutes")
 
     configured_secret = await get_setting("plex_webhook_secret") or ""
@@ -37,6 +42,7 @@ async def _process_webhook(request: Request, payload: str, secret: str) -> Respo
         )
     if not _secrets.compare_digest(secret, configured_secret):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
+    await asyncio.to_thread(release_attempt, f"plex_webhook:{ip}", rl_token)
 
     try:
         data = json.loads(payload)

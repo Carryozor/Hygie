@@ -43,3 +43,59 @@ def mariadb_rate_limit(key: str, now: float, cutoff: float, rate_limit_max: int)
             conn.close()
 
     return asyncio.run(_do())
+
+
+def mariadb_rate_limit_attempt(key: str, now: float, cutoff: float, rate_limit_max: int) -> tuple:
+    """Atomic record-then-count, same as mariadb_rate_limit but also returns
+    a token (this attempt's ts) so a caller whose request succeeds can give
+    it back via mariadb_release_attempt(). See auth.rate_limit_attempt's
+    docstring for why this must stay atomic (burst/TOCTOU safety) instead of
+    a separate check-then-later-record pair.
+    """
+
+    async def _do() -> tuple:
+        import aiomysql
+        from .db.engine import _parse_mariadb_url, DATABASE_URL
+
+        kwargs = _parse_mariadb_url(DATABASE_URL)
+        conn = await aiomysql.connect(**kwargs, autocommit=True, charset="utf8mb4")
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM rate_limit WHERE ts < %s", (cutoff,))
+                await cur.execute(
+                    "INSERT INTO rate_limit (`key`, ts) VALUES (%s, %s)", (key, now)
+                )
+                await cur.execute(
+                    "SELECT COUNT(*) FROM rate_limit WHERE `key` = %s AND ts > %s",
+                    (key, cutoff),
+                )
+                row = await cur.fetchone()
+                return ((row[0] if row else 0) > rate_limit_max, now)
+        finally:
+            conn.close()
+
+    return asyncio.run(_do())
+
+
+def mariadb_release_attempt(key: str, token: float) -> None:
+    """Delete exactly the attempt recorded by mariadb_rate_limit_attempt
+    (token is its ts). MariaDB's DELETE ... LIMIT 1 caps it to one row even
+    if two attempts happened to share a timestamp.
+    """
+
+    async def _do() -> None:
+        import aiomysql
+        from .db.engine import _parse_mariadb_url, DATABASE_URL
+
+        kwargs = _parse_mariadb_url(DATABASE_URL)
+        conn = await aiomysql.connect(**kwargs, autocommit=True, charset="utf8mb4")
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM rate_limit WHERE `key` = %s AND ts = %s LIMIT 1",
+                    (key, token),
+                )
+        finally:
+            conn.close()
+
+    asyncio.run(_do())

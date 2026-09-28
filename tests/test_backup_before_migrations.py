@@ -21,11 +21,25 @@ import backend.backup as backup_mod
 # ─── _db_already_exists() — SQLite ─────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_sqlite_db_already_exists_true_when_file_present(monkeypatch, tmp_path):
+async def test_sqlite_db_already_exists_false_when_file_has_no_schema(monkeypatch, tmp_path):
+    # init_db_pool() creates the file before the backup check runs — an
+    # existing but schema-less file is a fresh install, not a prior boot.
     db_path = tmp_path / "hygie.db"
-    db_path.write_bytes(b"")  # a fresh SQLite file created by a prior boot
+    db_path.write_bytes(b"")
     monkeypatch.setattr(backup_mod, "DIALECT", "sqlite")
     monkeypatch.setattr(backup_mod, "SQLITE_PATH", str(db_path))
+    monkeypatch.setattr(backup_mod, "get_db", lambda: _FakeGetDb(False))
+
+    assert await backup_mod._db_already_exists() is False
+
+
+@pytest.mark.asyncio
+async def test_sqlite_db_already_exists_true_when_schema_migrations_present(monkeypatch, tmp_path):
+    db_path = tmp_path / "hygie.db"
+    db_path.write_bytes(b"")
+    monkeypatch.setattr(backup_mod, "DIALECT", "sqlite")
+    monkeypatch.setattr(backup_mod, "SQLITE_PATH", str(db_path))
+    monkeypatch.setattr(backup_mod, "get_db", lambda: _FakeGetDb(True))
 
     assert await backup_mod._db_already_exists() is True
 

@@ -18,6 +18,23 @@ async def client(tmp_path_factory):
     _eng.SQLITE_PATH = db_path
     import backend.main as main_mod
     importlib.reload(main_mod)
+
+    # lifespan() runs backup_before_migrations() BEFORE init_db() creates the
+    # schema — it only skips the backup itself when the DB file is fresh
+    # (_db_already_exists() -> os.path.exists()), but init_db_pool() (also
+    # called by lifespan, before backup_before_migrations) already creates
+    # that file via its WAL-mode PRAGMA connection. So by the time
+    # backup_before_migrations() runs, the file exists but the `settings`
+    # table doesn't yet, and its get_bool_setting("backup_enabled") call
+    # crashes with "no such table: settings". Standalone, nothing has
+    # populated db/settings_store.py's module-global settings cache yet, so
+    # that call always hits the DB for real. (In the full suite this
+    # accidentally passes when an earlier test warmed that cache within its
+    # 30s TTL — an ordering dependency, not a real fix.) Pre-creating the
+    # schema here makes the test deterministic regardless of run order.
+    from backend.db.schema import init_db as _init_db
+    await _init_db()
+
     app = main_mod.app
     async with main_mod.lifespan(app):
         # The webhook is fail-closed: a secret must be configured for any

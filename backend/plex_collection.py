@@ -25,9 +25,51 @@ from .plex_client import PlexClient, build_plex_client
 
 logger = logging.getLogger(__name__)
 
-# Per-server memory: tracks which ratingKeys had an overlay applied this session.
-# Used to detect items that left the pending queue so their poster can be restored.
-_overlay_applied: dict[str, set] = {}  # server_id → {rating_key, …}
+
+async def _get_overlay_keys(server_id: str) -> set:
+    """Return the ratingKeys currently tracked as having an overlay applied
+    for this server, per the plex_overlays table.
+
+    Persisted in the DB (not a module-level dict) so overlay tracking
+    survives a process restart and is shared across WORKERS>1 — a bare
+    in-memory dict is lost on restart and not visible to the other worker,
+    so a poster's "deleted in Xj" overlay could never be restored once the
+    item left the pending queue on a different worker/run than the one that
+    applied it.
+    """
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            "SELECT rating_key FROM plex_overlays WHERE server_id=?", (server_id,)
+        )
+    return {r["rating_key"] for r in rows}
+
+
+async def _add_overlay_keys(server_id: str, rating_keys: set) -> None:
+    """Record ratingKeys as having an overlay applied (idempotent)."""
+    if not rating_keys:
+        return
+    applied_at = now_utc().isoformat()
+    async with get_db() as db:
+        for rating_key in rating_keys:
+            await db.execute(
+                "INSERT OR IGNORE INTO plex_overlays (server_id, rating_key, applied_at) "
+                "VALUES (?, ?, ?)",
+                (server_id, rating_key, applied_at),
+            )
+        await db.commit()
+
+
+async def _remove_overlay_keys(server_id: str, rating_keys: list) -> None:
+    """Forget ratingKeys once their overlay has been restored."""
+    if not rating_keys:
+        return
+    async with get_db() as db:
+        for rating_key in rating_keys:
+            await db.execute(
+                "DELETE FROM plex_overlays WHERE server_id=? AND rating_key=?",
+                (server_id, rating_key),
+            )
+        await db.commit()
 
 
 async def sync_plex_overlays() -> None:
@@ -90,18 +132,18 @@ async def sync_plex_overlays() -> None:
 
         items = items_by_server.get(server_id, [])
         current_keys = {str(item["plex_rating_key"] or item["emby_id"]) for item in items}
-        prev_keys = _overlay_applied.get(server_id, set())
+        prev_keys = await _get_overlay_keys(server_id)
 
         # Restore posters for items that left the pending queue since last run
         to_restore = prev_keys - current_keys
         if to_restore:
             await _restore_plex_posters(plex, list(to_restore))
+            await _remove_overlay_keys(server_id, list(to_restore))
 
         # Apply overlays to currently pending items
         if items:
             await _apply_plex_overlays(plex, items, ui_lang)
-
-        _overlay_applied[server_id] = current_keys
+            await _add_overlay_keys(server_id, current_keys)
 
 
 async def _apply_plex_overlays(plex: PlexClient, items: list, ui_lang: str) -> None:

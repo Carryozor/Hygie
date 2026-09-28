@@ -404,6 +404,9 @@
       "libraries": "Libs.:",
       "noneSelected": "none selected",
       "allLibraries": "All libraries"
+    },
+    "error": {
+      "deleteFailed": "Unable to delete the rule"
     }
   },
   "queue": {
@@ -423,7 +426,10 @@
     "confirmPurge": "Purge all deleted entries from queue?",
     "purge": "Purge",
     "error": {
-      "loadFailed": "Cannot load queue."
+      "loadFailed": "Cannot load queue.",
+      "ignoreFailed": "Unable to ignore this media",
+      "deleteFailed": "Unable to delete this media",
+      "purgeFailed": "Unable to purge deleted media"
     },
     "filters": {
       "all": "All",
@@ -451,7 +457,9 @@
     "confirmRemove": "Remove this media from the ignored list?",
     "removeBtn": "Remove",
     "error": {
-      "loadFailed": "Cannot load ignored media."
+      "loadFailed": "Cannot load ignored media.",
+      "requeueFailed": "Unable to requeue this media",
+      "removeFailed": "Unable to remove this media"
     },
     "columns": {
       "title": "Title",

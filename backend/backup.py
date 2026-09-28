@@ -146,14 +146,15 @@ async def _mariadb_backup(backup_dir: str, ts: str) -> str:
 async def _db_already_exists() -> bool:
     """Whether the DB has been initialized by a prior boot (vs. a fresh install).
 
-    SQLite: the file exists on disk. MariaDB: the schema_migrations bookkeeping
-    table exists (the target database itself is created ahead of time by the
-    MariaDB container — an empty schema is indistinguishable from "fresh" until
-    a table shows up). Any check failure fails open (returns False, i.e.
-    "treat as fresh, skip the backup") — never let this block startup.
+    Both dialects: the schema_migrations bookkeeping table exists. The file
+    (SQLite) or database (MariaDB) existing is not enough — init_db_pool()
+    creates the SQLite file before this runs, and the MariaDB container creates
+    the empty database ahead of time; an empty schema means "fresh". Any check
+    failure fails open (returns False, i.e. "treat as fresh, skip the backup")
+    — never let this block startup.
     """
-    if DIALECT == "sqlite":
-        return SQLITE_PATH != ":memory:" and os.path.exists(SQLITE_PATH)
+    if DIALECT == "sqlite" and (SQLITE_PATH == ":memory:" or not os.path.exists(SQLITE_PATH)):
+        return False
     try:
         async with get_db() as db:
             return await db.table_exists("schema_migrations")

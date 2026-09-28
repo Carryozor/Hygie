@@ -63,7 +63,7 @@ async def test_normal_episode_delete_does_not_wipe_the_whole_season():
     ):
         await _delete_from_arr(row)
 
-    mock_episode.assert_awaited_once_with(901)
+    mock_episode.assert_awaited_once_with(901, arr_server_url=None, file_path=row["file_path"])
     mock_season.assert_not_awaited()
     mock_series.assert_not_awaited()
 
@@ -77,7 +77,7 @@ async def test_consolidated_season_delete_still_uses_season_endpoint():
     ):
         await _delete_from_arr(row)
 
-    mock_season.assert_awaited_once_with(274, 1)
+    mock_season.assert_awaited_once_with(274, 1, arr_server_url=None, file_path=row["file_path"])
     mock_episode.assert_not_awaited()
     mock_series.assert_not_awaited()
 
@@ -91,6 +91,6 @@ async def test_consolidated_series_delete_still_uses_series_endpoint():
     ):
         await _delete_from_arr(row)
 
-    mock_series.assert_awaited_once_with(274)
+    mock_series.assert_awaited_once_with(274, arr_server_url=None, file_path=row["file_path"])
     mock_episode.assert_not_awaited()
     mock_season.assert_not_awaited()

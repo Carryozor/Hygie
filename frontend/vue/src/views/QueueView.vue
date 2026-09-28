@@ -178,6 +178,7 @@ import api from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
 import { useServersStore } from '@/stores/servers'
 import { useQueueItems } from '@/composables/useQueueItems'
+import { runConfirmedAction } from '@/composables/useApiAction'
 import SortHeader    from '@/components/ui/SortHeader.vue'
 import ConfirmModal  from '@/components/ui/ConfirmModal.vue'
 import QueueListRow  from '@/components/queue/QueueListRow.vue'
@@ -235,28 +236,39 @@ function openIgnore(item) {
 }
 async function doIgnore() {
   if (!ignoreTarget.value) return
-  await api.post(`/media/${ignoreTarget.value.id}/ignore`, null, {
-    params: {
-      reason:      ignoreReason.value || undefined,
-      expire_days: ignoreDays.value > 0 ? ignoreDays.value : undefined,
-    },
+  const target = ignoreTarget.value
+  await runConfirmedAction({
+    action: () => api.post(`/media/${target.id}/ignore`, null, {
+      params: {
+        reason:      ignoreReason.value || undefined,
+        expire_days: ignoreDays.value > 0 ? ignoreDays.value : undefined,
+      },
+    }),
+    onSuccess: () => { ignoreTarget.value = null },
+    reload: load,
+    errorLabel: t('queue.error.ignoreFailed'),
   })
-  ignoreTarget.value = null
-  load()
 }
 
 function triggerDelete(item) { deleteTarget.value = item }
 async function doDelete() {
   if (!deleteTarget.value) return
-  await api.post(`/media/${deleteTarget.value.id}/delete-now`)
-  deleteTarget.value = null
-  load()
+  const target = deleteTarget.value
+  await runConfirmedAction({
+    action: () => api.post(`/media/${target.id}/delete-now`),
+    onSuccess: () => { deleteTarget.value = null },
+    reload: load,
+    errorLabel: t('queue.error.deleteFailed'),
+  })
 }
 
 async function doPurge() {
-  confirmPurge.value = false
-  await api.delete('/media/purge/deleted')
-  load()
+  await runConfirmedAction({
+    action: () => api.delete('/media/purge/deleted'),
+    onSuccess: () => { confirmPurge.value = false },
+    reload: load,
+    errorLabel: t('queue.error.purgeFailed'),
+  })
 }
 
 let searchTimer = null

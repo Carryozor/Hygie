@@ -2,6 +2,7 @@
 import axios from 'axios'
 import { installErrorInterceptor } from './errorHandler'
 import { getToken, setToken, clearToken } from './tokenStore'
+import { isProtectedPath } from '@/router/paths'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -28,15 +29,13 @@ api.interceptors.response.use(
   r => r,
   async err => {
     const originalReq  = err.config
-    // Public routes: /login, /setup, and any /{slug} path (public calendar).
-    // The public calendar URL is /{slug} — a single-segment path that is NOT
-    // one of the known app routes. We detect it by checking the Vue router meta,
-    // or conservatively: any path that doesn't start with a known protected prefix.
-    const pathname = window.location.pathname
-    const KNOWN_PROTECTED = ['/', '/queue', '/calendar', '/rules', '/settings', '/logs', '/ignored', '/library']
-    const isPublicPage = ['/login', '/setup'].includes(pathname)
-      || (!KNOWN_PROTECTED.some(p => pathname === p || pathname.startsWith('/library/'))
-          && pathname.split('/').length === 2)  // single-segment path = public slug
+    // Public routes (/login, /setup, and the /{slug} public calendar page)
+    // must never trigger the refresh dance. isProtectedPath() is the same
+    // source of truth router/index.js builds its route table from — see
+    // router/paths.js — so a new protected route can't silently fall
+    // through to being treated as the public /:slug page.
+    const pathname     = window.location.pathname
+    const isPublicPage = !isProtectedPath(pathname)
     const is401        = err.response?.status === 401
     // Skip retry loop for auth endpoints themselves
     const isAuthEndpoint = originalReq?.url?.includes('/auth/')

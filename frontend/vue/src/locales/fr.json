@@ -404,6 +404,9 @@
       "libraries": "Bib. :",
       "noneSelected": "aucune sélectionnée",
       "allLibraries": "Toutes les bibliothèques"
+    },
+    "error": {
+      "deleteFailed": "Impossible de supprimer la règle"
     }
   },
   "queue": {
@@ -423,7 +426,10 @@
     "confirmPurge": "Purger toutes les entrées supprimées de la file ?",
     "purge": "Purger",
     "error": {
-      "loadFailed": "Impossible de charger la file d'attente."
+      "loadFailed": "Impossible de charger la file d'attente.",
+      "ignoreFailed": "Impossible d'ignorer ce média",
+      "deleteFailed": "Impossible de supprimer ce média",
+      "purgeFailed": "Impossible de purger les médias supprimés"
     },
     "filters": {
       "all": "Tous",
@@ -451,7 +457,9 @@
     "confirmRemove": "Retirer ce média de la liste des ignorés ?",
     "removeBtn": "Retirer",
     "error": {
-      "loadFailed": "Impossible de charger les médias ignorés."
+      "loadFailed": "Impossible de charger les médias ignorés.",
+      "requeueFailed": "Impossible de remettre ce média en file",
+      "removeFailed": "Impossible de retirer ce média"
     },
     "columns": {
       "title": "Titre",

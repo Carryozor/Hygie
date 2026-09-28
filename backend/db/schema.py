@@ -105,7 +105,8 @@ _TABLES = [
             sonarr_series_id INTEGER,
             season_number INTEGER,
             plex_rating_key TEXT DEFAULT '',
-            view_count INTEGER DEFAULT 0
+            view_count INTEGER DEFAULT 0,
+            arr_server_url TEXT DEFAULT NULL
         )""",
         [
             ("poster_url", "TEXT DEFAULT ''"),
@@ -131,6 +132,7 @@ _TABLES = [
             ("torrent_hash", "TEXT DEFAULT ''"),
             ("seerr_discord_id", "TEXT DEFAULT ''"),
             ("ignored", "INTEGER DEFAULT 0"),
+            ("arr_server_url", "TEXT DEFAULT NULL"),
         ],
     ),
     (
@@ -281,6 +283,17 @@ _TABLES = [
         )""",
         [],
     ),
+    (
+        "plex_overlays",
+        """CREATE TABLE IF NOT EXISTS plex_overlays (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id  TEXT NOT NULL,
+            rating_key TEXT NOT NULL,
+            applied_at TEXT NOT NULL,
+            UNIQUE (server_id, rating_key)
+        )""",
+        [],
+    ),
 ]
 
 
@@ -301,12 +314,13 @@ _SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_media_radarr_id ON media_queue(radarr_id)",
     "CREATE INDEX IF NOT EXISTS idx_media_sonarr_id ON media_queue(sonarr_id)",
     "CREATE INDEX IF NOT EXISTS idx_media_tmdb_id ON media_queue(tmdb_id)",
+    "CREATE INDEX IF NOT EXISTS idx_plex_overlays_server ON plex_overlays(server_id)",
 ]
 
 _KNOWN_TABLES = frozenset({
     "settings", "users", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
-    "rate_limit", "expert_rules", "notifications",
+    "rate_limit", "expert_rules", "notifications", "plex_overlays",
     # Legacy names used during migration
     "logs_legacy", "job_history_legacy",
 })

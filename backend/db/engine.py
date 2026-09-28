@@ -95,8 +95,7 @@ async def init_db_pool() -> None:
     """Initialize connection pool. For SQLite: applies one-time PRAGMAs."""
     global _pool, _sqlite_pragmas_applied
     if DIALECT != "mariadb":
-        import aiosqlite
-        async with aiosqlite.connect(SQLITE_PATH) as raw:
+        async with _sqlite_connection() as raw:
             await raw.execute("PRAGMA journal_mode=WAL")
             await raw.execute("PRAGMA foreign_keys=ON")
             await raw.execute("PRAGMA busy_timeout=5000")
@@ -277,11 +276,35 @@ def _sqlite_row_factory(cursor, row):
 
 
 @asynccontextmanager
+async def _sqlite_connection():
+    """Open an aiosqlite connection that can never leak its worker thread.
+
+    aiosqlite.Connection is a non-daemon Thread, and aiosqlite 0.20's
+    _connect() only cleans up on `except Exception`: a CancelledError
+    delivered while it awaits the connection future (a task cancelled at
+    shutdown or by a timeout) leaves the worker thread running forever,
+    blocking interpreter exit. Daemon makes any leak harmless at exit, and
+    stopping the thread on BaseException prevents the leak itself.
+    """
+    import aiosqlite
+    conn = aiosqlite.connect(SQLITE_PATH)
+    conn.daemon = True
+    try:
+        await conn
+    except BaseException:
+        conn._stop_running()
+        raise
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@asynccontextmanager
 async def get_db():
     """Async context manager yielding a DbConn for the configured dialect."""
     if DIALECT == "sqlite":
-        import aiosqlite
-        async with aiosqlite.connect(SQLITE_PATH) as raw:
+        async with _sqlite_connection() as raw:
             if not _sqlite_pragmas_applied:
                 # Fallback: init_db_pool() sets these at startup; this path is
                 # reached only in tests or if startup is bypassed.
@@ -301,8 +324,33 @@ async def get_db():
             await raw.autocommit(False)
             try:
                 yield DbConn(raw, "mariadb")
-            except Exception:
-                await raw.rollback()
+            except BaseException:
+                # BaseException, not Exception: asyncio.CancelledError is a
+                # BaseException, and run_deletion's asyncio.timeout(3600) /
+                # run_scan's wait_for(7200) firing mid-block delivers exactly
+                # that. `except Exception` let it fall straight through
+                # without rolling back, leaving the pooled connection with an
+                # open REPEATABLE-READ transaction — the v4.3.4 stale-snapshot
+                # bug (see test_db_read_snapshot_freshness.py) through
+                # another door, this time reachable without any write at all.
+                try:
+                    await raw.rollback()
+                except BaseException:
+                    # The rollback itself can be interrupted (cancellation
+                    # re-delivered) or fail outright. Either way we can no
+                    # longer prove this connection is clean, so it must never
+                    # go back to the pool for reuse — close it instead of
+                    # letting `_pool.acquire()`'s __aexit__ release it dirty.
+                    logger.warning(
+                        "get_db (mariadb): rollback failed while unwinding — "
+                        "closing the connection instead of returning it dirty "
+                        "to the pool",
+                        exc_info=True,
+                    )
+                    try:
+                        raw.close()
+                    except Exception:
+                        pass
                 raise
             # autocommit=False: even a bare SELECT opens a REPEATABLE-READ
             # transaction, and aiomysql's pool only discards a connection whose

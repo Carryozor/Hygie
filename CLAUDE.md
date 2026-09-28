@@ -9,7 +9,7 @@ App de nettoyage de médiathèque (Emby/Jellyfin/Plex + *arr). Backend FastAPI (
 | Action | Commande |
 |---|---|
 | Dev backend | `make dev` (uvicorn :8000) |
-| Tests backend | `make test` (pytest ; CI : `--cov-fail-under=50 --timeout=60`) |
+| Tests backend | `make test` (pytest ; CI : `--cov-fail-under=60 --timeout=60`) |
 | Tests frontend | `cd frontend/vue && npm run test:unit` |
 | Lint | `make lint-all` (ruff + eslint) |
 | Parité schémas | `make check-schema` — obligatoire après tout changement DB |
@@ -19,7 +19,7 @@ App de nettoyage de médiathèque (Emby/Jellyfin/Plex + *arr). Backend FastAPI (
 ## Pièges connus — et la règle qui prévient chacun
 
 1. **Dualité SQLite/MariaDB.** Tout SQL passe par `DbConn` (placeholders `?`, rewrites auto). Jamais de `REPLACE INTO` ni de SQL dialecte-spécifique hors `schema.py`/`schema_mariadb.py`. `key` est un mot réservé MariaDB → backticks. *Règle : tout changement de schéma = les DEUX fichiers DDL + une migration + `make check-schema` + le test de parité doit passer.*
-2. **Migrations append-only.** `db/migrations.py` (m001–m015+) : on ajoute à la fin, on ne réordonne jamais, on n'édite jamais une migration déjà livrée. La régression v4.1.1 (colonne `seerr_user_rules.name` absente en MariaDB) venait d'une migration incomplète côté MariaDB. *Règle : chaque migration est écrite et testée pour les deux dialectes.*
+2. **Migrations append-only.** `db/migrations.py` (m001–m017+) : on ajoute à la fin, on ne réordonne jamais, on n'édite jamais une migration déjà livrée. La régression v4.1.1 (colonne `seerr_user_rules.name` absente en MariaDB) venait d'une migration incomplète côté MariaDB. *Règle : chaque migration est écrite et testée pour les deux dialectes.*
 3. **Auth : le token d'accès n'est PLUS dans localStorage.** Il est en mémoire (`api/tokenStore.js`) + refresh httpOnly (`hygie_refresh`, path `/api/auth`). Le bug sidebar v4.1.1 venait de composants lisant la clé morte `localStorage['hygie_token']`. *Règle : côté front, l'état d'auth se lit UNIQUEMENT via `useAuthStore().isLoggedIn` / `tokenStore.getToken()`.*
 4. **SSRF.** Tout endpoint qui fetch une URL fournie par l'utilisateur (test-arr, proxy image, sync seerr) doit bloquer RFC1918/loopback/169.254.169.254 et re-valider **chaque hop de redirect**. Des correctifs existent — les imiter (`proxy.py`, `routers/settings.py`). *Règle : jamais de `httpx` direct sur une URL utilisateur sans passer par ces validations.*
 5. **Multi-worker.** SQLite + `WORKERS>1` = erreur critique au démarrage (voulu). Les locks inter-workers = advisory MariaDB `GET_LOCK`. Les caches en mémoire (settings 30s, etc.) sont par-worker : stalesse max 30s acceptée, ne pas "corriger". *Règle : tout nouvel état partagé passe par la DB, pas par une variable module.*

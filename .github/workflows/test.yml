@@ -50,7 +50,7 @@ jobs:
           python3 -m pytest -q --tb=short --timeout=60 \
             --cov=backend \
             --cov-report=term-missing \
-            --cov-fail-under=50
+            --cov-fail-under=60
 
       - name: Lint (ruff)
         run: python3 -m ruff check backend/ tests/

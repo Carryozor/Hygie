@@ -4,6 +4,37 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.3.5] — 2026-09-28
+
+Full developer / architect / pentest review of 4.3.4. Every item below was reproduced or traced end-to-end before being fixed, and each fix landed test-first.
+
+### Fixed
+
+- **A fresh SQLite install crashed at startup (regression since 4.2.1).** `init_db_pool()` creates the SQLite file (WAL PRAGMA) before `backup_before_migrations()` runs, and that function decided "the DB already exists" from the file alone — so a brand-new install read `settings.backup_enabled` from a table that did not exist yet: `sqlite3.OperationalError: no such table: settings`. The zero-config quick start in the README was broken; 4.2.0 starts, 4.3.4 does not. An existing DB is now detected by its `schema_migrations` table on both dialects, as MariaDB already did.
+- **Deleting from Radarr/Sonarr could hit the wrong instance in multi-instance setups.** The queue stored only the bare numeric `radarr_id` / `sonarr_id` / `sonarr_series_id`, not which server issued it. `radarr_delete_by_id()` tried that id on *every* configured Radarr and stopped at the first success, and the Sonarr delete helpers silently used the default server — with two instances, an unrelated movie or series sharing the id could be removed (Sonarr `episodefile` deletes files on disk). The queue now records `arr_server_url` (migration `m016`, both dialects) at scan time, and deletion targets exactly that server. Rows written before this release resolve through the single configured server, or a file-path match when several are configured, and otherwise **refuse to delete** and report the failure rather than guess. Single-instance setups behave as before.
+- **`_resolve_arr_ids()` stored the whole `(id, url, key)` tuple as `radarr_id`** on the legacy-conditions path (the cached Radarr lookup returns a tuple). Now unpacked.
+- **`get_db()` left a MariaDB read transaction open when the task was cancelled** (`asyncio.CancelledError` is a `BaseException`, the cleanup only caught `Exception`) — the 4.3.4 stale-snapshot bug through another door, reachable from the 1 h deletion / 2 h scan timeouts. Rollback now runs on any exit; if the rollback itself fails, the connection is closed instead of returned dirty to the pool.
+- **The "pytest passed, then hung forever" exit was not fully fixed by 4.3.3.** Root cause found in aiosqlite 0.20: `Connection._connect()` only cleans up on `except Exception`, so a task cancelled while the connection was still opening (e.g. the storage prewarm cancelled at shutdown) left its non-daemon worker thread running forever. SQLite connections are now opened through a helper that marks the thread daemon and stops it on any exception. Five consecutive full-suite runs exit cleanly with a leak probe reporting 0 live connections (previously about one run in two hung).
+- **Rate limiting counted every call, not failures.** Reproduced: the 6th *legitimate* call in 5 minutes was rejected — Plex's own play/pause/resume/stop/scrobble webhooks (scrobbles silently dropped), `/auth/refresh` (six page reloads logged you out) and the public dashboard. Each attempt is now recorded atomically on entry — so a burst of parallel guesses is still capped (a new test fires 10 concurrent wrong-password logins; before this fix all 10 got through) — and released again when the request succeeds.
+- **Plex poster overlays were never restored after a restart or a worker switch.** Which items carried the "deleted in X days" overlay lived in a module-level dict, lost on restart and not shared between workers. Now persisted in a `plex_overlays` table (migration `m017`).
+- **`reevaluate_library_queue()` treated every item as never watched when the media server returned no users** (outage, bad key). It now aborts like the main scan does.
+- **Destructive actions failed silently in the UI.** Ignore / delete now / purge (queue), requeue / remove (ignored) and rule deletion had no error handling, and the global interceptor only surfaces 422/429/5xx — a 403/404 closed the confirmation dialog as if it had worked. They now report the failure (all 8 locales) and keep the dialog open.
+- **Protected-route detection was a hand-copied list** in `api/client.js`; a new single-segment route would have been treated as the public `/:slug` page and skipped the token refresh. Router and client now share one route table (`router/paths.js`), with a drift test.
+- **Several backend test files failed when run on their own** (`no such table: settings`) because they relied on another file having initialised the DB first. Their fixtures now initialise the schema themselves.
+
+### Security
+
+- **`GET /api/settings/media-servers` returned Emby/Jellyfin/Plex API keys in clear**, bypassing the `***` masking that `GET /api/settings` applies; the settings page loaded them on every visit. Keys are now masked, a masked key sent back on save keeps the stored one, and the eye toggle reveals a key through a dedicated authenticated endpoint (`GET /api/settings/media-servers/{id}/reveal`).
+- **The public dashboard exposed the internal server URL** when a server had no external URL configured (`ext_url or url`). Only `ext_url` is published now.
+- **Secrets were stored in plaintext when `HYGIE_ENCRYPTION_KEY` was unset.** With SQLite, a Fernet key is now generated once and persisted next to the database (`.encryption_key`, mode 600 — back it up with the DB). An existing key file is never overwritten; with MariaDB no key is generated (the data directory may not share the database's persistence), and setting `HYGIE_ENCRYPTION_KEY` remains the recommended configuration everywhere. The environment variable always wins.
+- CI: every third-party GitHub Action is pinned to a commit SHA, and the no-op `deploy.yml` (its SSH secrets were never configured) is removed.
+
+### Tests
+
+- 715 backend tests (up from 661) and frontend tests now cover `safeUrl`, the 401 → single-refresh flow and the route table. The CI coverage gate goes from 50 % to 60 % (measured: 64 %) so coverage can no longer silently regress.
+
+---
+
 ## [4.3.4] — 2026-09-19
 
 ### Fixed

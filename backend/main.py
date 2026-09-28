@@ -248,7 +248,7 @@ def _start_storage_prewarm() -> asyncio.Task | None:
 async def _log_startup_complete(scan_min: int, del_min: int) -> None:
     logger.info(f"Hygie {VERSION} started — scan={scan_min}min, deletion={del_min}min")
     if not os.environ.get("HYGIE_ENCRYPTION_KEY"):
-        logger.warning("HYGIE_ENCRYPTION_KEY not set — sensitive settings stored in plaintext")
+        logger.warning("HYGIE_ENCRYPTION_KEY not set — using the persisted key file (SQLite) or plaintext (MariaDB); setting it explicitly is recommended")
     await add_log("INFO", lm("system.started", version=VERSION), "system")
 
 

@@ -407,7 +407,8 @@
     },
     "error": {
       "deleteFailed": "Unable to delete the rule"
-    }
+    },
+    "scanAlreadyRunning": "A scan is already running."
   },
   "queue": {
     "title": "Queue",

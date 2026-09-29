@@ -407,7 +407,8 @@
     },
     "error": {
       "deleteFailed": "Não foi possível eliminar a regra"
-    }
+    },
+    "scanAlreadyRunning": "Já há uma verificação em andamento."
   },
   "queue": {
     "title": "Fila",

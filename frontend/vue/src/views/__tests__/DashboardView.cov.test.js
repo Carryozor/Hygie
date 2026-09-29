@@ -55,6 +55,17 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('Impossible de charger les données du tableau de bord.')
   })
 
+  it('shows the dashboard error message when the stats endpoints fail', async () => {
+    api.get.mockImplementation(url => {
+      if (url === '/stats/global') return Promise.reject({ response: { status: 500 } })
+      if (url === '/storage') return Promise.reject({ response: { status: 500 } })
+      if (url === '/media') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: {} })
+    })
+    const { wrapper } = await mountView(DashboardView, { path: '/' })
+    expect(wrapper.text()).toContain('Impossible de charger les données du tableau de bord.')
+  })
+
   it('renders the queue/deleted/ignored/error stat values from /stats/global', async () => {
     mockGets({
       global: { queue: { pending: 12, error: 3 }, total_deleted: 87, total_ignored: 5, total_scans: 40 },

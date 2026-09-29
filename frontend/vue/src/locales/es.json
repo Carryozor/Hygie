@@ -407,7 +407,8 @@
     },
     "error": {
       "deleteFailed": "No se pudo eliminar la regla"
-    }
+    },
+    "scanAlreadyRunning": "Ya hay un escaneo en curso."
   },
   "queue": {
     "title": "Cola",

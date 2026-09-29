@@ -288,6 +288,9 @@ onMounted(async () => {
   error.value   = ''
   try {
     await Promise.all([stats.fetchGlobal(), stats.fetchStorage()])
+    // The stats store swallows its own fetch errors — surface them here too,
+    // otherwise a failed load renders as a dashboard full of zeros.
+    if (stats.error) error.value = t('dashboard.error.loadFailed')
     const { data } = await api.get('/media', { params: { status: 'pending', limit: 5, sort: 'delete_at', dir: 'asc' } })
     recentQueue.value = data?.items || data || []
   } catch {

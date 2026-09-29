@@ -141,18 +141,13 @@ describe('RulesView', () => {
     expect(api.post).toHaveBeenCalledWith('/libraries/10/scan')
   })
 
-  it('a 409 (scan already running) surfaces a distinct toast, not the generic formatApiError one', async () => {
-    // NOTE: this only asserts a toast fires, not its exact text — see
-    // BUGS SUSPECTED in the final report: rules.scanAlreadyRunning has no
-    // translation entry, so t() returns the raw key (truthy), and the
-    // `|| 'Un scan est déjà en cours'` fallback in RulesView.vue:203 is
-    // dead code. Asserting the (currently broken) copy here would encode
-    // the bug as expected behavior.
+  it('a 409 (scan already running) surfaces a translated "scan already running" toast', async () => {
     api.post.mockRejectedValue({ response: { status: 409 } })
     const { wrapper } = await mountRules({ simple: [SIMPLE_RULE] })
     await wrapper.find('button[title="Lancer un scan"]').trigger('click')
     await flushAll()
     expect(errorEvents.length).toBe(1)
+    expect(errorEvents[0].message).toBe('Un scan est déjà en cours.')
   })
 
   it('migrateFromLibraries shows the success message with the created count', async () => {

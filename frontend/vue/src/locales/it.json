@@ -407,7 +407,8 @@
     },
     "error": {
       "deleteFailed": "Impossibile eliminare la regola"
-    }
+    },
+    "scanAlreadyRunning": "Una scansione è già in corso."
   },
   "queue": {
     "title": "Coda",

@@ -407,7 +407,8 @@
     },
     "error": {
       "deleteFailed": "Impossible de supprimer la règle"
-    }
+    },
+    "scanAlreadyRunning": "Un scan est déjà en cours."
   },
   "queue": {
     "title": "File d'attente",

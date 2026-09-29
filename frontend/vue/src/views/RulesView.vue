@@ -200,7 +200,7 @@ async function runRule(ruleId, libraryId, libraryIds) {
     const status_code = err?.response?.status
     if (status_code === 409) {
       import('@/api/errorHandler').then(({ emitError }) =>
-        emitError(t('rules.scanAlreadyRunning') || 'Un scan est déjà en cours')
+        emitError(t('rules.scanAlreadyRunning'))
       )
     } else if (err) {
       import('@/api/errorHandler').then(({ emitError, formatApiError }) =>

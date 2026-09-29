@@ -5,6 +5,7 @@
 // rendered DOM. It talks to the backend via global fetch (not api/client.js),
 // so we mock window.fetch directly.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { DOMWrapper } from '@vue/test-utils'
 import { mountView, flushAll } from './testUtils.cov.js'
 
 vi.mock('@/api/tokenStore', () => ({
@@ -122,6 +123,130 @@ describe('PublicView', () => {
     fetchMock.mockRejectedValue(new Error('network down'))
     const { wrapper } = await mountView(PublicView, { path: '/myslug' })
     expect(wrapper.text()).toContain("Le tableau de bord public n'est pas activé.")
+  })
+
+  it('falls back to the disabled state on a generic non-ok status not otherwise handled', async () => {
+    fetchMock.mockReturnValue(jsonResponse(500, {}))
+    const { wrapper } = await mountView(PublicView, { path: '/myslug' })
+    expect(wrapper.text()).toContain("Le tableau de bord public n'est pas activé.")
+  })
+
+  describe('with a loaded multi-server dashboard', () => {
+    function multiServerData() {
+      const day = todayStr()
+      return {
+        language: 'fr',
+        events: {
+          [day]: [
+            { id: 1, title: 'Dune', server_id: 1, emby_id: '9', library_id: 5, library_name: 'Films', media_type: 'Movie', tmdb_id: 438631, poster_url: 'https://img/dune.jpg' },
+            { id: 2, title: 'The Wire', server_id: 2, emby_id: '3', library_id: 6, library_name: 'Séries', media_type: 'Series' },
+          ],
+        },
+        libraries: [{ id: 5, server_id: 1, name: 'Films' }, { id: 6, server_id: 2, name: 'Séries' }],
+        servers: [
+          { id: 1, name: 'MyEmby', type: 'emby', ext_url: 'https://emby.example.com/' },
+          { id: 2, name: 'MyJelly', type: 'jellyfin', ext_url: 'https://jelly.example.com' },
+        ],
+      }
+    }
+
+    async function mountLoaded() {
+      fetchMock.mockReturnValue(jsonResponse(200, multiServerData()))
+      return mountView(PublicView, { path: '/myslug' })
+    }
+
+    it('switches the displayed language and persists it to localStorage', async () => {
+      const { wrapper } = await mountLoaded()
+      expect(wrapper.text()).toContain('Prochaines suppressions')
+      const enBtn = [...wrapper.findAll('button')].find(b => b.text() === 'EN')
+      await enBtn.trigger('click')
+      expect(wrapper.text()).toContain('Upcoming deletions')
+      expect(localStorage.getItem('hygie_public_lang')).toBe('en')
+    })
+
+    it('filters events by server tab, then back to "all"', async () => {
+      const { wrapper } = await mountLoaded()
+      expect(wrapper.text()).toContain('2 planifié(s)')
+      const embyTab = [...wrapper.findAll('button')].find(b => b.text().includes('MyEmby'))
+      await embyTab.trigger('click')
+      expect(wrapper.text()).toContain('1 planifié(s)')
+      const allTab = [...wrapper.findAll('button')].find(b => b.text() === 'Tous')
+      await allTab.trigger('click')
+      expect(wrapper.text()).toContain('2 planifié(s)')
+    })
+
+    it('navigates prev/next month and jumps back to today', async () => {
+      const { wrapper } = await mountLoaded()
+      const monthLabel = () => wrapper.find('h2.font-semibold.capitalize').text()
+      const initial = monthLabel()
+      // Two ".mb-4" elements exist (page header + month-nav bar); only the
+      // month-nav one has <button> as DIRECT children (prev/next either
+      // side of a <div>), so this selector still isolates just those two.
+      const [prevBtn, nextBtn] = wrapper.findAll('.mb-4 > button')
+      await nextBtn.trigger('click')
+      expect(monthLabel()).not.toBe(initial)
+      // "today" quick-jump button appears once we've navigated away
+      const todayBtn = [...wrapper.findAll('button')].find(b => b.text() === "Aujourd'hui")
+      expect(todayBtn).toBeTruthy()
+      await todayBtn.trigger('click')
+      expect(monthLabel()).toBe(initial)
+      await prevBtn.trigger('click')
+      expect(monthLabel()).not.toBe(initial)
+    })
+
+    it('opens the day panel, then closes it via the close button', async () => {
+      const { wrapper } = await mountLoaded()
+      const dayCell = wrapper.findAll('.min-h-\\[70px\\]').find(c => c.text().includes('Dune'))
+      await dayCell.trigger('click')
+      const panel = wrapper.findAll('.px-5.py-3.group')
+      expect(panel.length).toBe(2)
+      const closeBtn = wrapper.find('.fa-xmark').element.closest('button')
+      await new DOMWrapper(closeBtn).trigger('click')
+      expect(wrapper.find('.mt-4.bg-\\[var\\(--bg2\\)\\]').exists()).toBe(false)
+    })
+
+    it('opens the TMDB link for an item with tmdb_id, and hides its broken poster on img error', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+      const { wrapper } = await mountLoaded()
+      const dayCell = wrapper.findAll('.min-h-\\[70px\\]').find(c => c.text().includes('Dune'))
+      await dayCell.trigger('click')
+
+      const img = wrapper.find('img')
+      expect(img.exists()).toBe(true)
+      await img.trigger('error')
+      expect(img.element.style.display).toBe('none')
+
+      const duneRow = wrapper.findAll('.px-5.py-3.group').find(r => r.text().includes('Dune'))
+      await duneRow.trigger('click')
+      expect(openSpy).toHaveBeenCalledWith('https://www.themoviedb.org/movie/438631', '_blank', 'noopener')
+      openSpy.mockRestore()
+    })
+
+    it('builds the correct "view on server" deep link per server type (emby vs jellyfin)', async () => {
+      const { wrapper } = await mountLoaded()
+      const dayCell = wrapper.findAll('.min-h-\\[70px\\]').find(c => c.text().includes('Dune'))
+      await dayCell.trigger('click')
+
+      const links = wrapper.findAll('a[href]')
+      const embyLink = links.find(a => a.attributes('href').includes('emby.example.com'))
+      expect(embyLink.attributes('href')).toBe('https://emby.example.com/web/index.html#!/item?id=9')
+      const jellyLink = links.find(a => a.attributes('href').includes('jelly.example.com'))
+      expect(jellyLink.attributes('href')).toBe('https://jelly.example.com/web/index.html#!/details?id=3')
+    })
+
+    it('builds a Plex rating-key deep link for a plex server', async () => {
+      fetchMock.mockReturnValue(jsonResponse(200, {
+        language: 'fr',
+        events: { [todayStr()]: [{ id: 1, title: 'Dune', server_id: 1, emby_id: '42', library_id: 5, library_name: 'Films', media_type: 'Movie' }] },
+        libraries: [{ id: 5, server_id: 1, name: 'Films' }],
+        servers: [{ id: 1, name: 'MyPlex', type: 'plex', ext_url: 'https://plex.example.com' }],
+      }))
+      const { wrapper } = await mountView(PublicView, { path: '/myslug' })
+      const dayCell = wrapper.findAll('.min-h-\\[70px\\]').find(c => c.text().includes('Dune'))
+      await dayCell.trigger('click')
+      const link = wrapper.find('a[href*="plex.example.com"]')
+      expect(link.attributes('href')).toBe('https://plex.example.com/web/index.html#!/item?key=/library/metadata/42')
+    })
   })
 })
 

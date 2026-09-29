@@ -5,6 +5,7 @@
 // (it's a large standalone component out of this file's scope) — we only
 // assert the props RulesView feeds it and the 'saved' contract it depends on.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { DOMWrapper } from '@vue/test-utils'
 import { mountView, flushAll } from './testUtils.cov.js'
 
 vi.mock('@/api/client', () => ({
@@ -234,5 +235,119 @@ describe('RulesView', () => {
     await flushAll()
     expect(done).toHaveBeenCalledTimes(1)
     expect(wrapper.findComponent(CreateRuleModalStub).props('open')).toBe(true)
+  })
+
+  it('the modal\'s close event hides it without saving anything', async () => {
+    const { wrapper } = await mountRules({})
+    await wrapper.find('button').trigger('click') // "Nouvelle règle" -> modal.open = true
+    expect(wrapper.findComponent(CreateRuleModalStub).props('open')).toBe(true)
+    wrapper.findComponent(CreateRuleModalStub).vm.$emit('close')
+    await flushAll()
+    expect(wrapper.findComponent(CreateRuleModalStub).props('open')).toBe(false)
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('onSaved with an existing expert rule id calls updateExpertRule via PUT /expert-rules/{id}', async () => {
+    api.put.mockResolvedValue({ data: { ...EXPERT_RULE, name: 'Renamed' } })
+    const { wrapper } = await mountRules({ expert: [EXPERT_RULE] })
+    await wrapper.find('button[title="Modifier"]').trigger('click')
+    const modal = wrapper.findComponent(CreateRuleModalStub)
+    const done = vi.fn()
+    modal.vm.$emit('saved', { type: 'expert', data: { name: 'Renamed' }, done })
+    await flushAll()
+    expect(api.put).toHaveBeenCalledWith('/expert-rules/2', { name: 'Renamed' })
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  it('onSaved for a brand-new expert rule (no id) calls createExpertRule via POST /expert-rules', async () => {
+    api.post.mockResolvedValue({ data: { id: 55 } })
+    const { wrapper } = await mountRules({})
+    await wrapper.find('button').trigger('click') // "Nouvelle règle"
+    const modal = wrapper.findComponent(CreateRuleModalStub)
+    const done = vi.fn()
+    modal.vm.$emit('saved', { type: 'expert', data: { name: 'Brand new' }, done })
+    await flushAll()
+    expect(api.post).toHaveBeenCalledWith('/expert-rules', { name: 'Brand new' })
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  it('cloning a simple rule opens the modal with the rule\'s id stripped', async () => {
+    const { wrapper } = await mountRules({ simple: [SIMPLE_RULE] })
+    await wrapper.find('button[title="Cloner"]').trigger('click')
+    const modal = wrapper.findComponent(CreateRuleModalStub)
+    expect(modal.props('editType')).toBe('simple')
+    expect(modal.props('editRule')).toEqual({ seerr_username: 'alice', library_id: 10, grace_days: 7, enabled: true })
+    expect(modal.props('editRule').id).toBeUndefined()
+  })
+
+  it('cloning an expert rule suffixes the name and deep-clones conditions (not the store\'s array)', async () => {
+    const withConditions = { ...EXPERT_RULE, conditions: [{ field: 'unwatched_days', op: '>', value: 30 }] }
+    const { wrapper } = await mountRules({ expert: [withConditions] })
+    await wrapper.find('button[title="Cloner"]').trigger('click')
+    const modal = wrapper.findComponent(CreateRuleModalStub)
+    expect(modal.props('editType')).toBe('expert')
+    expect(modal.props('editRule').name).toBe('Old & unwatched (copie)')
+    expect(modal.props('editRule').id).toBeUndefined()
+    expect(modal.props('editRule').conditions).toEqual(withConditions.conditions)
+    expect(modal.props('editRule').conditions).not.toBe(withConditions.conditions)
+  })
+
+  it('editing an expert rule deep-clones its conditions array', async () => {
+    const withConditions = { ...EXPERT_RULE, conditions: [{ field: 'rating', op: '<', value: 5 }] }
+    const { wrapper } = await mountRules({ expert: [withConditions] })
+    await wrapper.find('button[title="Modifier"]').trigger('click')
+    const modal = wrapper.findComponent(CreateRuleModalStub)
+    expect(modal.props('editType')).toBe('expert')
+    expect(modal.props('editRule').conditions).toEqual(withConditions.conditions)
+    expect(modal.props('editRule').conditions).not.toBe(withConditions.conditions)
+  })
+
+  it('runRule for an expert rule with multiple library_ids POSTs to /libraries/scan-multi', async () => {
+    api.post.mockResolvedValue({ data: {} })
+    const multi = { ...EXPERT_RULE, library_ids: [10, 20] }
+    const { wrapper } = await mountRules({ expert: [multi] })
+    await wrapper.find('button[title="Lancer un scan"]').trigger('click')
+    await flushAll()
+    expect(api.post).toHaveBeenCalledWith('/libraries/scan-multi', { library_ids: [10, 20] })
+  })
+
+  it('a non-409 scan failure is reported via the generic formatApiError toast', async () => {
+    api.post.mockRejectedValue({ response: { status: 500, data: { detail: 'boom' } } })
+    const { wrapper } = await mountRules({ simple: [SIMPLE_RULE] })
+    await wrapper.find('button[title="Lancer un scan"]').trigger('click')
+    await flushAll()
+    expect(errorEvents.length).toBe(1)
+    expect(errorEvents[0].message).toBe('boom') // formatApiError(500) returns data.detail when present
+  })
+
+  it('renders the notify-only and raw fallback action labels for expert rules', async () => {
+    const notifyOnly = { ...EXPERT_RULE, id: 3, action: 'notify_only' }
+    const unknown = { ...EXPERT_RULE, id: 4, action: 'some_future_action' }
+    const { wrapper } = await mountRules({ expert: [notifyOnly, unknown] })
+    expect(wrapper.text()).toContain('Notifier seulement')
+    expect(wrapper.text()).toContain('some_future_action')
+  })
+
+  it('falls back to summing bare `conditions` when a rule has no condition_groups', async () => {
+    const flat = { ...EXPERT_RULE, id: 5, condition_groups: undefined, conditions: [1, 2, 3] }
+    const { wrapper } = await mountRules({ expert: [flat] })
+    expect(wrapper.text()).toContain('3 condition(s)')
+  })
+
+  it('shows the raw library id when it does not match any known library', async () => {
+    const { wrapper } = await mountRules({ simple: [SIMPLE_RULE], libraries: [] })
+    expect(wrapper.text()).toContain('10') // SIMPLE_RULE.library_id, unresolved
+  })
+
+  it('clicking the delete-confirmation backdrop cancels without deleting', async () => {
+    const { wrapper } = await mountRules({ simple: [SIMPLE_RULE] })
+    await wrapper.find('button[title="Supprimer"]').trigger('click')
+    await flushAll()
+    const backdrop = document.body.querySelector('.fixed.inset-0')
+    expect(backdrop).not.toBeNull()
+    await new DOMWrapper(backdrop).trigger('mousedown')
+    await flushAll()
+    expect(document.body.querySelector('.fixed.inset-0')).toBeNull()
+    expect(api.delete).not.toHaveBeenCalled()
   })
 })

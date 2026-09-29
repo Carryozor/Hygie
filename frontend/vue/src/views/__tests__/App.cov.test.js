@@ -15,6 +15,8 @@ vi.mock('@/api/client', () => ({
 
 import api from '@/api/client'
 import App from '../../App.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useStatusStore } from '@/stores/status'
 
 const SidebarStub = { name: 'SidebarStub', template: '<aside class="stub-sidebar" />' }
 const TopbarStub  = { name: 'TopbarStub',  template: '<header class="stub-topbar" />' }
@@ -109,6 +111,30 @@ describe('App.vue', () => {
     window.dispatchEvent(new Event('hygie:unauthorized'))
     await flushAll()
     expect(api.post).toHaveBeenCalledWith('/auth/logout', expect.anything())
+  })
+
+  it('logging in after mount (watch: isLoggedIn false -> true) starts session polling', async () => {
+    const { pinia } = await mountApp('/login')
+    await flushAll()
+    api.get.mockClear()
+    const auth = useAuthStore(pinia)
+    api.post.mockResolvedValueOnce({ data: { access_token: 'tok', username: 'admin' } })
+    await auth.login('admin', 'secret')
+    await flushAll()
+    expect(api.get).toHaveBeenCalledWith('/auth/me')
+    expect(api.get).toHaveBeenCalledWith('/scheduler/status')
+  })
+
+  it('logging out after mount (watch: isLoggedIn true -> false) stops the status store\'s polling', async () => {
+    setToken('tok')
+    const { pinia } = await mountApp('/queue')
+    await flushAll()
+    const status = useStatusStore(pinia)
+    const stopSpy = vi.spyOn(status, 'stop')
+    const auth = useAuthStore(pinia)
+    await auth.logout()
+    await flushAll()
+    expect(stopSpy).toHaveBeenCalledTimes(1)
   })
 
   it('removes the hygie:unauthorized listener on unmount (no stale handler after navigating away)', async () => {

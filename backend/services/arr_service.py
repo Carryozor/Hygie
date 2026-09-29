@@ -64,6 +64,8 @@ async def test_arr_instance(type_: str, url: str, api_key: str) -> dict:
                     break
         except Exception as e:
             logger.debug("arr_service: could not resolve masked API key for %s: %s", url, e)
+        if key == _MASK:
+            key = ""  # never send the UI placeholder as a real X-Api-Key
 
     if not url or not key:
         return {"ok": False, "message": "URL et clé API requis"}
@@ -156,27 +158,23 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     if not imported_radarr and not imported_sonarr:
         return {"radarr_servers": [], "sonarr_servers": [], "message": "Aucune instance trouvée dans Seerr"}
 
-    def _merge(existing_json: str, imported: list[dict]) -> list[dict]:
+    def _merge(existing_json: str, imported: list[dict]) -> tuple[list[dict], int]:
+        """Return (merged servers, number of newly added servers)."""
         try:
             existing = json.loads(existing_json or "[]") or []
         except Exception:
             existing = []
         existing_urls = {s.get("url", "").rstrip("/") for s in existing}
         new_ones = [s for s in imported if s["url"].rstrip("/") not in existing_urls]
-        return new_ones + existing
+        return new_ones + existing, len(new_ones)
 
     raw_radarr = await get_setting("radarr_servers") or "[]"
     raw_sonarr  = await get_setting("sonarr_servers") or "[]"
-    merged_radarr = _merge(raw_radarr, imported_radarr)
-    merged_sonarr  = _merge(raw_sonarr, imported_sonarr)
+    merged_radarr, added_r = _merge(raw_radarr, imported_radarr)
+    merged_sonarr, added_s = _merge(raw_sonarr, imported_sonarr)
 
     await set_setting("radarr_servers", json.dumps(merged_radarr))
     await set_setting("sonarr_servers", json.dumps(merged_sonarr))
-
-    prev_r = len(json.loads(raw_radarr or "[]") or [])
-    prev_s = len(json.loads(raw_sonarr or "[]") or [])
-    added_r = max(0, len(merged_radarr) - prev_r)
-    added_s = max(0, len(merged_sonarr) - prev_s)
 
     return {
         "radarr_servers": merged_radarr,

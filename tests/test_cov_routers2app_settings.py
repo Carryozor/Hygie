@@ -15,7 +15,6 @@ override). Mounting our own app avoids relying on unrelated reload ordering.
 import json
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 

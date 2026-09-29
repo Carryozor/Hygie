@@ -6,7 +6,6 @@ parameters and only reads module state (`_scheduler`) plus env vars, so a
 direct async call exercises exactly the same code FastAPI would run, without
 needing to build an app just for a no-dependency endpoint.
 """
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest

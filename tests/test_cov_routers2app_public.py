@@ -9,7 +9,6 @@ is a no-auth router so no dependency override is needed, only DB isolation.
 """
 from unittest.mock import patch
 
-import pytest
 import pytest_asyncio
 import os
 

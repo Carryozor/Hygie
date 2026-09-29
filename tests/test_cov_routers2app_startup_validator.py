@@ -6,7 +6,6 @@ checks both touching `issues`).
 """
 from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from backend.startup_validator import StartupValidator, ValidationIssue
 

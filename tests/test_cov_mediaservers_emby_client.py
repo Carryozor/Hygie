@@ -261,10 +261,10 @@ async def test_connection_missing_credentials_reports_message_without_crashing()
     await _db_ms.save_media_servers([{"id": "0", "url": "", "api_key": ""}])
     from backend.emby_client import test_connection
     result = await test_connection(server_id="0")
-    # NOTE: this branch returns a 3-tuple while every other branch returns a
-    # 4-tuple (ok, message, server_type, error_code) — see bug report.
-    assert result[0] is False
-    assert "manquante" in result[1]
+    ok, message, server_type, error_code = result  # same 4-tuple shape as every other branch
+    assert ok is False
+    assert "manquante" in message
+    assert (server_type, error_code) == ("", "")
 
 
 async def test_connection_success_stores_server_uid_from_response(httpx_mock: HTTPXMock):

@@ -120,7 +120,7 @@ async def test_connection(server_id: str = "0") -> tuple[bool, str, str, str]:
     """
     url, key = await get_client(server_id)
     if not url or not key:
-        return False, "URL ou clé API manquante", ""
+        return False, "URL ou clé API manquante", "", ""
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await client.get(f"{url}/System/Info", headers=_auth(key))

@@ -55,12 +55,26 @@ async def _backup_settings() -> tuple[str, int, int]:
 
 # ─── SQLite ───────────────────────────────────────────────────────────────────
 
+def _remove_quietly(path: str) -> None:
+    """Delete a failed/partial backup file so it is never listed as a backup."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        logger.warning("Could not remove partial backup %s: %s", path, e)
+
+
 def _do_sqlite_backup(src_path: str, dst_path: str) -> None:
     """Blocking SQLite online backup via sqlite3.backup() (runs in thread pool)."""
     src = sqlite3.connect(src_path)
     dst = sqlite3.connect(dst_path)
     try:
         src.backup(dst)
+    except BaseException:
+        dst.close()
+        _remove_quietly(dst_path)
+        raise
     finally:
         src.close()
         dst.close()
@@ -99,14 +113,21 @@ def _do_mariadb_backup(host: str, port: int, user: str, password: str, db: str, 
             # the MariaDB client, which rejects them and exits 7.
             db,
         ]
-        with open(dst_path, "wb") as f:
-            result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=300)
+        try:
+            with open(dst_path, "wb") as f:
+                result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, timeout=300)
+        except BaseException:
+            _remove_quietly(dst_path)
+            raise
     finally:
         try:
             os.unlink(tmp_path)
         except Exception:
             pass
     if result.returncode != 0:
+        # A failed dump leaves an empty/truncated file that list_backups() would
+        # show as a valid backup and that retention would count.
+        _remove_quietly(dst_path)
         err = result.stderr.decode(errors="replace")[:500]
         raise RuntimeError(f"mysqldump failed (rc={result.returncode}): {err}")
 
@@ -138,6 +159,7 @@ async def _mariadb_backup(backup_dir: str, ts: str) -> str:
         await loop.run_in_executor(None, _compress)
         return f"hygie_{ts}.sql.gz"
     except Exception as e:
+        _remove_quietly(dst)
         logger.debug("gzip compression failed (%s) — keeping plain SQL dump", e)
         return f"hygie_{ts}.sql"
 

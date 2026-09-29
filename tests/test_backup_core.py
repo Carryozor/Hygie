@@ -237,6 +237,47 @@ def test_do_mariadb_backup_raises_on_nonzero_exit(monkeypatch, tmp_path):
         backup_mod._do_mariadb_backup("dbhost", 3306, "hygie", "wrongpass", "hygie", dst)
 
 
+
+def test_do_mariadb_backup_removes_the_dump_file_on_nonzero_exit(monkeypatch, tmp_path):
+    """A failed dump must not leave a 0-byte file that list_backups() would show
+    as a valid backup and that retention would count."""
+    def _fake_run(cmd, stdout, stderr, timeout):
+        return subprocess.CompletedProcess(cmd, 7, stdout=b"", stderr=b"unknown variable")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    dst = tmp_path / "hygie_20260101_000000.sql"
+
+    with pytest.raises(RuntimeError, match="mysqldump failed"):
+        backup_mod._do_mariadb_backup("dbhost", 3306, "hygie", "pw", "hygie", str(dst))
+
+    assert not dst.exists()
+    assert backup_mod.list_backups(str(tmp_path)) == []
+
+
+def test_do_mariadb_backup_removes_the_partial_dump_on_timeout(monkeypatch, tmp_path):
+    def _fake_run(cmd, stdout, stderr, timeout):
+        stdout.write(b"-- partial dump")
+        raise subprocess.TimeoutExpired(cmd, timeout)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    dst = tmp_path / "hygie_20260101_000000.sql"
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        backup_mod._do_mariadb_backup("dbhost", 3306, "hygie", "pw", "hygie", str(dst))
+
+    assert not dst.exists()
+
+
+def test_do_sqlite_backup_removes_the_destination_on_failure(tmp_path):
+    src = tmp_path / "not_a_db.db"
+    src.write_bytes(b"this is not an sqlite database" * 100)
+    dst = tmp_path / "hygie_20260101_000000.db"
+
+    with pytest.raises(sqlite3.DatabaseError):
+        backup_mod._do_sqlite_backup(str(src), str(dst))
+
+    assert not dst.exists()
+
 # ─── list_backups() ─────────────────────────────────────────────────────────────
 
 def test_list_backups_empty_when_dir_missing(tmp_path):
@@ -289,3 +330,26 @@ def test_mariadb_dump_command_has_no_mysql_only_options(tmp_path, monkeypatch):
     )
     mysql_only = ("--set-gtid-purged", "--column-statistics", "--source-data", "--ssl-mode")
     assert not [a for a in captured["cmd"] if a.startswith(mysql_only)]
+
+
+async def test_mariadb_backup_keeps_plain_dump_and_drops_partial_gzip_when_compression_fails(tmp_path, monkeypatch):
+    import gzip
+    import backend.db.engine as engine_mod
+    monkeypatch.setattr(engine_mod, "DATABASE_URL", "mysql+aiomysql://user:pass@host:3306/hygie")
+
+    def _fake_dump(host, port, user, password, db, dst_path):
+        with open(dst_path, "wb") as f:
+            f.write(b"-- MariaDB dump\n-- Dump completed\n")
+    monkeypatch.setattr(backup_mod, "_do_mariadb_backup", _fake_dump)
+
+    def _broken_gzip_open(path, mode="rb", *a, **kw):
+        with open(path, "wb") as f:
+            f.write(b"\x1f\x8b partial")
+        raise OSError("No space left on device")
+    monkeypatch.setattr(gzip, "open", _broken_gzip_open)
+
+    name = await backup_mod._mariadb_backup(str(tmp_path), "20260101_000000")
+
+    assert name == "hygie_20260101_000000.sql"
+    assert (tmp_path / "hygie_20260101_000000.sql").read_bytes().startswith(b"-- MariaDB dump")
+    assert not (tmp_path / "hygie_20260101_000000.sql.gz").exists()

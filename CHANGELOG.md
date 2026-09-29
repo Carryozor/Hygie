@@ -4,6 +4,29 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **A failed backup left an empty file that was listed — and retained — as a valid backup.** A `mysqldump` failure (non-zero exit or timeout), a failed SQLite online backup or a failed gzip step left a 0-byte or truncated file behind; `list_backups()` showed it and retention counted it, so repeated failures could rotate real backups out in favour of empty ones. Failed or partial files are now removed.
+- **A successful Plex deletion was marked as an error.** `lm("plex.deleted", key=...)` raised `TypeError: lm() got multiple values for argument 'key'` right *after* the item had been deleted from Plex, aborting the pipeline and leaving the queue row in `error`. The same crash turned every successful Plex poster restore into a logged failure. `lm()`'s message id is now positional-only. (No trace in the reference production: no queue row in `error`, no such exception in the logs.)
+- **The Radarr/Sonarr "test" button could send `***` as the API key** when the masked key matched no stored server; it now fails fast with "URL et clé API requis".
+- **Seerr → arr sync returned a 500 after saving** when the stored server list was corrupt JSON (the "N added" count re-parsed it unguarded).
+- **Emby `test_connection` returned a 3-tuple** when URL or key was missing (every other branch returns 4 values).
+- **The "scan already running" toast displayed the raw key `rules.scanAlreadyRunning`** — the translation existed in no locale. Added in all 8.
+- **The dashboard showed zeros instead of an error when statistics failed to load** (the stats store swallows its own errors).
+
+### Tests
+
+- Coverage raised from 64 % to 99 % (backend) and from 8 % to 96.6 % of lines (frontend — previously only files imported by a test were measured, which reported 78 %). About 1,330 backend and 640 frontend tests added, written against behaviour (exact ids/servers targeted by deletions, masked secrets, SSRF guards, failure paths), with mutation checks on the critical ones.
+- CI gates: backend `--cov-fail-under` 60 → 95; frontend coverage thresholds over all of `src/` (lines 95, statements 92, branches 85, functions 88).
+
+### Removed
+
+- `backend/constants.py` and `backend/services/media_service.py` — never imported.
+
+---
+
 ## [4.3.6] — 2026-09-28
 
 ### Fixed

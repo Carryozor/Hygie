@@ -3,7 +3,7 @@
 // 8 locale JSON files it loads: a translation added to fr.json but forgotten
 // in another locale silently falls back to French for that language instead
 // of failing loudly, so the key sets must match exactly.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 

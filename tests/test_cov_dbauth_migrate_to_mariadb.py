@@ -176,6 +176,24 @@ async def test_migrate_dry_run_reads_but_writes_nothing(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def restore_engine_module():
+    """migrate() sets DATABASE_URL and importlib.reload()s backend.db.engine.
+    Reloading again to "clean up" re-executes the module in the SAME namespace,
+    silently swapping the DB that session fixtures (test_client) set up for
+    every later test. Snapshot the module namespace and restore it verbatim."""
+    import backend.db.engine as engine
+    saved = dict(engine.__dict__)
+    saved_env = os.environ.get("DATABASE_URL")
+    yield
+    engine.__dict__.clear()
+    engine.__dict__.update(saved)
+    if saved_env is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = saved_env
+
+
+@pytest.fixture
 def fake_aiomysql_create_pool(monkeypatch):
     """migrate()'s non-dry-run path does `importlib.reload(backend.db.engine)`
     AFTER setting DATABASE_URL, which re-executes the module and would wipe
@@ -198,7 +216,7 @@ def fake_aiomysql_create_pool(monkeypatch):
 
 
 async def test_migrate_skips_tables_absent_from_source(
-    tmp_path, monkeypatch, fake_aiomysql_create_pool
+    tmp_path, monkeypatch, fake_aiomysql_create_pool, restore_engine_module
 ):
     sqlite_path = str(tmp_path / "source.db")
     await _bootstrap_sqlite(sqlite_path, [("k", "v")])  # only "settings" exists
@@ -215,19 +233,13 @@ async def test_migrate_skips_tables_absent_from_source(
     from unittest.mock import AsyncMock
     monkeypatch.setattr(schema, "_init_db_mariadb", AsyncMock())
 
-    import backend.db.engine as engine
-    try:
-        await migrate(sqlite_path, "mysql+aiomysql://u:p@h:3306/db", dry_run=False)
-    finally:
-        os.environ.pop("DATABASE_URL", None)
-        import importlib
-        importlib.reload(engine)
+    await migrate(sqlite_path, "mysql+aiomysql://u:p@h:3306/db", dry_run=False)
 
     assert written == ["settings"]  # every other ORDERED_TABLES entry skipped (not present)
 
 
 async def test_migrate_real_run_initializes_schema_and_writes_present_tables(
-    tmp_path, monkeypatch, fake_aiomysql_create_pool
+    tmp_path, monkeypatch, fake_aiomysql_create_pool, restore_engine_module
 ):
     """Full non-dry-run pipeline: pool init + schema init + per-table write,
     with the actual MariaDB-touching driver call mocked out (no live server)."""
@@ -235,7 +247,6 @@ async def test_migrate_real_run_initializes_schema_and_writes_present_tables(
     await _bootstrap_sqlite(sqlite_path, [("k", "v")])
 
     from unittest.mock import AsyncMock
-    import backend.db.engine as engine
     import backend.db.schema as schema
     import backend.tools.migrate_to_mariadb as mtm
 
@@ -248,15 +259,7 @@ async def test_migrate_real_run_initializes_schema_and_writes_present_tables(
     monkeypatch.setattr(schema, "_init_db_mariadb", init_schema)
     monkeypatch.setattr(mtm, "_write_mariadb_table", fake_write)
 
-    try:
-        await migrate(sqlite_path, "mysql+aiomysql://u:p@h:3306/db", dry_run=False)
-    finally:
-        # migrate() sets os.environ["DATABASE_URL"] and reloads backend.db.engine —
-        # restore SQLite mode so later tests in this process aren't contaminated
-        # (same cleanup as tests/test_mariadb_upsert.py's live round-trip test).
-        os.environ.pop("DATABASE_URL", None)
-        import importlib
-        importlib.reload(engine)
+    await migrate(sqlite_path, "mysql+aiomysql://u:p@h:3306/db", dry_run=False)
 
     init_schema.assert_awaited_once()
     assert written == [("settings", 1)]

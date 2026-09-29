@@ -9,8 +9,8 @@ App de nettoyage de médiathèque (Emby/Jellyfin/Plex + *arr). Backend FastAPI (
 | Action | Commande |
 |---|---|
 | Dev backend | `make dev` (uvicorn :8000) |
-| Tests backend | `make test` (pytest ; CI : `--cov-fail-under=60 --timeout=60`) |
-| Tests frontend | `cd frontend/vue && npm run test:unit` |
+| Tests backend | `make test` (pytest ; CI : `--cov-fail-under=95 --timeout=60`) |
+| Tests frontend | `cd frontend/vue && npm run test:unit` (CI : `-- --coverage`, seuils dans `vite.config.js`) |
 | Lint | `make lint-all` (ruff + eslint) |
 | Parité schémas | `make check-schema` — obligatoire après tout changement DB |
 | Build image | `make build` |

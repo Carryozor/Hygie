@@ -33,5 +33,15 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.js'],
     include: ['src/**/*.test.js'],
     exclude: ['e2e/**', 'node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      // Measure ALL of src/, not just files a test happens to import —
+      // otherwise untested views/components silently don't count.
+      include: ['src/**/*.{js,vue}'],
+      exclude: ['src/**/__tests__/**', 'src/test-setup.js'],
+      // Ratchet: measured 2026-09-29 at lines 96.6 / statements 94.7 /
+      // branches 88.6 / functions 90.7. Raise, never lower.
+      thresholds: { lines: 95, statements: 92, branches: 85, functions: 88 },
+    },
   },
 })

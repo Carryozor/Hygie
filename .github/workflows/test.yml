@@ -50,7 +50,7 @@ jobs:
           python3 -m pytest -q --tb=short --timeout=60 \
             --cov=backend \
             --cov-report=term-missing \
-            --cov-fail-under=60
+            --cov-fail-under=95
 
       - name: Lint (ruff)
         run: python3 -m ruff check backend/ tests/
@@ -87,9 +87,9 @@ jobs:
         working-directory: frontend/vue
         run: npm ci
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage gate
         working-directory: frontend/vue
-        run: npm run test:unit
+        run: npm run test:unit -- --coverage
 
       - name: Lint
         working-directory: frontend/vue

@@ -368,15 +368,27 @@ describe('ServersTab', () => {
   it('scheduleAutoDetect re-tests the server 800ms after its URL changes, and updates the type on a positive detection', async () => {
     vi.useFakeTimers()
     api.get.mockResolvedValueOnce({ data: [{ ...MASKED_SERVER, type: '' }] })
-    api.post.mockResolvedValue({ data: { ok: true } })
+    // Keyed on the URL, not on call order: any other POST (e.g. an initial
+    // connection test) must not consume the detection response.
+    let detected = false
+    api.post.mockImplementation(url => Promise.resolve(
+      url === '/settings/media-servers/5/test' && detected
+        ? { data: { ok: true, server_type: 'jellyfin' } }
+        : { data: { ok: true } },
+    ))
     const wrapper = mountTab()
     await flushPromises()
-    api.post.mockResolvedValueOnce({ data: { ok: true, server_type: 'jellyfin' } })
+    const typeSelect = wrapper.findAll('select').find(sel => sel.findAll('option').some(o => o.element.value === 'jellyfin'))
+    expect(typeSelect.element.value).not.toBe('jellyfin')
+    detected = true
+    api.post.mockClear()
     await wrapper.find('input[placeholder="http://192.168.1.10:8096"]').setValue('http://newhost:8096')
-    await vi.advanceTimersByTimeAsync(800)
+    await vi.advanceTimersByTimeAsync(799)
+    expect(api.post).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
     await flushPromises()
     expect(api.post).toHaveBeenCalledWith('/settings/media-servers/5/test')
-    expect(wrapper.text()).toContain('jellyfin')
+    expect(typeSelect.element.value).toBe('jellyfin')
     vi.useRealTimers()
   })
 

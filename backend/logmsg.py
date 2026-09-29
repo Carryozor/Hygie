@@ -29,8 +29,12 @@ def _load(lang: str) -> dict[str, str]:
     return _cache[lang]
 
 
-def lm(key: str, **params: Any) -> str:
-    """Return a translated log message for the current UI language."""
+def lm(key: str, /, **params: Any) -> str:
+    """Return a translated log message for the current UI language.
+
+    `key` is positional-only so templates may use a {key} placeholder
+    (e.g. lm("plex.deleted", key=rating_key)).
+    """
     from .db.settings_store import get_language_sync
     lang = get_language_sync()
     msgs = _load(lang)

@@ -8,7 +8,6 @@ import os
 os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
 
-import pytest
 from pytest_httpx import HTTPXMock
 
 from backend.arr_clients.shared import (

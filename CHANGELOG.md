@@ -6,6 +6,10 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Service layer introduced on one pilot router.** Storage aggregation (Radarr/Sonarr calls, disk/library/queue stats) moved from `routers/storage.py` to `services/storage_service.py`; the router keeps auth, cache and the stale-while-revalidate logic. No behaviour change (response shape, cache, timeouts identical); characterization tests added.
+
 ### Fixed
 
 - **A failed backup left an empty file that was listed — and retained — as a valid backup.** A `mysqldump` failure (non-zero exit or timeout), a failed SQLite online backup or a failed gzip step left a 0-byte or truncated file behind; `list_backups()` showed it and retention counted it, so repeated failures could rotate real backups out in favour of empty ones. Failed or partial files are now removed.

@@ -3,16 +3,11 @@ import asyncio
 import logging
 import time
 
-import httpx
 from fastapi import APIRouter, Depends
 
 from ..auth import require_auth
-from ..db.utils import TIMEOUT_MEDIUM
-from ..db.engine import get_db
 from ..db.repositories import get_status_counts, get_radarr_ids
-from ..db.settings_store import get_setting
-from ..arr_clients.shared import _arr_auth
-from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
+from ..services.storage_service import collect_storage_data
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 logger = logging.getLogger(__name__)
@@ -52,143 +47,14 @@ async def cancel_storage_refresh() -> None:
 
 
 async def _fetch_storage_data() -> dict:
-    """Fetch fresh storage data from Radarr/Sonarr + SQLite. Updates cache in place."""
+    """Fetch fresh storage data via the service and update the cache in place.
 
-    radarr_url = (await get_setting("radarr_url") or "").rstrip("/")
-    radarr_key = await get_setting("radarr_api_key") or ""
-    sonarr_url = (await get_setting("sonarr_url") or "").rstrip("/")
-    sonarr_key = await get_setting("sonarr_api_key") or ""
-
-    disks: list = []
-    movies: dict = {}
-    series: dict = {}
-    total_media_size: int = 0
-    radarr_movies_by_id: dict = {}
-
-    async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
-
-        async def _get(url: str, headers: dict):
-            """Safe GET — returns None on any error."""
-            try:
-                r = await c.get(url, headers=headers)
-                return r if r.status_code == 200 else None
-            except Exception:
-                return None
-
-        async def _noop() -> None:
-            return None
-
-        # ── All 4 requests in parallel ────────────────────────────────────
-        r_disk_task   = _get(f"{radarr_url}/api/v3/diskspace", _arr_auth(radarr_key)) if radarr_url and radarr_key else _noop()
-        r_movie_task  = _get(f"{radarr_url}/api/v3/movie",     _arr_auth(radarr_key)) if radarr_url and radarr_key else _noop()
-        s_disk_task   = _get(f"{sonarr_url}/api/v3/diskspace", _arr_auth(sonarr_key)) if sonarr_url and sonarr_key else _noop()
-        s_series_task = _get(f"{sonarr_url}/api/v3/series",    _arr_auth(sonarr_key)) if sonarr_url and sonarr_key else _noop()
-
-        rd, rm, sd, rs = await asyncio.gather(r_disk_task, r_movie_task, s_disk_task, s_series_task)
-
-        # ── Process Radarr ────────────────────────────────────────────────
-        if rd:
-            for disk in rd.json():
-                disks.append({
-                    "path": disk.get("path", "?"),
-                    "label": disk.get("label", ""),
-                    "source": "Radarr",
-                    "total": disk.get("totalSpace", 0),
-                    "free": disk.get("freeSpace", 0),
-                    "accessible": disk.get("accessible", True),
-                })
-        if rm:
-            all_movies = rm.json()
-            radarr_movies_by_id = {m["id"]: m for m in all_movies}
-            total_in_lib = len(all_movies)
-            with_file = sum(1 for m in all_movies if m.get("hasFile"))
-            mon = sum(1 for m in all_movies if m.get("monitored"))
-            size = sum(m.get("sizeOnDisk", 0) or 0 for m in all_movies)
-            movies = {
-                "total_in_library": total_in_lib,
-                "count": with_file,
-                "monitored": mon,
-                "unmonitored": total_in_lib - mon,
-                "size": size,
-            }
-            total_media_size += size
-
-        # ── Process Sonarr ────────────────────────────────────────────────
-        if sd:
-            existing_paths = {d["path"] for d in disks}
-            for disk in sd.json():
-                if disk.get("path", "?") not in existing_paths:
-                    disks.append({
-                        "path": disk.get("path", "?"),
-                        "label": disk.get("label", ""),
-                        "source": "Sonarr",
-                        "total": disk.get("totalSpace", 0),
-                        "free": disk.get("freeSpace", 0),
-                        "accessible": disk.get("accessible", True),
-                    })
-        if rs:
-            all_series = rs.json()
-            count = len(all_series)
-            mon = sum(1 for s in all_series if s.get("monitored"))
-            eps_on_disk = sum(s.get("statistics", {}).get("episodeFileCount", 0) or 0 for s in all_series)
-            eps_total = sum(s.get("statistics", {}).get("totalEpisodeCount", 0) or 0 for s in all_series)
-            eps_aired = sum(s.get("statistics", {}).get("episodeCount", 0) or 0 for s in all_series)
-            size = sum(s.get("statistics", {}).get("sizeOnDisk", 0) or 0 for s in all_series)
-            series = {
-                "count": count,
-                "monitored": mon,
-                "unmonitored": count - mon,
-                "episodes": eps_on_disk,
-                "episodes_aired": eps_aired,
-                "episodes_total": eps_total,
-                "size": size,
-            }
-            total_media_size += size
-
-    # ── Queue stats ────────────────────────────────────────────────────────
-    queue: dict = {
-        "pending": 0,
-        "deleted": 0,
-        "excluded": 0,
-        "error": 0,
-        "reclaimable_size": 0,
-        "reclaimable_count": 0,
-    }
-    try:
-        status_counts = await get_status_counts()
-        for s in (STATUS_PENDING, STATUS_DELETED, STATUS_ERROR):
-            queue[s] = status_counts.get(s, 0)
-
-        async with get_db() as db:
-            # Excluded (ignored)
-            excl_row = await db.fetch_one("SELECT COUNT(*) AS cnt FROM ignored_media")
-            queue["excluded"] = excl_row["cnt"] if excl_row else 0
-
-        # Reclaimable: sum sizeOnDisk for pending movies still in Radarr
-        if radarr_movies_by_id:
-            pending_radarr_ids = await get_radarr_ids(status=STATUS_PENDING)
-            reclaimable = 0
-            count_reclaimable = 0
-            for rid in pending_radarr_ids:
-                movie = radarr_movies_by_id.get(rid)
-                if movie:
-                    reclaimable += movie.get("sizeOnDisk", 0) or 0
-                    count_reclaimable += 1
-            queue["reclaimable_size"] = reclaimable
-            queue["reclaimable_count"] = count_reclaimable
-            if not pending_radarr_ids:
-                queue["reclaimable_count"] = queue[STATUS_PENDING]
-
-    except Exception as e:
-        logger.warning(f"Queue stats: {e}")
-
-    result = {
-        "disks": disks,
-        "movies": movies,
-        "series": series,
-        "total_media_size": total_media_size,
-        "queue": queue,
-    }
+    get_status_counts / get_radarr_ids are passed explicitly from this module's
+    globals so `patch("backend.routers.storage.<name>")` stays effective.
+    """
+    result = await collect_storage_data(
+        get_status_counts=get_status_counts, get_radarr_ids=get_radarr_ids
+    )
     _storage_cache.update({"data": result, "ts": time.time()})
     return result
 

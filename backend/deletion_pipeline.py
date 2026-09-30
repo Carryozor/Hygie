@@ -85,7 +85,7 @@ class DeletionContext:
         """True for the consolidated season/series queue entries produced by
         deletion_unit=season|series — one row stands in for a whole group of
         episodes and carries sonarr_series_id but no per-item sonarr_id."""
-        from .deletion import _is_consolidated_row
+        from .deletion_helpers import _is_consolidated_row
         return _is_consolidated_row(self.item)
 
 
@@ -139,10 +139,10 @@ class TorrentHashStep(DeletionStep):
             return
         try:
             if ctx.is_consolidated:
-                from .deletion import _find_torrent_hashes_consolidated
+                from .deletion_helpers import _find_torrent_hashes_consolidated
                 ctx.torrent_hashes = await _find_torrent_hashes_consolidated(ctx.item)
             else:
-                from .deletion import _find_torrent_hash
+                from .deletion_helpers import _find_torrent_hash
                 ctx.torrent_hash = await _find_torrent_hash(ctx.item)
         except Exception as e:
             logger.info("TorrentHashStep: hash unavailable for '%s' (qBit step will be skipped): %s", ctx.title, e)
@@ -288,7 +288,7 @@ class ArrStep(DeletionStep):
     async def execute(self, ctx: DeletionContext) -> None:
         if ctx.dry_run:
             return
-        from .deletion import _delete_from_arr
+        from .deletion_helpers import _delete_from_arr
         ok = await _delete_from_arr(ctx.item)
         if not ok:
             raise RuntimeError(f"arr delete failed for '{ctx.title}'")
@@ -300,7 +300,7 @@ class SeerrStep(DeletionStep):
     async def execute(self, ctx: DeletionContext) -> None:
         if ctx.dry_run:
             return
-        from .deletion import _delete_from_seerr
+        from .deletion_helpers import _delete_from_seerr
         await _delete_from_seerr(ctx.item)
 
 
@@ -316,7 +316,7 @@ class QbitStep(DeletionStep):
             return
         from .db.logs import add_log
         from .logmsg import lm
-        from .deletion import _handle_qbit
+        from .deletion_helpers import _handle_qbit
 
         if ctx.torrent_hashes:
             for torrent_hash in ctx.torrent_hashes:

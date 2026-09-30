@@ -39,9 +39,9 @@ async def test_find_torrent_hash_movie_uses_stored_radarr_id():
 
     row = _movie_row(radarr_id=42)
     with (
-        patch("backend.deletion.radarr_get_torrent_hash_any", new=AsyncMock(return_value="hash-by-id")) as by_id,
-        patch("backend.deletion.radarr_find_by_path", new=AsyncMock()) as by_path,
-        patch("backend.deletion.qbit_find_by_path", new=AsyncMock()) as by_qbit,
+        patch("backend.deletion_helpers.radarr_get_torrent_hash_any", new=AsyncMock(return_value="hash-by-id")) as by_id,
+        patch("backend.deletion_helpers.radarr_find_by_path", new=AsyncMock()) as by_path,
+        patch("backend.deletion_helpers.qbit_find_by_path", new=AsyncMock()) as by_qbit,
     ):
         result = await _find_torrent_hash(row)
 
@@ -56,11 +56,11 @@ async def test_find_torrent_hash_movie_falls_back_to_radarr_path_match():
 
     row = _movie_row(radarr_id=None)
     with (
-        patch("backend.deletion.radarr_find_by_path",
+        patch("backend.deletion_helpers.radarr_find_by_path",
               new=AsyncMock(return_value=(99, "http://radarr", "key"))),
-        patch("backend.deletion.radarr_get_torrent_hash",
+        patch("backend.deletion_helpers.radarr_get_torrent_hash",
               new=AsyncMock(return_value="hash-by-path")) as by_hash,
-        patch("backend.deletion.qbit_find_by_path", new=AsyncMock()) as by_qbit,
+        patch("backend.deletion_helpers.qbit_find_by_path", new=AsyncMock()) as by_qbit,
     ):
         result = await _find_torrent_hash(row)
 
@@ -76,8 +76,8 @@ async def test_find_torrent_hash_movie_falls_back_to_qbit_path_when_radarr_has_n
 
     row = _movie_row(radarr_id=None)
     with (
-        patch("backend.deletion.radarr_find_by_path", new=AsyncMock(return_value=None)),
-        patch("backend.deletion.qbit_find_by_path", new=AsyncMock(return_value="hash-by-qbit")) as by_qbit,
+        patch("backend.deletion_helpers.radarr_find_by_path", new=AsyncMock(return_value=None)),
+        patch("backend.deletion_helpers.qbit_find_by_path", new=AsyncMock(return_value="hash-by-qbit")) as by_qbit,
     ):
         result = await _find_torrent_hash(row)
 
@@ -92,8 +92,8 @@ async def test_find_torrent_hash_episode_uses_stored_sonarr_id():
 
     row = _episode_row(sonarr_id=901)
     with (
-        patch("backend.deletion.sonarr_get_torrent_hash", new=AsyncMock(return_value="ep-hash")) as by_id,
-        patch("backend.deletion.sonarr_find_by_path", new=AsyncMock()) as by_path,
+        patch("backend.deletion_helpers.sonarr_get_torrent_hash", new=AsyncMock(return_value="ep-hash")) as by_id,
+        patch("backend.deletion_helpers.sonarr_find_by_path", new=AsyncMock()) as by_path,
     ):
         result = await _find_torrent_hash(row)
 
@@ -107,8 +107,8 @@ async def test_find_torrent_hash_episode_falls_back_to_sonarr_path_match():
 
     row = _episode_row(sonarr_id=None)
     with (
-        patch("backend.deletion.sonarr_find_by_path", new=AsyncMock(return_value=901)),
-        patch("backend.deletion.sonarr_get_torrent_hash", new=AsyncMock(return_value="ep-hash-2")) as by_hash,
+        patch("backend.deletion_helpers.sonarr_find_by_path", new=AsyncMock(return_value=901)),
+        patch("backend.deletion_helpers.sonarr_get_torrent_hash", new=AsyncMock(return_value="ep-hash-2")) as by_hash,
     ):
         result = await _find_torrent_hash(row)
 
@@ -121,8 +121,8 @@ async def test_find_torrent_hash_returns_none_without_any_match_or_path():
 
     row = _episode_row(sonarr_id=None, file_path="")
     with (
-        patch("backend.deletion.sonarr_find_by_path", new=AsyncMock(return_value=None)),
-        patch("backend.deletion.qbit_find_by_path", new=AsyncMock()) as by_qbit,
+        patch("backend.deletion_helpers.sonarr_find_by_path", new=AsyncMock(return_value=None)),
+        patch("backend.deletion_helpers.qbit_find_by_path", new=AsyncMock()) as by_qbit,
     ):
         result = await _find_torrent_hash(row)
 
@@ -166,9 +166,9 @@ async def test_delete_from_arr_movie_deletes_via_path_match_when_found():
 
     row = _movie_row(radarr_id=None)
     with (
-        patch("backend.deletion.radarr_find_by_path",
+        patch("backend.deletion_helpers.radarr_find_by_path",
               new=AsyncMock(return_value=(99, "http://radarr", "key"))),
-        patch("backend.deletion.radarr_delete", new=AsyncMock(return_value=True)) as mock_delete,
+        patch("backend.deletion_helpers.radarr_delete", new=AsyncMock(return_value=True)) as mock_delete,
     ):
         ok = await _delete_from_arr(row)
 
@@ -181,9 +181,9 @@ async def test_delete_from_arr_movie_path_match_failure_returns_false():
 
     row = _movie_row(radarr_id=None)
     with (
-        patch("backend.deletion.radarr_find_by_path",
+        patch("backend.deletion_helpers.radarr_find_by_path",
               new=AsyncMock(return_value=(99, "http://radarr", "key"))),
-        patch("backend.deletion.radarr_delete", new=AsyncMock(return_value=False)),
+        patch("backend.deletion_helpers.radarr_delete", new=AsyncMock(return_value=False)),
     ):
         ok = await _delete_from_arr(row)
 
@@ -197,9 +197,9 @@ async def test_delete_from_arr_episode_deletes_via_path_match_when_found():
 
     row = _episode_row(sonarr_id=None, sonarr_series_id=None, season_number=None)
     with (
-        patch("backend.deletion.sonarr_find_by_path_full",
+        patch("backend.deletion_helpers.sonarr_find_by_path_full",
               new=AsyncMock(return_value=(55, "http://sonarr", "key"))),
-        patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock(return_value=True)) as mock_delete,
+        patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock(return_value=True)) as mock_delete,
     ):
         ok = await _delete_from_arr(row)
 
@@ -214,8 +214,8 @@ async def test_delete_from_arr_episode_returns_true_when_never_matched_in_sonarr
 
     row = _episode_row(sonarr_id=None, sonarr_series_id=None, season_number=None)
     with (
-        patch("backend.deletion.sonarr_find_by_path_full", new=AsyncMock(return_value=None)),
-        patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock()) as mock_delete,
+        patch("backend.deletion_helpers.sonarr_find_by_path_full", new=AsyncMock(return_value=None)),
+        patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock()) as mock_delete,
     ):
         ok = await _delete_from_arr(row)
 

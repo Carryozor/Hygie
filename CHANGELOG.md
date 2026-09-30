@@ -23,6 +23,10 @@ All notable changes to Hygie are documented here.
 - **An invalid `discord_notif_thresholds` (`abc`, `7;1`, `7j,1j`) silently disabled every pre-deletion Discord alert.** The parser kept only `isdigit()` tokens, so such values parsed to `[]` with no error (the fallback `except` was unreachable), and the same parsing was duplicated in the scanner's pre-mark step. There is now one shared parser (`db/settings_store.py`): an empty value still means "alerts disabled" (no warning), invalid tokens are ignored with a WARNING, and a non-empty value with no valid threshold falls back to `7,1` with a WARNING. Saving the setting now returns HTTP 422 (French message listing the invalid tokens) instead of storing such a value.
 - **SQLite DDL aligned on MariaDB (production unchanged).** New SQLite installs now get `expert_rules.library_id TEXT`, nullable `expert_rules.created_at` / `notifications.sent_at` (defaults kept), `media_queue.plex_rating_key DEFAULT NULL`, and `idx_plex_overlays_server`, which `_SQLITE_INDEXES` listed but `init_db()` never created (init now loops over that list, so both can no longer diverge). Existing SQLite databases keep their old table DDL (no rebuild); they only gain the missing index. Tests prove the app handles NULL `plex_rating_key` and both `library_id` flavours.
 
+### Changed
+
+- `run_deletion` split into small single-purpose functions and the `deletion` ↔ `deletion_pipeline` import cycle broken (shared helpers moved to `backend/deletion_helpers.py`, re-exported from `backend.deletion`); behaviour unchanged, call-order characterization tests added.
+
 ### Tests
 
 - Coverage raised from 64 % to 99 % (backend) and from 8 % to 96.6 % of lines (frontend — previously only files imported by a test were measured, which reported 78 %). About 1,330 backend and 640 frontend tests added, written against behaviour (exact ids/servers targeted by deletions, masked secrets, SSRF guards, failure paths), with mutation checks on the critical ones.

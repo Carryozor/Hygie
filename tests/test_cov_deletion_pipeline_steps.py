@@ -93,7 +93,7 @@ async def test_size_lookup_step_records_warning_instead_of_raising_on_failure():
 async def test_torrent_hash_step_records_warning_on_single_item_failure():
     item = _movie_item(sonarr_series_id=None, sonarr_id=None)
     ctx = DeletionContext(item=item, dry_run=False)
-    with patch("backend.deletion._find_torrent_hash",
+    with patch("backend.deletion_helpers._find_torrent_hash",
                new=AsyncMock(side_effect=RuntimeError("history unavailable"))):
         await TorrentHashStep().execute(ctx)  # must not raise
     assert ctx.torrent_hash is None
@@ -103,7 +103,7 @@ async def test_torrent_hash_step_records_warning_on_single_item_failure():
 async def test_torrent_hash_step_records_warning_on_consolidated_failure():
     item = _movie_item(media_type="Episode", radarr_id=None, sonarr_series_id=274, sonarr_id=None)
     ctx = DeletionContext(item=item, dry_run=False)
-    with patch("backend.deletion._find_torrent_hashes_consolidated",
+    with patch("backend.deletion_helpers._find_torrent_hashes_consolidated",
                new=AsyncMock(side_effect=RuntimeError("sonarr down"))):
         await TorrentHashStep().execute(ctx)  # must not raise
     assert ctx.torrent_hashes == set()
@@ -209,14 +209,14 @@ async def test_media_server_step_consolidated_returns_without_series_path():
 
 async def test_arr_step_skipped_in_dry_run():
     ctx = DeletionContext(item=_movie_item(), dry_run=True)
-    with patch("backend.deletion._delete_from_arr", new=AsyncMock()) as mock_delete:
+    with patch("backend.deletion_helpers._delete_from_arr", new=AsyncMock()) as mock_delete:
         await ArrStep().execute(ctx)
     mock_delete.assert_not_awaited()
 
 
 async def test_seerr_step_skipped_in_dry_run():
     ctx = DeletionContext(item=_movie_item(), dry_run=True)
-    with patch("backend.deletion._delete_from_seerr", new=AsyncMock()) as mock_delete:
+    with patch("backend.deletion_helpers._delete_from_seerr", new=AsyncMock()) as mock_delete:
         await SeerrStep().execute(ctx)
     mock_delete.assert_not_awaited()
 
@@ -224,7 +224,7 @@ async def test_seerr_step_skipped_in_dry_run():
 async def test_qbit_step_skipped_in_dry_run():
     ctx = DeletionContext(item=_movie_item(), dry_run=True)
     ctx.torrent_hash = "some-hash"
-    with patch("backend.deletion._handle_qbit", new=AsyncMock()) as mock_handle:
+    with patch("backend.deletion_helpers._handle_qbit", new=AsyncMock()) as mock_handle:
         await QbitStep().execute(ctx)
     mock_handle.assert_not_awaited()
 

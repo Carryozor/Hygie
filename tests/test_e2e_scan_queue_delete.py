@@ -237,9 +237,9 @@ async def test_delete_fires_after_grace(isolated_db):
 
     with (
         patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
-        patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
-        patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
+        patch("backend.deletion_helpers._delete_from_arr", new_callable=AsyncMock, return_value=True),
+        patch("backend.deletion_helpers._delete_from_seerr", new_callable=AsyncMock),
+        patch("backend.deletion_helpers._find_torrent_hash", new_callable=AsyncMock, return_value=None),
         patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
         patch("backend.deletion.send_notification", new_callable=AsyncMock),
         patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),
@@ -330,9 +330,9 @@ async def test_full_scan_then_delete(isolated_db):
 
     with (
         patch("backend.emby_client.delete_item", new_callable=AsyncMock, side_effect=_capture_delete),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
-        patch("backend.deletion._delete_from_seerr", new_callable=AsyncMock),
-        patch("backend.deletion._find_torrent_hash", new_callable=AsyncMock, return_value=None),
+        patch("backend.deletion_helpers._delete_from_arr", new_callable=AsyncMock, return_value=True),
+        patch("backend.deletion_helpers._delete_from_seerr", new_callable=AsyncMock),
+        patch("backend.deletion_helpers._find_torrent_hash", new_callable=AsyncMock, return_value=None),
         patch("backend.deletion.get_client", new_callable=AsyncMock, return_value=("http://emby:8096", "apikey")),
         patch("backend.deletion.send_notification", new_callable=AsyncMock),
         patch("backend.deletion.sync_emby_collection", new_callable=AsyncMock),

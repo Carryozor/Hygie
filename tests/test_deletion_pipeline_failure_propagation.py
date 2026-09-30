@@ -92,20 +92,20 @@ async def test_media_server_step_consolidated_raises_when_emby_delete_fails():
 
 async def test_arr_step_raises_when_radarr_delete_fails():
     ctx = DeletionContext(item=_movie_item(), dry_run=False)
-    with patch("backend.deletion.radarr_delete_by_id", new=AsyncMock(return_value=False)):
+    with patch("backend.deletion_helpers.radarr_delete_by_id", new=AsyncMock(return_value=False)):
         with pytest.raises(Exception):
             await ArrStep().execute(ctx)
 
 
 async def test_arr_step_succeeds_when_radarr_delete_succeeds():
     ctx = DeletionContext(item=_movie_item(), dry_run=False)
-    with patch("backend.deletion.radarr_delete_by_id", new=AsyncMock(return_value=True)):
+    with patch("backend.deletion_helpers.radarr_delete_by_id", new=AsyncMock(return_value=True)):
         await ArrStep().execute(ctx)  # must not raise
 
 
 async def test_arr_step_raises_when_sonarr_episode_delete_fails():
     ctx = DeletionContext(item=_episode_item(), dry_run=False)
-    with patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock(return_value=False)):
+    with patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock(return_value=False)):
         with pytest.raises(Exception):
             await ArrStep().execute(ctx)
 
@@ -114,13 +114,13 @@ async def test_arr_step_raises_when_sonarr_episode_delete_fails():
 
 async def test_delete_from_arr_returns_false_on_radarr_failure():
     row = _movie_item()
-    with patch("backend.deletion.radarr_delete_by_id", new=AsyncMock(return_value=False)):
+    with patch("backend.deletion_helpers.radarr_delete_by_id", new=AsyncMock(return_value=False)):
         assert await _delete_from_arr(row) is False
 
 
 async def test_delete_from_arr_returns_true_on_radarr_success():
     row = _movie_item()
-    with patch("backend.deletion.radarr_delete_by_id", new=AsyncMock(return_value=True)):
+    with patch("backend.deletion_helpers.radarr_delete_by_id", new=AsyncMock(return_value=True)):
         assert await _delete_from_arr(row) is True
 
 
@@ -129,17 +129,17 @@ async def test_delete_from_arr_returns_true_when_movie_has_no_arr_link():
     the item may have been added to Hygie's queue without ever having a
     Radarr entry (e.g. manually imported media)."""
     row = _movie_item(radarr_id=None)
-    with patch("backend.deletion.radarr_find_by_path", new=AsyncMock(return_value=None)):
+    with patch("backend.deletion_helpers.radarr_find_by_path", new=AsyncMock(return_value=None)):
         assert await _delete_from_arr(row) is True
 
 
 async def test_delete_from_arr_returns_false_on_sonarr_episode_failure():
     row = _episode_item()
-    with patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock(return_value=False)):
+    with patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock(return_value=False)):
         assert await _delete_from_arr(row) is False
 
 
 async def test_delete_from_arr_returns_true_on_sonarr_episode_success():
     row = _episode_item()
-    with patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock(return_value=True)):
+    with patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock(return_value=True)):
         assert await _delete_from_arr(row) is True

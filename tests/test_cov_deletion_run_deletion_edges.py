@@ -140,7 +140,7 @@ async def test_run_deletion_falls_back_to_default_threshold_on_malformed_setting
     with (
         patch("backend.deletion.delete_item", new_callable=AsyncMock, return_value=True),
         patch("backend.emby_client.delete_item", new_callable=AsyncMock, return_value=True),
-        patch("backend.deletion._delete_from_arr", new_callable=AsyncMock, return_value=True),
+        patch("backend.deletion_helpers._delete_from_arr", new_callable=AsyncMock, return_value=True),
         patch("backend.deletion.send_alert", new_callable=AsyncMock),
         patch.multiple("backend.deletion", **_base_patches()),
     ):

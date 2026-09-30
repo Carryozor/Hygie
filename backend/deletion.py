@@ -2,6 +2,7 @@
 """Deletion job: process queue, notify, delete across all services, cleanup."""
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 
@@ -18,14 +19,10 @@ from .db.repositories import (
     delete_stale_deleted, delete_by_id,
     update_activity_log_batch, update_consolidated_watch_state,
 )
-from .arr_clients import (
-    radarr_delete, radarr_find_by_path, radarr_get_torrent_hash,
-    radarr_delete_by_id, radarr_get_torrent_hash_any,
-    seerr_delete_request, sonarr_delete_episode_file, sonarr_delete_season,
-    sonarr_delete_series, sonarr_find_by_path, sonarr_find_by_path_full,
-    sonarr_get_torrent_hash,
+from .deletion_helpers import (  # noqa: F401 - re-exported: tests and callers reach these helpers through this module's namespace
+    _delete_from_arr, _delete_from_seerr, _find_torrent_hash,
+    _find_torrent_hashes_consolidated, _handle_qbit, _is_consolidated_row,
 )
-from .qbit_client import qbit_add_tag, qbit_delete_torrent, qbit_find_by_path
 from .discord_client import send_alert, send_notification  # noqa: F401 - send_notification unused directly, but mock.patch("backend.deletion.send_notification") targets require it re-imported here
 from .notifications import _send_pending_notifications
 from .collection import sync_emby_collection
@@ -184,6 +181,167 @@ async def _rescue_watched_since_queued(rows: list) -> list:
     return keep
 
 
+@dataclass(frozen=True)
+class _BatchConfig:
+    """Settings read once for a whole deletion batch."""
+    dry_run: bool
+    run_id: int
+    qbit_action: str
+    qbit_tag: str
+    alert_on_error: bool
+    mention: str
+    msg_tpl: str
+    alert_threshold: int
+
+
+@dataclass
+class _JobOutcome:
+    """Final job-run status, written progressively so that the `finally` block
+    reports exactly how far the run got (status flips to "success" before the
+    closing log and the collection sync, as it always did)."""
+    status: str = "error"
+    msg: str = ""
+
+
+async def _load_library_server_map() -> dict:
+    """Pre-load library→server_id map (avoids per-item DB queries)."""
+    async with get_db() as _lib_db:
+        _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
+    return {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
+
+
+async def _select_items_to_delete(lib_server_map: dict) -> list:
+    """Pending rows that may really be deleted now.
+
+    Last-chance guard before any file is touched: the watch state of the due
+    items is re-read from the media server, then anything played since it was
+    queued is rescued, never deleted.
+    """
+    due = await _refresh_watch_state_before_deletion(
+        [dict(r) for r in await get_pending_queue()], lib_server_map
+    )
+    due = await _rescue_watched_since_queued(due)
+    return [
+        {**dict(r), "_server_id": lib_server_map.get(r.get("library_id"), "0")}
+        for r in due
+    ]
+
+
+async def _load_batch_config(dry_run: bool, run_id: int) -> _BatchConfig:
+    """Read the qbit and Discord-alert settings once for the whole batch."""
+    qbit_action = await get_setting("qbit_action") or "tag_only"
+    qbit_tag    = await get_setting("qbit_tag")    or "Supprimé-Hygie"
+    alert_on_error = await get_bool_setting("discord_alert_deletion_error")
+    mention     = await get_setting("discord_alert_deletion_error_mention") or ""
+    msg_tpl     = await get_setting("discord_alert_deletion_error_msg")    or ""
+    try:
+        threshold = int(await get_setting("discord_alert_error_threshold") or "3")
+    except (ValueError, TypeError):
+        threshold = 3
+    return _BatchConfig(
+        dry_run=dry_run, run_id=run_id, qbit_action=qbit_action, qbit_tag=qbit_tag,
+        alert_on_error=alert_on_error, mention=mention, msg_tpl=msg_tpl,
+        alert_threshold=threshold,
+    )
+
+
+async def _alert_item_failure(row: dict, cfg: _BatchConfig) -> None:
+    title = row.get("title", "?")
+    await send_alert(
+        f"❌ Échec suppression : {title}",
+        f"La suppression de **{title}** a échoué.",
+        "error",
+        mention=cfg.mention, custom_msg=cfg.msg_tpl,
+        template_vars={"title": title, "detail": f"Échec suppression de {title}"},
+    )
+
+
+async def _delete_one(
+    row: dict, cfg: _BatchConfig, sem: asyncio.Semaphore, counters: dict,
+) -> Optional[bool]:
+    async with sem:
+        # Dry-run simulates only: no claim, no status change.
+        if cfg.dry_run:
+            return await _delete_media(
+                row, True,
+                qbit_action=cfg.qbit_action, qbit_tag_val=cfg.qbit_tag, run_id=cfg.run_id,
+            )
+        # Atomic claim (pending → deleting) — the same item may be
+        # processed concurrently via the delete-now endpoint.
+        if not await _claim_pending(row["id"]):
+            logger.info(
+                "Deletion: item %s already claimed elsewhere — skipping",
+                row.get("title", row["id"]),
+            )
+            return None
+        ok = await _delete_media(
+            row, False,
+            qbit_action=cfg.qbit_action, qbit_tag_val=cfg.qbit_tag, run_id=cfg.run_id,
+        )
+        await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
+        if not ok:
+            counters["errors"] += 1
+            if cfg.alert_on_error:
+                await _alert_item_failure(row, cfg)
+        return ok
+
+
+async def _execute_batch(to_delete: list, cfg: _BatchConfig) -> int:
+    """Delete the batch (3 at a time), alert past the error threshold.
+
+    Returns the number of items deleted.
+    """
+    sem      = asyncio.Semaphore(3)
+    counters = {"errors": 0}
+    results = await asyncio.gather(
+        *[_delete_one(r, cfg, sem, counters) for r in to_delete], return_exceptions=True
+    )
+    deleted_count = sum(1 for r in results if r is True)
+    # _delete_one() catches its own per-item errors and returns False/None —
+    # an Exception surfacing here means something escaped that handling
+    # (e.g. a DB error in _claim_pending). Log it instead of dropping it
+    # silently, so a systemic bug doesn't just look like "0 deleted".
+    for r, item in zip(results, to_delete):
+        if isinstance(r, Exception):
+            logger.error(
+                "Deletion: unhandled exception for '%s': %s",
+                item.get("title", item.get("id")), r,
+            )
+            counters["errors"] += 1
+
+    error_count = counters["errors"]
+    if error_count >= cfg.alert_threshold > 0:
+        await send_alert(
+            f"🚨 {error_count} suppressions en échec",
+            f"{error_count} suppressions ont échoué sur {len(to_delete)} tentatives.",
+            "error",
+            mention=cfg.mention, custom_msg=cfg.msg_tpl,
+            template_vars={"count": error_count, "detail": f"{error_count} suppressions en échec"},
+        )
+    return deleted_count
+
+
+async def _process_queue(run_id: int, dry_run: bool, outcome: _JobOutcome) -> None:
+    """Body of the job, run under the 1-hour cap: notify, select, delete, finalize."""
+    await add_log("INFO", lm("deletion.started"), "job")
+
+    # Send threshold notifications (independent per threshold value)
+    await _send_pending_notifications()
+
+    lib_server_map = await _load_library_server_map()
+    to_delete      = await _select_items_to_delete(lib_server_map)
+    cfg            = await _load_batch_config(dry_run, run_id)
+    deleted_count  = await _execute_batch(to_delete, cfg)
+
+    prefix         = "[DRY RUN] " if dry_run else ""
+    outcome.status = "success"
+    outcome.msg    = f"{prefix}{deleted_count} deleted"
+    await add_log("INFO", lm("deletion.done", prefix=prefix, n=deleted_count), "job")
+
+    if not dry_run and deleted_count > 0:
+        await sync_emby_collection()
+
+
 async def run_deletion() -> None:
     """Process queue: send threshold notifications, delete items past their delete_at.
 
@@ -196,131 +354,26 @@ async def run_deletion() -> None:
         return
 
     async with _deletion_lock:
-        run_id      = await add_job_run("deletion_check")
-        ctx_token   = set_job_context(run_id)   # propagate job_id to all add_log() calls
-        _dl_status  = "error"
-        _dl_msg     = ""
-        deleted_count = 0
-        dry_run     = await get_bool_setting("dry_run")
+        run_id    = await add_job_run("deletion_check")
+        ctx_token = set_job_context(run_id)   # propagate job_id to all add_log() calls
+        outcome   = _JobOutcome()
+        dry_run   = await get_bool_setting("dry_run")
 
         try:
             async with asyncio.timeout(3600):   # 1-hour hard cap
-                await add_log("INFO", lm("deletion.started"), "job")
-
-                # Send threshold notifications (independent per threshold value)
-                await _send_pending_notifications()
-
-                # Pre-load library→server_id map (avoids per-item DB queries)
-                async with get_db() as _lib_db:
-                    _lib_rows = await _lib_db.fetch_all("SELECT id, server_id FROM libraries")
-                _lib_server_map = {r["id"]: str(r["server_id"] or "0") for r in _lib_rows}
-
-                # Last-chance guard before any file is touched: the watch state
-                # of the due items is re-read from the media server, then
-                # anything played since it was queued is rescued, never deleted.
-                _due = await _refresh_watch_state_before_deletion(
-                    [dict(r) for r in await get_pending_queue()], _lib_server_map
-                )
-                _due = await _rescue_watched_since_queued(_due)
-                to_delete = [
-                    {**dict(r), "_server_id": _lib_server_map.get(r.get("library_id"), "0")}
-                    for r in _due
-                ]
-
-                # Read qbit settings once for the whole batch
-                _qbit_action = await get_setting("qbit_action") or "tag_only"
-                _qbit_tag    = await get_setting("qbit_tag")    or "Supprimé-Hygie"
-
-                _del_sem         = asyncio.Semaphore(3)
-                _alert_del_error = await get_bool_setting("discord_alert_deletion_error")
-                _del_mention     = await get_setting("discord_alert_deletion_error_mention") or ""
-                _del_msg_tpl     = await get_setting("discord_alert_deletion_error_msg")    or ""
-                try:
-                    _alert_threshold = int(await get_setting("discord_alert_error_threshold") or "3")
-                except (ValueError, TypeError):
-                    _alert_threshold = 3
-                _counters = {"errors": 0}
-
-                async def _delete_one(row: dict) -> Optional[bool]:
-                    async with _del_sem:
-                        # Dry-run simulates only: no claim, no status change.
-                        if dry_run:
-                            return await _delete_media(
-                                row, True,
-                                qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id,
-                            )
-                        # Atomic claim (pending → deleting) — the same item may be
-                        # processed concurrently via the delete-now endpoint.
-                        if not await _claim_pending(row["id"]):
-                            logger.info(
-                                "Deletion: item %s already claimed elsewhere — skipping",
-                                row.get("title", row["id"]),
-                            )
-                            return None
-                        ok = await _delete_media(
-                            row, False,
-                            qbit_action=_qbit_action, qbit_tag_val=_qbit_tag, run_id=run_id,
-                        )
-                        await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
-                        if not ok:
-                            _counters["errors"] += 1
-                            if _alert_del_error:
-                                _t = row.get("title", "?")
-                                await send_alert(
-                                    f"❌ Échec suppression : {_t}",
-                                    f"La suppression de **{_t}** a échoué.",
-                                    "error",
-                                    mention=_del_mention, custom_msg=_del_msg_tpl,
-                                    template_vars={"title": _t, "detail": f"Échec suppression de {_t}"},
-                                )
-                        return ok
-
-                results = await asyncio.gather(
-                    *[_delete_one(r) for r in to_delete], return_exceptions=True
-                )
-                deleted_count = sum(1 for r in results if r is True)
-                # _delete_one() catches its own per-item errors and returns False/None —
-                # an Exception surfacing here means something escaped that handling
-                # (e.g. a DB error in _claim_pending). Log it instead of dropping it
-                # silently, so a systemic bug doesn't just look like "0 deleted".
-                for r, item in zip(results, to_delete):
-                    if isinstance(r, Exception):
-                        logger.error(
-                            "Deletion: unhandled exception for '%s': %s",
-                            item.get("title", item.get("id")), r,
-                        )
-                        _counters["errors"] += 1
-
-                _error_count = _counters["errors"]
-                if _error_count >= _alert_threshold > 0:
-                    await send_alert(
-                        f"🚨 {_error_count} suppressions en échec",
-                        f"{_error_count} suppressions ont échoué sur {len(to_delete)} tentatives.",
-                        "error",
-                        mention=_del_mention, custom_msg=_del_msg_tpl,
-                        template_vars={"count": _error_count, "detail": f"{_error_count} suppressions en échec"},
-                    )
-
-                prefix   = "[DRY RUN] " if dry_run else ""
-                _dl_status = "success"
-                _dl_msg    = f"{prefix}{deleted_count} deleted"
-                await add_log("INFO", lm("deletion.done", prefix=prefix, n=deleted_count), "job")
-
-                if not dry_run and deleted_count > 0:
-                    await sync_emby_collection()
-
+                await _process_queue(run_id, dry_run, outcome)
         except asyncio.TimeoutError:
             logger.error("run_deletion exceeded 1-hour timeout — forcing exit")
             await add_log("ERROR", "Deletion job timeout (1h) — forcibly terminated", "job")
-            _dl_status = "error"
-            _dl_msg    = "timeout"
+            outcome.status = "error"
+            outcome.msg    = "timeout"
         except Exception as e:
             logger.exception("Deletion error")
             await add_log("ERROR", lm("deletion.error", detail=e), "job")
-            _dl_msg = str(e)
+            outcome.msg = str(e)
         finally:
             _current_job_id.reset(ctx_token)
-            await finish_job_run(run_id, _dl_status, _dl_msg)
+            await finish_job_run(run_id, outcome.status, outcome.msg)
 
 
 async def _run_deletion_guarded() -> None:
@@ -346,145 +399,6 @@ async def reset_stale_deleting() -> int:
 async def _claim_pending(item_id: int) -> bool:
     """Atomically claim a queue item (pending → deleting)."""
     return await claim_for_deletion(item_id)
-
-
-async def _find_torrent_hash(row: dict) -> Optional[str]:
-    """Find torrent hash via Radarr/Sonarr history, with qBit path fallback.
-
-    Must be called BEFORE removing from arr — history disappears after deletion.
-    """
-    file_path = row.get("file_path", "")
-    media_type = row.get("media_type", "")
-    if media_type == "Movie":
-        rid_stored = row.get("radarr_id")
-        if rid_stored:
-            return await radarr_get_torrent_hash_any(int(rid_stored))
-        found = await radarr_find_by_path(file_path)
-        if found:
-            rid, r_url, r_key = found
-            return await radarr_get_torrent_hash(int(rid), url=r_url, key=r_key)
-    else:
-        sid = row.get("sonarr_id") or await sonarr_find_by_path(file_path)
-        if sid:
-            return await sonarr_get_torrent_hash(int(sid))
-    if file_path:
-        return await qbit_find_by_path(file_path)
-    return None
-
-
-async def _find_torrent_hashes_consolidated(row: dict) -> set:
-    """Resolve every distinct torrent hash backing a consolidated season/series entry.
-
-    Must run BEFORE the bulk Sonarr file delete — the lookup matches history
-    records to the (still-existing) episode file records.
-    """
-    if not _is_consolidated_row(row):
-        return set()
-    from .arr_clients import sonarr_get_torrent_hashes_for_group
-    return await sonarr_get_torrent_hashes_for_group(
-        int(row["sonarr_series_id"]), season_number=row.get("season_number")
-    )
-
-
-def _is_consolidated_row(row: dict) -> bool:
-    """True for the consolidated season/series queue rows produced by
-    deletion_unit=season|series — one row stands in for a whole group of
-    episodes and carries sonarr_series_id but no per-item sonarr_id.
-
-    A normal per-episode row (deletion_unit=episode) carries sonarr_id (its
-    own episodeFile id) *and* sonarr_series_id/season_number — the scanner
-    sets all three together for every regular episode — so sonarr_series_id
-    alone is not a safe discriminator; without the sonarr_id check, a single
-    episode's delete was previously misrouted into sonarr_delete_season(),
-    wiping every file in that whole season instead of just the one due.
-    """
-    return bool(row.get("sonarr_series_id")) and not row.get("sonarr_id")
-
-
-async def _delete_from_arr(row: dict) -> bool:
-    """Remove media from Radarr or Sonarr. Returns False only on a genuine
-    removal failure — an item with no arr link to begin with (never matched,
-    or already removed) is not a failure."""
-    file_path = row.get("file_path", "")
-    media_type = row.get("media_type", "")
-    title = row.get("title", "?")
-    sonarr_series_id = row.get("sonarr_series_id")
-    season_number = row.get("season_number")
-    arr_server_url = row.get("arr_server_url")
-    consolidated = _is_consolidated_row(row)
-
-    if media_type == "Movie":
-        rid_stored = row.get("radarr_id")
-        if rid_stored:
-            ok = await radarr_delete_by_id(
-                int(rid_stored), delete_files=False,
-                arr_server_url=arr_server_url, file_path=file_path,
-            )
-            await add_log("DEBUG" if ok else "WARN", lm("radarr.removed" if ok else "radarr.remove_err", title=title), "deletion")
-            return ok
-        else:
-            found = await radarr_find_by_path(file_path)
-            if found:
-                rid, r_url, r_key = found
-                ok = await radarr_delete(int(rid), delete_files=False, url=r_url, key=r_key)
-                await add_log("DEBUG" if ok else "WARN", lm("radarr.removed" if ok else "radarr.remove_err", title=title), "deletion")
-                return ok
-            return True
-    elif consolidated and season_number is not None:
-        # Season-level consolidated entry
-        ok = await sonarr_delete_season(
-            int(sonarr_series_id), int(season_number),
-            arr_server_url=arr_server_url, file_path=file_path,
-        )
-        await add_log("DEBUG" if ok else "WARN", lm("sonarr.season_ok" if ok else "sonarr.season_err", title=title, n=season_number), "deletion")
-        return ok
-    elif consolidated:
-        # Series-level consolidated entry
-        ok = await sonarr_delete_series(
-            int(sonarr_series_id),
-            arr_server_url=arr_server_url, file_path=file_path,
-        )
-        await add_log("DEBUG" if ok else "WARN", lm("sonarr.series_ok" if ok else "sonarr.series_err", title=title), "deletion")
-        return ok
-    else:
-        sid = row.get("sonarr_id")
-        if sid:
-            ok = await sonarr_delete_episode_file(
-                int(sid), arr_server_url=arr_server_url, file_path=file_path,
-            )
-            await add_log("DEBUG" if ok else "WARN", lm("sonarr.removed" if ok else "sonarr.remove_err", title=title), "deletion")
-            return ok
-        found = await sonarr_find_by_path_full(file_path)
-        if found:
-            ef_id, s_url, s_key = found
-            ok = await sonarr_delete_episode_file(int(ef_id), url=s_url, key=s_key)
-            await add_log("DEBUG" if ok else "WARN", lm("sonarr.removed" if ok else "sonarr.remove_err", title=title), "deletion")
-            return ok
-        return True
-
-
-async def _delete_from_seerr(row: dict) -> None:
-    """Delete the Seerr request linked to this media, if any."""
-    if row.get("seerr_id"):
-        await seerr_delete_request(row["seerr_id"])
-        await add_log("DEBUG", lm("seerr.deleted", title=row.get('title','?')), "deletion")
-
-
-async def _handle_qbit(torrent_hash: str, title: str, qbit_action: str, qbit_tag: str) -> None:
-    """Tag or delete the torrent in qBittorrent based on configured action."""
-    try:
-        if qbit_action in ("delete_torrent", "delete_files"):
-            ok = await qbit_delete_torrent(torrent_hash, delete_files=True)
-            msg = (lm("qbit.torrent_deleted", title=title)
-                   if ok else lm("qbit.torrent_fail", title=title))
-            await add_log("INFO" if ok else "WARN", msg, "deletion")
-        else:
-            ok = await qbit_add_tag(torrent_hash, qbit_tag)
-            msg = (lm("qbit.tag_added", tag=qbit_tag, title=title)
-                   if ok else lm("qbit.tag_fail", title=title))
-            await add_log("INFO" if ok else "WARN", msg, "deletion")
-    except Exception as e:
-        await add_log("WARN", lm("qbit.error", title=title, detail=e), "deletion")
 
 
 async def _delete_media(

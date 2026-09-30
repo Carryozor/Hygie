@@ -57,9 +57,9 @@ def _consolidated_series_row(**overrides) -> dict:
 async def test_normal_episode_delete_does_not_wipe_the_whole_season():
     row = _per_episode_row()
     with (
-        patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock(return_value=True)) as mock_episode,
-        patch("backend.deletion.sonarr_delete_season", new=AsyncMock()) as mock_season,
-        patch("backend.deletion.sonarr_delete_series", new=AsyncMock()) as mock_series,
+        patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock(return_value=True)) as mock_episode,
+        patch("backend.deletion_helpers.sonarr_delete_season", new=AsyncMock()) as mock_season,
+        patch("backend.deletion_helpers.sonarr_delete_series", new=AsyncMock()) as mock_series,
     ):
         await _delete_from_arr(row)
 
@@ -71,9 +71,9 @@ async def test_normal_episode_delete_does_not_wipe_the_whole_season():
 async def test_consolidated_season_delete_still_uses_season_endpoint():
     row = _consolidated_season_row()
     with (
-        patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock()) as mock_episode,
-        patch("backend.deletion.sonarr_delete_season", new=AsyncMock(return_value=True)) as mock_season,
-        patch("backend.deletion.sonarr_delete_series", new=AsyncMock()) as mock_series,
+        patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock()) as mock_episode,
+        patch("backend.deletion_helpers.sonarr_delete_season", new=AsyncMock(return_value=True)) as mock_season,
+        patch("backend.deletion_helpers.sonarr_delete_series", new=AsyncMock()) as mock_series,
     ):
         await _delete_from_arr(row)
 
@@ -85,9 +85,9 @@ async def test_consolidated_season_delete_still_uses_season_endpoint():
 async def test_consolidated_series_delete_still_uses_series_endpoint():
     row = _consolidated_series_row()
     with (
-        patch("backend.deletion.sonarr_delete_episode_file", new=AsyncMock()) as mock_episode,
-        patch("backend.deletion.sonarr_delete_season", new=AsyncMock()) as mock_season,
-        patch("backend.deletion.sonarr_delete_series", new=AsyncMock(return_value=True)) as mock_series,
+        patch("backend.deletion_helpers.sonarr_delete_episode_file", new=AsyncMock()) as mock_episode,
+        patch("backend.deletion_helpers.sonarr_delete_season", new=AsyncMock()) as mock_season,
+        patch("backend.deletion_helpers.sonarr_delete_series", new=AsyncMock(return_value=True)) as mock_series,
     ):
         await _delete_from_arr(row)
 

@@ -34,8 +34,8 @@ def _consolidated_item(**overrides) -> dict:
 async def test_torrent_hash_step_uses_group_resolver_for_consolidated_entries():
     ctx = DeletionContext(item=_consolidated_item(), dry_run=False)
     with (
-        patch("backend.deletion._find_torrent_hashes_consolidated", new=AsyncMock(return_value={"hash-a", "hash-b"})) as mock_group,
-        patch("backend.deletion._find_torrent_hash", new=AsyncMock(return_value="should-not-be-used")) as mock_single,
+        patch("backend.deletion_helpers._find_torrent_hashes_consolidated", new=AsyncMock(return_value={"hash-a", "hash-b"})) as mock_group,
+        patch("backend.deletion_helpers._find_torrent_hash", new=AsyncMock(return_value="should-not-be-used")) as mock_single,
     ):
         await TorrentHashStep().execute(ctx)
 
@@ -49,8 +49,8 @@ async def test_torrent_hash_step_uses_single_resolver_for_normal_entries():
     item = _consolidated_item(sonarr_series_id=None, sonarr_id=55)
     ctx = DeletionContext(item=item, dry_run=False)
     with (
-        patch("backend.deletion._find_torrent_hash", new=AsyncMock(return_value="single-hash")) as mock_single,
-        patch("backend.deletion._find_torrent_hashes_consolidated", new=AsyncMock()) as mock_group,
+        patch("backend.deletion_helpers._find_torrent_hash", new=AsyncMock(return_value="single-hash")) as mock_single,
+        patch("backend.deletion_helpers._find_torrent_hashes_consolidated", new=AsyncMock()) as mock_group,
     ):
         await TorrentHashStep().execute(ctx)
 
@@ -62,7 +62,7 @@ async def test_torrent_hash_step_uses_single_resolver_for_normal_entries():
 
 async def test_torrent_hash_step_skipped_in_dry_run():
     ctx = DeletionContext(item=_consolidated_item(), dry_run=True)
-    with patch("backend.deletion._find_torrent_hashes_consolidated", new=AsyncMock()) as mock_group:
+    with patch("backend.deletion_helpers._find_torrent_hashes_consolidated", new=AsyncMock()) as mock_group:
         await TorrentHashStep().execute(ctx)
     mock_group.assert_not_awaited()
 
@@ -72,7 +72,7 @@ async def test_torrent_hash_step_skipped_in_dry_run():
 async def test_qbit_step_handles_every_hash_in_a_consolidated_group():
     ctx = DeletionContext(item=_consolidated_item(), dry_run=False)
     ctx.torrent_hashes = {"hash-a", "hash-b"}
-    with patch("backend.deletion._handle_qbit", new=AsyncMock()) as mock_handle:
+    with patch("backend.deletion_helpers._handle_qbit", new=AsyncMock()) as mock_handle:
         await QbitStep().execute(ctx)
 
     assert mock_handle.await_count == 2
@@ -83,7 +83,7 @@ async def test_qbit_step_handles_every_hash_in_a_consolidated_group():
 async def test_qbit_step_falls_back_to_single_hash_when_no_group_hashes():
     ctx = DeletionContext(item=_consolidated_item(sonarr_series_id=None, sonarr_id=55), dry_run=False)
     ctx.torrent_hash = "single-hash"
-    with patch("backend.deletion._handle_qbit", new=AsyncMock()) as mock_handle:
+    with patch("backend.deletion_helpers._handle_qbit", new=AsyncMock()) as mock_handle:
         await QbitStep().execute(ctx)
 
     mock_handle.assert_awaited_once()
@@ -93,7 +93,7 @@ async def test_qbit_step_falls_back_to_single_hash_when_no_group_hashes():
 async def test_qbit_step_logs_not_found_with_no_hashes_at_all():
     ctx = DeletionContext(item=_consolidated_item(), dry_run=False)
     with (
-        patch("backend.deletion._handle_qbit", new=AsyncMock()) as mock_handle,
+        patch("backend.deletion_helpers._handle_qbit", new=AsyncMock()) as mock_handle,
         patch("backend.db.logs.add_log", new=AsyncMock()) as mock_log,
     ):
         await QbitStep().execute(ctx)

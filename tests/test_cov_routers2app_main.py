@@ -1,5 +1,4 @@
-"""Coverage tests for backend/main.py — lifespan helpers, the WebSocket log
-stream, and the SPA fallback route.
+"""Coverage tests for backend/main.py — lifespan helpers and the SPA fallback route.
 
 backend.main is already imported (and reloaded) by other fixtures in this
 session, so tests here import the live `backend.main` module and call its
@@ -8,7 +7,6 @@ DB_PATH/SQLITE_PATH) rather than rebuilding the whole app — these helpers
 take no FastAPI dependencies, only module state.
 """
 import asyncio
-import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -320,183 +318,22 @@ async def test_shutdown_lifespan_falls_back_to_wait_false_when_wait_true_raises(
     mock_sched.shutdown.assert_any_call(wait=False)
 
 
-# ─── _ws_max_log_id / _ws_fetch_logs_since ─────────────────────────────────
+# ─── /ws — removed with the legacy frontend ────────────────────────────────
 
-async def test_ws_max_log_id_returns_zero_when_no_logs():
-    assert await main_mod._ws_max_log_id() == 0
-
-
-async def test_ws_max_log_id_returns_highest_id():
-    from backend.db.logs import add_log
-    await add_log("INFO", "one", "system")
-    await add_log("INFO", "two", "system")
-    result = await main_mod._ws_max_log_id()
-    assert result >= 2
-
-
-async def test_ws_max_log_id_returns_zero_on_db_error():
-    with patch("backend.db.engine.get_db", side_effect=RuntimeError("db down")):
-        assert await main_mod._ws_max_log_id() == 0
-
-
-async def test_ws_fetch_logs_since_returns_rows_after_cursor():
-    from backend.db.logs import add_log
-    await add_log("INFO", "first", "system")
-    first_id = await main_mod._ws_max_log_id()
-    await add_log("INFO", "second", "system")
-    rows = await main_mod._ws_fetch_logs_since(first_id)
-    assert len(rows) == 1
-    assert rows[0]["message"] == "second"
-
-
-async def test_ws_fetch_logs_since_returns_empty_list_on_db_error():
-    with patch("backend.db.engine.get_db", side_effect=RuntimeError("db down")):
-        rows = await main_mod._ws_fetch_logs_since(0)
-    assert rows == []
-
-
-# ─── /ws WebSocket endpoint ─────────────────────────────────────────────────
-#
-# A bare-bones app hosting only the real websocket_endpoint/spa_fallback
-# functions — NOT main_mod.app. main_mod.app's lifespan runs the real
-# scheduler startup (_schedule_recurring_jobs et al) against the shared
-# APScheduler singleton; spinning that up per-test collided across tests
-# (a later test's TestClient inherited a scheduler bound to an already-closed
-# event loop from an earlier one — "RuntimeError: Event loop is closed").
-# websocket_endpoint/spa_fallback read no FastAPI-managed state beyond
-# module-level names in backend.main, so mounting them on a lifespan-free
-# app exercises the exact same code without that coupling.
-
-def _ws_only_app():
-    from fastapi import FastAPI
-    app = FastAPI()
-    app.add_api_websocket_route("/ws", main_mod.websocket_endpoint)
-    return app
-
-
-def test_websocket_rejects_cross_origin_connection():
+def test_ws_endpoint_no_longer_exists():
+    """The legacy log-stream WebSocket is gone: no websocket route is registered
+    and a connection attempt is refused instead of accepted."""
+    from starlette.routing import WebSocketRoute
     from starlette.testclient import TestClient
-    with TestClient(_ws_only_app()) as client:
-        with pytest.raises(Exception):
-            with client.websocket_connect("/ws", headers={"origin": "https://evil.example.com"}) as ws:
-                ws.receive_text()
+    from starlette.websockets import WebSocketDisconnect
 
-
-def test_websocket_closes_when_no_auth_message_within_timeout():
-    from starlette.testclient import TestClient
-    with patch("backend.main.asyncio.wait_for", new=AsyncMock(side_effect=asyncio.TimeoutError())):
-        with TestClient(_ws_only_app()) as client:
-            with pytest.raises(Exception):
-                with client.websocket_connect("/ws") as ws:
-                    ws.receive_text()
-
-
-def test_websocket_closes_on_invalid_token():
-    from starlette.testclient import TestClient
-    with patch("backend.main.verify_token", return_value=None):
-        with TestClient(_ws_only_app()) as client:
-            with pytest.raises(Exception):
-                with client.websocket_connect("/ws") as ws:
-                    ws.send_text(json.dumps({"token": "bad-token"}))
-                    ws.receive_text()
-
-
-def test_websocket_closes_on_oversized_first_message():
-    from starlette.testclient import TestClient
-    with TestClient(_ws_only_app()) as client:
-        with pytest.raises(Exception):
-            with client.websocket_connect("/ws") as ws:
-                ws.send_text("x" * 9000)
-                ws.receive_text()
-
-
-def test_websocket_accepts_valid_token_and_streams_hello():
-    from starlette.testclient import TestClient
-    with patch("backend.main.verify_token", return_value="testuser"), \
-         patch("backend.main.register_ws") as mock_reg, \
-         patch("backend.main.unregister_ws") as mock_unreg:
-        with TestClient(_ws_only_app()) as client:
-            with client.websocket_connect("/ws") as ws:
-                ws.send_text(json.dumps({"token": "good-token"}))
-                hello = ws.receive_json()
-                assert hello["type"] == "hello"
-                assert "version" in hello
-    mock_reg.assert_called_once()
-    mock_unreg.assert_called_once()
-
-
-# ─── /ws — edge branches only reachable with a fully-mocked WebSocket ──────
-# (the nested close-failure guard, the log-streaming loop body, and the
-# WebSocketDisconnect/generic-exception handlers around it) — a real
-# starlette TestClient websocket can't be made to raise from ws.close()
-# or to feed a fake DB row through the real streaming loop deterministically.
-
-class _FakeWebSocket:
-    def __init__(self, token_payload=None, close_raises=False):
-        self.headers = {}
-        self._token_payload = token_payload
-        self._close_raises = close_raises
-        self.closed_with = None
-        self.sent = []
-
-    async def accept(self):
-        pass
-
-    async def receive_text(self):
-        return json.dumps(self._token_payload or {})
-
-    async def close(self, code=None):
-        self.closed_with = code
-        if self._close_raises:
-            raise RuntimeError("transport already gone")
-
-    async def send_json(self, payload):
-        self.sent.append(payload)
-
-
-async def test_websocket_swallows_close_failure_after_invalid_token():
-    ws = _FakeWebSocket(token_payload={"token": "bad"}, close_raises=True)
-    with patch.object(main_mod, "verify_token", return_value=None):
-        await main_mod.websocket_endpoint(ws)  # must not raise
-    assert ws.closed_with == 1008
-
-
-async def test_websocket_streams_new_log_entries_then_disconnects():
-    ws = _FakeWebSocket(token_payload={"token": "good"})
-    entries = [
-        [{"id": 5, "ts": "2026-01-01T00:00:00", "level": "INFO", "source": "system",
-          "message": "hi", "job_id": 42}],
-    ]
-
-    async def _fetch_since(cursor):
-        if entries:
-            return entries.pop(0)
-        from starlette.websockets import WebSocketDisconnect
-        raise WebSocketDisconnect()
-
-    with patch.object(main_mod, "verify_token", return_value="testuser"), \
-         patch.object(main_mod, "register_ws"), patch.object(main_mod, "unregister_ws") as mock_unreg, \
-         patch.object(main_mod, "_ws_max_log_id", new=AsyncMock(return_value=0)), \
-         patch.object(main_mod, "_ws_fetch_logs_since", new=_fetch_since), \
-         patch.object(main_mod.asyncio, "sleep", new=AsyncMock()):
-        await main_mod.websocket_endpoint(ws)
-
-    hello, log_msg = ws.sent
-    assert hello == {"type": "hello", "version": main_mod.VERSION}
-    assert log_msg["type"] == "log" and log_msg["job_id"] == 42
-    mock_unreg.assert_called_once_with(ws)
-
-
-async def test_websocket_logs_warning_on_unexpected_streaming_error():
-    ws = _FakeWebSocket(token_payload={"token": "good"})
-    with patch.object(main_mod, "verify_token", return_value="testuser"), \
-         patch.object(main_mod, "register_ws"), patch.object(main_mod, "unregister_ws") as mock_unreg, \
-         patch.object(main_mod, "_ws_max_log_id", new=AsyncMock(return_value=0)), \
-         patch.object(main_mod, "_ws_fetch_logs_since", new=AsyncMock(side_effect=RuntimeError("db exploded"))), \
-         patch.object(main_mod.logger, "warning") as mock_warn:
-        await main_mod.websocket_endpoint(ws)  # must not raise
-    mock_warn.assert_called_once()
-    mock_unreg.assert_called_once_with(ws)
+    assert not any(isinstance(r, WebSocketRoute) for r in main_mod.app.routes)
+    assert not hasattr(main_mod, "websocket_endpoint")
+    # The GET catch-all is an HTTP route, so ASGI refuses the websocket scope.
+    with TestClient(main_mod.app) as client:
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws"):
+                pass
 
 
 # ─── SPA fallback ────────────────────────────────────────────────────────────
@@ -529,13 +366,15 @@ def test_spa_fallback_serves_dist_index_when_present(tmp_path):
     assert r.headers.get("cache-control") == "no-store"
 
 
-def test_spa_fallback_falls_back_to_templates_index_when_dist_missing(tmp_path):
+def test_spa_fallback_returns_503_when_dist_missing(tmp_path):
     from starlette.testclient import TestClient
     empty_dist = tmp_path / "no-dist-here"
     with patch.object(main_mod, "_DIST", str(empty_dist)):
         with TestClient(_spa_only_app()) as client:
             r = client.get("/some/spa/route")
-    assert r.status_code == 200
+    assert r.status_code == 503
+    assert "Frontend non construit" in r.text
+    assert r.headers.get("cache-control") == "no-store"
 
 
 # ─── CORS wildcard rejection (module import-time guard) ────────────────────

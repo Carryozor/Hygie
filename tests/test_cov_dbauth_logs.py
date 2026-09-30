@@ -1,9 +1,8 @@
 """Coverage-focused tests for backend/db/logs.py's error paths and job context.
 
 Happy-path insert/update behavior is implicitly exercised elsewhere; this
-file targets the three swallowed-exception branches in add_log() plus
-set_job_context()'s contextvar plumbing and job_id propagation into the
-broadcast payload.
+file targets the swallowed-exception branch in add_log() plus
+set_job_context()'s contextvar plumbing and job_id persistence.
 """
 import logging
 
@@ -85,41 +84,24 @@ async def test_add_log_swallows_db_write_failure(db_path, monkeypatch, caplog):
     assert any("Failed to write log" in r.message for r in caplog.records)
 
 
-async def test_add_log_swallows_broadcast_failure(db_path, monkeypatch):
-    async def boom_broadcast(payload):
-        raise RuntimeError("broadcast down")
-    monkeypatch.setattr(logs_mod, "_broadcast", boom_broadcast)
-    await add_log("INFO", "broadcast fails")  # must not raise despite _broadcast blowing up
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT message FROM logs") as cur:
-            row = await cur.fetchone()
-    assert row[0] == "broadcast fails"  # the DB write itself still succeeded
-
-
-async def test_add_log_includes_job_id_in_broadcast_payload_when_set(db_path, monkeypatch):
-    captured = {}
-
-    async def spy_broadcast(payload):
-        captured.update(payload)
-
-    monkeypatch.setattr(logs_mod, "_broadcast", spy_broadcast)
+async def test_add_log_persists_job_id_when_set(db_path):
     token = set_job_context(42)
     try:
         await add_log("INFO", "job-scoped")
     finally:
         _current_job_id.reset(token)
-    assert captured.get("job_id") == 42
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT job_id FROM logs WHERE message = 'job-scoped'") as cur:
+            row = await cur.fetchone()
+    assert row[0] == 42
 
 
-async def test_add_log_omits_job_id_from_payload_when_not_set(db_path, monkeypatch):
-    captured = {}
-
-    async def spy_broadcast(payload):
-        captured.update(payload)
-
-    monkeypatch.setattr(logs_mod, "_broadcast", spy_broadcast)
+async def test_add_log_leaves_job_id_null_when_not_set(db_path):
     await add_log("INFO", "no job")
-    assert "job_id" not in captured
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT job_id FROM logs WHERE message = 'no job'") as cur:
+            row = await cur.fetchone()
+    assert row[0] is None
 
 
 async def test_set_job_context_token_can_be_used_to_reset(db_path):

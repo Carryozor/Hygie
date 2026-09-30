@@ -31,9 +31,6 @@ instance; only the first worker to acquire the advisory lock runs the job —
 the others return immediately (non-blocking `GET_LOCK(name, 0)`). If the lock
 cannot be acquired, `LockNotAvailable` is raised and silenced at the call site.
 
-WebSocket log streaming uses DB polling (`SELECT … WHERE id > cursor`) so
-clients connected to any worker receive logs written by any worker.
-
 In-process caches (`_settings_cache`, `_ms_cache`) have 30-second TTLs —
 a settings write propagates to all workers within 30 s.
 
@@ -183,5 +180,4 @@ and will not be affected.
 | Item | Priority | Notes |
 |------|----------|-------|
 | Normalize `media_queue` schema | v4.x | Server-specific columns belong in extension tables |
-| Retire `frontend/static/` | v4.x | Only used if Vue build fails; audit templates first |
 | Move in-process caches to shared store | v5.0 | Eliminates 30s staleness in multi-worker mode |

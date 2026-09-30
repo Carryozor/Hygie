@@ -30,6 +30,8 @@ All notable changes to Hygie are documented here.
 ### Removed
 
 - `backend/constants.py` and `backend/services/media_service.py` — never imported.
+- **Legacy vanilla-JS frontend** (`frontend/static/`, `frontend/templates/`), the `/static` mount and the Jinja2 fallback. When `frontend/dist` is missing the SPA route now answers HTTP 503 ("Frontend non construit") instead of serving the old UI. Favicons now ship with the Vue build (`frontend/vue/public/assets/img`). The Dockerfile no longer copies these directories nor downloads their Font Awesome / dashboard-icon assets, and `scripts/check_i18n.py` (legacy-only) is removed.
+- **`/ws` log-stream WebSocket** and `backend/db/websocket.py` (client registry and no-op `_broadcast`): only the legacy UI used them; the Vue app reads logs through `GET /api/logs`. CSP `connect-src` is tightened from `'self' wss: ws:` to `'self'`.
 
 ---
 

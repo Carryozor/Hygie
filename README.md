@@ -35,7 +35,6 @@ Hygie automatically scans your **Emby, Jellyfin or Plex** media libraries, ident
 #### 🖥️ Interface — Vue 3
 - Modern **Vue 3 + Vite** single-page application
 - **8 languages**: French, English, German, Spanish, Italian, Portuguese, Dutch, Polish
-- Real-time log stream via WebSocket (DB-poll, safe in multi-worker mode)
 - Collapsible server/library tree in sidebar
 - Global **dry-run toggle** from the sidebar
 
@@ -90,7 +89,6 @@ Full deletion pipeline executed in sequence:
 #### ⚡ Multi-Worker
 - Set `WORKERS=N` to run N uvicorn processes (requires MariaDB)
 - **MariaDB advisory locks** (`GET_LOCK` / `RELEASE_LOCK`) — only one worker runs each scan or deletion cycle; others skip silently
-- WebSocket log streaming uses **DB polling** — clients on any worker receive all logs
 - Startup validation blocks misconfiguration (`WORKERS>1` without MariaDB/advisory lock)
 
 #### 📊 Observability
@@ -253,9 +251,6 @@ pytest tests/ -q
 
 # Check lm() imports (prevents scan breakage)
 python3 scripts/check_lm_imports.py
-
-# Check i18n key consistency
-python3 scripts/check_i18n.py
 ```
 
 ---
@@ -285,7 +280,6 @@ Hygie analyse automatiquement vos bibliothèques média **Emby, Jellyfin ou Plex
 #### 🖥️ Interface — Vue 3
 - Application **Vue 3 + Vite** moderne
 - **8 langues** : français, anglais, allemand, espagnol, italien, portugais, néerlandais, polonais
-- Flux de logs en temps réel via WebSocket (DB-poll, safe en multi-worker)
 - Arbre serveur/bibliothèque rétractable dans la sidebar
 - **Toggle dry-run global** depuis la sidebar
 
@@ -340,7 +334,6 @@ Pipeline exécuté dans l'ordre :
 #### ⚡ Multi-Worker
 - Variable `WORKERS=N` pour démarrer N processus uvicorn (nécessite MariaDB)
 - **Verrous advisories MariaDB** (`GET_LOCK` / `RELEASE_LOCK`) — un seul worker exécute chaque cycle de scan ou suppression ; les autres passent silencieusement
-- Streaming de logs WebSocket via **DB-poll** — les clients sur n'importe quel worker reçoivent tous les logs
 - Validation au démarrage : bloque la mauvaise configuration (`WORKERS>1` sans MariaDB)
 
 #### 📊 Observabilité
@@ -513,9 +506,6 @@ pytest tests/ -q
 
 # Vérifier les imports lm() (évite les pannes de scan)
 python3 scripts/check_lm_imports.py
-
-# Vérifier la cohérence i18n
-python3 scripts/check_i18n.py
 ```
 
 ---

@@ -20,8 +20,6 @@ backend/        FastAPI app, scheduler, arr/media clients
   routers/      One file per API route group
 frontend/
   vue/          Vue 3 + Vite SPA (the current frontend — `npm run dev` / `npm run build`)
-  static/       CSS, JS (legacy, vanilla), images
-  templates/    Jinja2 index.html (SPA shell)
 tests/          pytest — run with `make test`
 docs/superpowers/plans/  Implementation plans (historical)
 ```

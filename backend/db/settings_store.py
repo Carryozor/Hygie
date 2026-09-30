@@ -22,6 +22,8 @@ def parse_thresholds(raw):
     descending; invalid = non-empty tokens that are not positive integers.
     Empty tokens ("7,,1,") are ignored. Empty/None input gives ([], []).
     """
+    if raw is not None and not isinstance(raw, str):
+        return [], [repr(raw)]
     days, invalid = set(), []
     for token in (raw or "").split(","):
         token = token.strip()
@@ -47,7 +49,7 @@ def resolve_thresholds(raw):
             "discord_notif_thresholds=%r : seuils invalides ignorés %s",
             raw, invalid,
         )
-    if not days and (raw or "").strip():
+    if not days and (not isinstance(raw, str) or raw.strip()):
         logger.warning(
             "discord_notif_thresholds=%r : aucun seuil valide, repli sur %s",
             raw, DEFAULT_NOTIF_THRESHOLDS,

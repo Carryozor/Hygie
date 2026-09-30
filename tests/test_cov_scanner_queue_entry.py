@@ -180,9 +180,8 @@ async def test_pre_mark_thresholds_handles_naive_datetime_string():
 async def test_pre_mark_thresholds_swallows_non_string_threshold_setting():
     """If discord_notif_thresholds resolves to something that isn't a string
     (defensive: get_setting is expected to return str|None, but a corrupt DB
-    value could break that contract), thresholds_raw.split(',') would raise
-    AttributeError — must be swallowed, not propagate and abort the queue
-    insert that's about to follow it."""
+    value could break that contract), it must not propagate and abort the queue
+    insert that's about to follow it — resolve_thresholds falls back to 7,1."""
     await _insert_queue_row("e1", _now() + timedelta(days=1))
     from backend.scanner._queue_entry import _pre_mark_applicable_thresholds
     with patch(
@@ -199,10 +198,10 @@ async def test_pre_mark_thresholds_swallows_unparseable_delete_at():
     await _pre_mark_applicable_thresholds("e1", "not-a-real-date")  # must not raise
 
 
-async def test_pre_mark_thresholds_returns_early_on_unparseable_setting():
-    """discord_notif_thresholds containing garbage (no valid digit tokens)
-    must not crash — falls through to an empty threshold list (no digits to
-    parse means the list comprehension just yields nothing, not an error)."""
+async def test_pre_mark_thresholds_falls_back_to_default_on_unparseable_setting():
+    """discord_notif_thresholds containing garbage (no valid token) must not
+    crash NOR silently disable the alerts: it falls back to the default 7,1, so
+    an item due in 1 day is pre-marked for both thresholds."""
     from backend.db.engine import get_db
     async with get_db() as db:
         await db.execute(
@@ -217,7 +216,7 @@ async def test_pre_mark_thresholds_returns_early_on_unparseable_setting():
     from backend.db.engine import get_db as _get_db
     async with _get_db() as db:
         rows = await db.fetch_all("SELECT threshold FROM notifications WHERE media_id=?", (row_id,))
-    assert rows == []
+    assert {r["threshold"] for r in rows} == {"7d", "1d"}
 
 
 # ─── _insert_queue_entry ────────────────────────────────────────────────────────

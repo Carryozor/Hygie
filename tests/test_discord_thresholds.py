@@ -171,3 +171,10 @@ async def test_save_accepts_empty_and_valid(app_client, value):
     await _setup_user(client)
     r = await client.post("/api/settings", json={"discord_notif_thresholds": value})
     assert r.status_code == 200, r.text
+
+
+def test_resolve_non_string_value_falls_back_to_default_with_warning(caplog):
+    from backend.db.settings_store import resolve_thresholds
+    with caplog.at_level("WARNING"):
+        assert resolve_thresholds(12345) == [7, 1]
+    assert "aucun seuil valide" in caplog.text

@@ -1,6 +1,6 @@
 """Coverage for backend/notifications.py — threshold-based Discord
 notifications for pending deletions. Untested before this file: no existing
-test exercises _parse_thresholds() or _send_pending_notifications() directly
+test exercises resolve_thresholds() or _send_pending_notifications() directly
 (other tests only mock '_send_pending_notifications' out entirely as a
 dependency of the scanner).
 """
@@ -16,7 +16,7 @@ import backend.db.utils as _db_utils
 
 from backend.db.engine import get_db
 from backend.db.schema import init_db
-from backend.notifications import _parse_thresholds
+from backend.db.settings_store import resolve_thresholds
 
 
 @pytest.fixture
@@ -50,32 +50,18 @@ async def _insert_pending(db_path, emby_id: str, delete_at_iso: str, title: str 
     return row["id"]
 
 
-# ─── _parse_thresholds ──────────────────────────────────────────────────────
+# ─── resolve_thresholds (invalid values: see test_discord_thresholds.py) ──────────────────────────────────────────────────────
 
 def test_parse_thresholds_sorts_descending_and_dedupes():
-    assert _parse_thresholds("1,7,3") == [7, 3, 1]
+    assert resolve_thresholds("1,7,3") == [7, 3, 1]
 
 
 def test_parse_thresholds_dedupes_repeated_values():
-    assert _parse_thresholds("7,7,1") == [7, 1]
+    assert resolve_thresholds("7,7,1") == [7, 1]
 
 
 def test_parse_thresholds_handles_whitespace_around_values():
-    assert _parse_thresholds(" 7 , 1 ") == [7, 1]
-
-
-def test_parse_thresholds_ignores_non_numeric_tokens_silently():
-    """Non-digit tokens are filtered out by the isdigit() guard, not by the
-    except clause — so 'abc' does not trigger the documented [7, 1] fallback,
-    it produces an empty list. See BUGS SUSPECTÉS in the final report."""
-    assert _parse_thresholds("abc,xyz") == []
-
-
-def test_parse_thresholds_falls_back_to_default_only_on_a_real_exception():
-    """The [7, 1] fallback is only reached when .split() itself raises
-    (e.g. a non-string value from a corrupted setting), not for merely
-    malformed content."""
-    assert _parse_thresholds(None) == [7, 1]
+    assert resolve_thresholds(" 7 , 1 ") == [7, 1]
 
 
 # ─── _send_pending_notifications — basic send + persistence ───────────────

@@ -6,7 +6,6 @@ import logging
 from .utils import now_utc
 from .engine import get_db
 from .settings_store import get_setting
-from .websocket import _broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -59,14 +58,6 @@ async def add_log(level: str, message: str, source: str = "system") -> None:
             await db.commit()
     except Exception as e:
         logger.error("Failed to write log: %s", e)
-
-    try:
-        payload: dict = {"type": "log", "ts": ts, "level": level, "source": source, "message": message}
-        if job_id is not None:
-            payload["job_id"] = job_id
-        await _broadcast(payload)
-    except Exception:
-        pass
 
 
 # ─── Job history ──────────────────────────────────────────────────────────────

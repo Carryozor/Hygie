@@ -6,29 +6,24 @@ Endpoints:
   GET  /health                 — public healthcheck
   GET  /api/version            — public version info
   GET  /api/proxy/image        — image proxy (SSRF-protected)
-  WS   /ws                     — log stream
   *    /api/...                — authenticated API
 """
 import asyncio
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.logs import add_log
 from .logmsg import lm
 
 from .db.schema import init_db
-from .db.websocket import register_ws, unregister_ws
-from .auth import verify_token
 from .scheduler import (
     _run_deletion_guarded,
     run_ignored_cleanup,
@@ -352,7 +347,7 @@ async def security_headers(request: Request, call_next):
         "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
-        "connect-src 'self' wss: ws:; "
+        "connect-src 'self'; "
         "font-src 'self'; "
         "frame-ancestors 'self'; "
         "object-src 'none'; "
@@ -386,98 +381,6 @@ from .routers import plex_webhook
 app.include_router(plex_webhook.router)
 
 
-# ─── Static & templates ───────────────────────────────────────────────────────
-_ROOT = os.path.dirname(os.path.dirname(__file__))
-app.mount(
-    "/static",
-    StaticFiles(directory=os.path.join(_ROOT, "frontend", "static")),
-    name="static",
-)
-templates = Jinja2Templates(directory=os.path.join(_ROOT, "frontend", "templates"))
-
-# ─── WebSocket — log stream (DB-poll) ────────────────────────────────────────
-async def _ws_max_log_id() -> int:
-    """Return the current max log id (0 if empty). Used to anchor the poll cursor."""
-    try:
-        from .db.engine import get_db
-        async with get_db() as db:
-            row = await db.fetch_one("SELECT MAX(id) AS m FROM logs")
-            return int(row["m"] or 0) if row else 0
-    except Exception:
-        return 0
-
-
-async def _ws_fetch_logs_since(cursor: int) -> list[dict]:
-    """Fetch log rows with id > cursor, ordered oldest-first, max 200 per poll."""
-    try:
-        from .db.engine import get_db
-        async with get_db() as db:
-            rows = await db.fetch_all(
-                "SELECT id, ts, level, source, message, job_id "
-                "FROM logs WHERE id > ? ORDER BY id ASC LIMIT 200",
-                (cursor,),
-            )
-        return [dict(r) for r in rows]
-    except Exception:
-        return []
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    # Reject cross-origin WebSocket connections before accepting to prevent
-    # DNS-rebinding and CSRF-style attacks from hostile pages.
-    origin = ws.headers.get("origin", "")
-    if origin and origin not in _allowed_origins:
-        await ws.close(code=1008)
-        return
-
-    await ws.accept()
-    try:
-        # First message must carry the auth token (sent by frontend onopen).
-        # 10-second window — reject if auth is missing or invalid.
-        raw = await asyncio.wait_for(ws.receive_text(), timeout=10)
-        if len(raw) > 8192:
-            raise ValueError("message too large")
-        data = json.loads(raw)
-        if not verify_token(data.get("token", "")):
-            raise ValueError("invalid token")
-    except Exception:
-        try:
-            await ws.close(code=1008)  # 1008 = Policy Violation
-        except Exception:
-            pass
-        return
-
-    register_ws(ws)
-    # Anchor cursor to current max id so the client only receives new logs —
-    # historical logs are loaded separately via GET /api/logs.
-    cursor = await _ws_max_log_id()
-    try:
-        await ws.send_json({"type": "hello", "version": VERSION})
-        while True:
-            # DB-poll every 1 second — works across all workers since the DB is shared.
-            new_logs = await _ws_fetch_logs_since(cursor)
-            for entry in new_logs:
-                payload: dict = {
-                    "type": "log",
-                    "ts": entry["ts"],
-                    "level": entry["level"],
-                    "source": entry["source"],
-                    "message": entry["message"],
-                }
-                if entry.get("job_id") is not None:
-                    payload["job_id"] = entry["job_id"]
-                await ws.send_json(payload)
-                cursor = max(cursor, entry["id"])
-            await asyncio.sleep(1.0)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        logger.warning("WebSocket log stream error", exc_info=True)
-    finally:
-        unregister_ws(ws)
-
-
 # ─── SPA fallback (must be last — catches all unmatched GET routes) ───────────
 _DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
 
@@ -495,4 +398,9 @@ async def spa_fallback(full_path: str):
     index = os.path.join(_DIST, "index.html")
     if os.path.isfile(index):
         return FileResponse(index, headers={"Cache-Control": "no-store"})
-    return FileResponse("frontend/templates/index.html", headers={"Cache-Control": "no-store"})
+    return Response(
+        status_code=503,
+        content="Frontend non construit : frontend/dist/index.html est introuvable (npm run build).",
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )

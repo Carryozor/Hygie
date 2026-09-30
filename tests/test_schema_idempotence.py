@@ -96,14 +96,9 @@ async def test_snapshot_detects_a_schema_change(sqlite_path):
     assert snapshot(sqlite_path) != with_column
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN DRIFT: schema._SQLITE_INDEXES lists idx_plex_overlays_server but "
-    "_init_db_sqlite() (inline index statements) never creates it, nor does m017 — "
-    "a real SQLite install has no index on plex_overlays(server_id). Only "
-    "backend/tools/migrate_to_sqlite.py consumes the list. Fix = single index list."))
-async def test_known_drift_init_db_lacks_plex_overlays_server_index(sqlite_path):
-    """init_db() hard-codes its index statements a second time; they must stay
-    equal to schema._SQLITE_INDEXES (which the structural parity test relies on)."""
+async def test_init_db_creates_exactly_the_declared_indexes(sqlite_path):
+    """init_db() must create exactly schema._SQLITE_INDEXES (which the structural
+    parity test relies on) — regression guard for idx_plex_overlays_server."""
     from backend.db.schema import _SQLITE_INDEXES
     from tests.schema_introspect import _parse_index
 

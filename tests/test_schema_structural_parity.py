@@ -45,22 +45,8 @@ ALLOWED = {
         "cosmetic: same table/columns, different name",
 }
 
-# ── Real drifts existing today (documented, not fixed by this test) ─────────
-KNOWN_DRIFT = {
-    ("column.type", "expert_rules.library_id"):
-        "SQLite INTEGER vs MariaDB VARCHAR(255) while every other library_id "
-        "(libraries.id, media_queue, seerr_user_rules) is TEXT/VARCHAR; SQLite "
-        "INTEGER affinity would coerce numeric-looking ids",
-    ("column.not_null", "expert_rules.created_at"):
-        "SQLite NOT NULL (with default), MariaDB nullable -> a NULL created_at "
-        "is possible on MariaDB only",
-    ("column.not_null", "notifications.sent_at"):
-        "SQLite NOT NULL (with default), MariaDB nullable -> a NULL sent_at "
-        "is possible on MariaDB only",
-    ("column.default", "media_queue.plex_rating_key"):
-        "SQLite DEFAULT '' (DDL + ALTER), MariaDB DEFAULT NULL -> rows inserted "
-        "without the column read '' on SQLite, NULL on MariaDB",
-}
+# ── Real drifts existing today (add an entry here + strict xfail applies) ───
+KNOWN_DRIFT: dict = {}  # empty = SQLite DDL fully aligned on MariaDB (prod)
 
 
 def _diff(sqlite_m, sqlite_idx, maria_m, maria_idx):
@@ -127,7 +113,7 @@ def test_allowlists_have_no_stale_entries(diffs):
         pytest.param(k, id="-".join(k), marks=pytest.mark.xfail(
             strict=True, reason=f"known drift: {why}"))
         for k, why in sorted(KNOWN_DRIFT.items())
-    ],
+    ] or [pytest.param(None, id="none", marks=pytest.mark.skip(reason="no known drift"))],
 )
 def test_known_drift_is_resolved(diffs, key):
     """XFAIL(strict) while the drift exists; XPASS (= failure) once fixed, so the

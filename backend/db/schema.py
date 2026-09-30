@@ -104,7 +104,7 @@ _TABLES = [
             notified_thresholds TEXT DEFAULT '[]',
             sonarr_series_id INTEGER,
             season_number INTEGER,
-            plex_rating_key TEXT DEFAULT '',
+            plex_rating_key TEXT DEFAULT NULL,
             view_count INTEGER DEFAULT 0,
             arr_server_url TEXT DEFAULT NULL
         )""",
@@ -127,7 +127,7 @@ _TABLES = [
             ("notified_thresholds", "TEXT DEFAULT '[]'"),
             ("sonarr_series_id", "INTEGER"),
             ("season_number", "INTEGER"),
-            ("plex_rating_key", "TEXT DEFAULT ''"),
+            ("plex_rating_key", "TEXT DEFAULT NULL"),
             ("view_count", "INTEGER DEFAULT 0"),
             ("torrent_hash", "TEXT DEFAULT ''"),
             ("seerr_discord_id", "TEXT DEFAULT ''"),
@@ -260,7 +260,7 @@ _TABLES = [
         """CREATE TABLE IF NOT EXISTS expert_rules (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
-            library_id  INTEGER,
+            library_id  TEXT,
             library_ids TEXT,
             conditions  TEXT    NOT NULL DEFAULT '[]',
             operator    TEXT    NOT NULL DEFAULT 'AND',
@@ -268,7 +268,7 @@ _TABLES = [
             grace_days  INTEGER NOT NULL DEFAULT 7,
             enabled     INTEGER NOT NULL DEFAULT 1,
             priority    INTEGER NOT NULL DEFAULT 0,
-            created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+            created_at  TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         )""",
         [("library_ids", "TEXT"), ("grace_days", "INTEGER NOT NULL DEFAULT 7")],
     ),
@@ -278,7 +278,7 @@ _TABLES = [
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             media_id    INTEGER NOT NULL REFERENCES media_queue(id) ON DELETE CASCADE,
             threshold   TEXT    NOT NULL,
-            sent_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            sent_at     TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
             UNIQUE (media_id, threshold)
         )""",
         [],
@@ -455,47 +455,9 @@ async def _init_db_sqlite():
         for table_name, _, expected_cols in _TABLES:
             await _ensure_columns(db, table_name, expected_cols)
 
-        # 4. Indexes
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts DESC)")
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_status ON media_queue(status)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_delete_at ON media_queue(delete_at)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_status_delete ON media_queue(status, delete_at)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_emby_id ON media_queue(emby_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_library_id ON media_queue(library_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_ignored_emby_id ON ignored_media(emby_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rate_limit_key ON rate_limit(key, ts)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_notif_media ON notifications(media_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_libraries_server ON libraries(server_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_seerr_user_id ON media_queue(seerr_user_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_radarr_id ON media_queue(radarr_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_sonarr_id ON media_queue(sonarr_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_media_tmdb_id ON media_queue(tmdb_id)"
-        )
+        # 4. Indexes (single source of truth: _SQLITE_INDEXES, all IF NOT EXISTS)
+        for index_sql in _SQLITE_INDEXES:
+            await db.execute(index_sql)
 
         # 5. Seed defaults (INSERT OR IGNORE preserves user values)
         for k, v in DEFAULT_SETTINGS.items():

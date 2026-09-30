@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from ..auth import require_auth
 
 logger = logging.getLogger(__name__)
-from ..db.settings_store import get_all_settings, set_setting, get_setting
+from ..db.settings_store import get_all_settings, set_setting, get_setting, parse_thresholds
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
 from ..db.utils import is_loopback_or_link_local
@@ -132,6 +132,25 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
             continue
         if urlparse(value).scheme.lower() not in ("http", "https"):
             raise HTTPException(status_code=422, detail=f"{key}: le schéma doit être http ou https")
+
+    # Reject thresholds that would silently disable pre-deletion alerts (empty = disabled, allowed)
+    if "discord_notif_thresholds" in incoming:
+        raw_thr = incoming["discord_notif_thresholds"] or ""
+        days, invalid = parse_thresholds(raw_thr)
+        if invalid:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "discord_notif_thresholds: seuils invalides : "
+                    + ", ".join(invalid)
+                    + " (entiers positifs séparés par des virgules, ex. 7,1)"
+                ),
+            )
+        if raw_thr.strip() and not days:
+            raise HTTPException(
+                status_code=422,
+                detail="discord_notif_thresholds: aucun seuil valide (entiers positifs séparés par des virgules, ex. 7,1)",
+            )
 
     # Read current interval values BEFORE saving to detect real changes
     old_scan = await get_setting("scan_interval_minutes") or "360"

@@ -1,11 +1,60 @@
 # backend/db/settings_store.py
 """Settings cache and CRUD — all reads are served from an in-process TTL cache."""
 import asyncio as _asyncio
+import logging
+import re
 import time as _time
 
 from .utils import DB_PATH  # noqa: F401 - re-exported as a monkeypatch target for tests (fresh_db fixtures)
 from .engine import get_db
 from .encryption import SENSITIVE_KEYS, _decrypt_value, _encrypt_value
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_NOTIF_THRESHOLDS = [7, 1]
+_THRESHOLD_TOKEN_RE = re.compile(r"[0-9]+")
+
+
+def parse_thresholds(raw):
+    """Parse a comma-separated list of threshold days.
+
+    Returns (days, invalid): days = valid integers > 0, deduplicated, sorted
+    descending; invalid = non-empty tokens that are not positive integers.
+    Empty tokens ("7,,1,") are ignored. Empty/None input gives ([], []).
+    """
+    days, invalid = set(), []
+    for token in (raw or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if _THRESHOLD_TOKEN_RE.fullmatch(token) and int(token) > 0:
+            days.add(int(token))
+        else:
+            invalid.append(token)
+    return sorted(days, reverse=True), invalid
+
+
+def resolve_thresholds(raw):
+    """Thresholds to apply when reading discord_notif_thresholds.
+
+    Empty value = alerts deliberately disabled -> []. Invalid tokens are
+    ignored with a WARNING; if none is valid, fall back to the default [7, 1]
+    (also with a WARNING) instead of silently disabling the alerts.
+    """
+    days, invalid = parse_thresholds(raw)
+    if invalid:
+        logger.warning(
+            "discord_notif_thresholds=%r : seuils invalides ignorés %s",
+            raw, invalid,
+        )
+    if not days and (raw or "").strip():
+        logger.warning(
+            "discord_notif_thresholds=%r : aucun seuil valide, repli sur %s",
+            raw, DEFAULT_NOTIF_THRESHOLDS,
+        )
+        return list(DEFAULT_NOTIF_THRESHOLDS)
+    return days
+
 
 # Default settings — written ONCE at first init (INSERT OR IGNORE)
 DEFAULT_SETTINGS = {

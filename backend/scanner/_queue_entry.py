@@ -67,17 +67,10 @@ async def _pre_mark_applicable_thresholds(emby_id: str, delete_at_str: str) -> N
     _send_pending_notifications() would send a duplicate notification right after
     the 'detected' (green) one. This records those thresholds so they're skipped.
     """
-    from ..db.settings_store import get_setting
+    from ..db.settings_store import get_setting, resolve_thresholds
     from ..db.engine import get_db
 
-    thresholds_raw = await get_setting("discord_notif_thresholds") or "7,1"
-    try:
-        threshold_days = [
-            int(x.strip()) for x in thresholds_raw.split(",")
-            if x.strip().isdigit()
-        ]
-    except Exception:
-        return
+    threshold_days = resolve_thresholds(await get_setting("discord_notif_thresholds"))
 
     try:
         delete_at = datetime.fromisoformat(delete_at_str.replace("Z", "+00:00"))

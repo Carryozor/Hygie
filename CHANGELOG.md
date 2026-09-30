@@ -15,6 +15,7 @@ All notable changes to Hygie are documented here.
 - **Emby `test_connection` returned a 3-tuple** when URL or key was missing (every other branch returns 4 values).
 - **The "scan already running" toast displayed the raw key `rules.scanAlreadyRunning`** — the translation existed in no locale. Added in all 8.
 - **The dashboard showed zeros instead of an error when statistics failed to load** (the stats store swallows its own errors).
+- **An invalid `discord_notif_thresholds` (`abc`, `7;1`, `7j,1j`) silently disabled every pre-deletion Discord alert.** The parser kept only `isdigit()` tokens, so such values parsed to `[]` with no error (the fallback `except` was unreachable), and the same parsing was duplicated in the scanner's pre-mark step. There is now one shared parser (`db/settings_store.py`): an empty value still means "alerts disabled" (no warning), invalid tokens are ignored with a WARNING, and a non-empty value with no valid threshold falls back to `7,1` with a WARNING. Saving the setting now returns HTTP 422 (French message listing the invalid tokens) instead of storing such a value.
 
 ### Tests
 

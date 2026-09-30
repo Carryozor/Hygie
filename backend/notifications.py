@@ -2,7 +2,6 @@
 Threshold-based Discord notifications for pending media.
 
 Public API:
-  _parse_thresholds             — parse "7,1" → [7, 1]
   _send_pending_notifications   — send per-threshold notifications
 """
 import logging
@@ -10,22 +9,13 @@ from datetime import timedelta
 
 from .db.utils import now_utc
 from .db.engine import get_db
-from .db.settings_store import get_setting, get_bool_setting
+from .db.settings_store import get_setting, get_bool_setting, resolve_thresholds
 from .db.logs import add_log
 from .logmsg import lm
 
 from .discord_client import send_notification
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_thresholds(raw: str) -> list:
-    """Parse comma-separated threshold days string into sorted list (descending)."""
-    try:
-        days = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
-        return sorted(set(days), reverse=True)
-    except Exception:
-        return [7, 1]
 
 
 async def _send_pending_notifications():
@@ -35,8 +25,7 @@ async def _send_pending_notifications():
     (e.g. at 7 days and again at 1 day) based on discord_notif_thresholds.
     """
     dry_run = await get_bool_setting("dry_run")
-    thresholds_raw = await get_setting("discord_notif_thresholds") or "7,1"
-    threshold_days = _parse_thresholds(thresholds_raw)
+    threshold_days = resolve_thresholds(await get_setting("discord_notif_thresholds"))
 
     try:
         for days in threshold_days:

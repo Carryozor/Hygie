@@ -42,7 +42,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScanContext:
-    """Scan-level caches passed into _evaluate_item to avoid per-item fetches."""
+    """Scan-level caches passed into _evaluate_item to avoid per-item fetches.
+
+    user_data_cache: {uid: {emby_id: UserData}}       — pre-fetched per library.
+    radarr_cache:    {file_path: radarr_id}            — pre-fetched once per scan.
+    sonarr_cache:    {episode_file_path: entry_dict}   — pre-fetched once per scan.
+    seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — once per scan.
+    queued_ids:      set of emby_ids already in media_queue   — once per scan.
+    ignored_ids:     set of emby_ids in ignored_media         — once per scan.
+    series_tmdb_map: {series_emby_id: series_tmdb_id} — per library; required for
+                     episodes (their ProviderIds lack the series Tmdb id).
+    """
     user_data_cache: dict = field(default_factory=dict)
     radarr_cache: Optional[dict] = None
     sonarr_cache: Optional[dict] = None
@@ -423,6 +433,149 @@ async def _is_already_ignored(emby_id: str, ignored_ids: Optional[set]) -> bool:
 
 
 # ─── Item evaluation ──────────────────────────────────────────────────────────
+#
+# _evaluate_item is a thin orchestrator. The gate ORDER below decides which
+# media enter the deletion queue and must not change:
+#   required fields -> user data -> library conditions -> already queued ->
+#   already ignored -> Seerr lookup -> Seerr filter -> grace -> arr ids ->
+#   poster -> eligibility log -> queue entry.
+
+def _merge_scan_context(
+    ctx: Optional[ScanContext],
+    user_data_cache, radarr_cache, sonarr_cache, seerr_cache,
+    seerr_ext, queued_ids, ignored_ids, series_tmdb_map,
+) -> tuple:
+    """Fill every cache argument left unset (None / "") from the ScanContext.
+
+    Explicit arguments win, including empty dicts/sets (`is not None` tests);
+    seerr_ext uses `or`, so an empty string also falls back to the context.
+    Returns the 8 values in the same order they were passed.
+    """
+    if ctx is None:
+        return (user_data_cache, radarr_cache, sonarr_cache, seerr_cache,
+                seerr_ext, queued_ids, ignored_ids, series_tmdb_map)
+    return (
+        user_data_cache if user_data_cache is not None else ctx.user_data_cache,
+        radarr_cache    if radarr_cache is not None    else ctx.radarr_cache,
+        sonarr_cache    if sonarr_cache is not None    else ctx.sonarr_cache,
+        seerr_cache     if seerr_cache is not None     else ctx.seerr_cache,
+        seerr_ext       or ctx.seerr_ext,
+        queued_ids      if queued_ids is not None      else ctx.queued_ids,
+        ignored_ids     if ignored_ids is not None     else ctx.ignored_ids,
+        series_tmdb_map if series_tmdb_map is not None else ctx.series_tmdb_map,
+    )
+
+
+async def _lookup_seerr_request(tmdb_id: str, seerr_cache: Optional[dict]) -> Optional[dict]:
+    """Seerr request for a TMDB id: from the scan cache when present (a cache
+    miss is final, no HTTP fallback), else one HTTP lookup. Empty TMDB id -> None."""
+    if seerr_cache is not None:
+        return seerr_cache.get(tmdb_id) if tmdb_id else None
+    return await seerr_find_request_by_tmdb(tmdb_id) if tmdb_id else None
+
+
+def _seerr_fields(seerr_data: Optional[dict]) -> tuple:
+    """Return (seerr_id, seerr_user_id, seerr_username) from a Seerr request dict."""
+    if not seerr_data:
+        return None, None, ""
+    return seerr_data.get("seerr_id"), seerr_data.get("user_id"), seerr_data.get("username", "")
+
+
+async def _seerr_filter_rejects(
+    title: str, seerr_user_id: Optional[int], seerr_conditions: list
+) -> bool:
+    """Apply the library's Seerr include/exclude filter; log and return True to skip the item."""
+    if not seerr_conditions:
+        return False
+    has_includes = any(c.get("type") == "user_include" for c in seerr_conditions)
+    has_excludes = any(c.get("type") == "user_exclude" for c in seerr_conditions)
+    if has_includes and not seerr_user_id:
+        await add_log("DEBUG", f"Ignoré (non demandé sur Seerr) : {title}", "scan")
+        return True
+    if not _seerr_filter_passes(seerr_user_id, seerr_conditions):
+        reason = "exclu" if has_excludes else "non inclus"
+        await add_log("DEBUG", f"Ignoré (utilisateur Seerr {reason}) : {title}", "scan")
+        return True
+    return False
+
+
+def _seerr_request_url(seerr_id, seerr_ext: str, media_type: str, tmdb_id: str) -> str:
+    """Public Seerr request URL, or "" when there is no request / no external URL."""
+    if not (seerr_id and seerr_ext):
+        return ""
+    path = "movie" if media_type == "Movie" else "tv"
+    return f"{seerr_ext.rstrip('/')}/{path}/{tmdb_id}"
+
+
+async def _log_eligible(
+    title: str, delete_at: datetime, seerr_username: str, effective_grace: int, grace_days: int
+) -> None:
+    """Log the eligibility line, noting a per-user Seerr grace override."""
+    note = ""
+    if seerr_username and effective_grace != grace_days:
+        note = f" (règle Seerr {seerr_username}: {effective_grace}j)"
+    await add_log("INFO", f"Éligible : {title} → {delete_at.strftime('%d/%m/%Y')}{note}", "scan")
+
+
+def _build_queue_entry(
+    item: dict, lib: dict, *, tmdb_id: str, added_date: datetime, delete_at: datetime,
+    last_played: Optional[datetime], play_count: int, seerr: tuple, seerr_request_url: str,
+    arr: tuple, poster_url: str,
+) -> QueueEntry:
+    """Assemble the queue-entry dict (key order = insert column order).
+
+    `seerr` = (id, user_id, username); `arr` = the 5-tuple from _resolve_arr_ids.
+    detected_at is read here, after the arr/poster lookups, as before.
+    """
+    seerr_id, seerr_user_id, seerr_username = seerr
+    radarr_id, sonarr_id, sonarr_series_id, season_number, arr_server_url = arr
+    return {
+        "emby_id": item.get("Id"),
+        "title": item.get("Name") or "?",
+        "media_type": item.get("Type") or "",
+        "library_id": lib["id"],
+        "library_name": lib["name"],
+        "file_path": item.get("Path") or "",
+        "poster_url": poster_url,
+        "tmdb_id": tmdb_id,
+        "seerr_id": seerr_id,
+        "seerr_user_id": seerr_user_id,
+        "seerr_username": seerr_username,
+        "seerr_request_url": seerr_request_url,
+        "radarr_id": radarr_id,
+        "sonarr_id": sonarr_id,
+        "sonarr_series_id": sonarr_series_id,
+        "season_number": season_number,
+        "arr_server_url": arr_server_url,
+        "detected_at": now_utc().isoformat(),
+        "delete_at": delete_at.isoformat(),
+        "added_date": added_date.isoformat(),
+        "last_played": last_played.isoformat() if last_played else None,
+        "view_count": play_count,
+    }
+
+
+async def _is_skipped_by_queue_state(
+    emby_id: str, queued_ids: Optional[set], ignored_ids: Optional[set], lib: dict,
+    grace_days: int, title: str, last_played: Optional[datetime], play_count: int,
+) -> bool:
+    """True if the item is already queued (checked first, may refresh its delete_at) or ignored."""
+    if await _is_already_queued(emby_id, queued_ids, lib, grace_days, title, last_played, play_count):
+        return True
+    return await _is_already_ignored(emby_id, ignored_ids)
+
+
+async def _resolve_arr_and_poster(
+    emby_id: str, file_path: str, media_type: str, tmdb_id: str,
+    radarr_cache: Optional[dict], sonarr_cache: Optional[dict],
+) -> tuple:
+    """Return (arr_ids_5_tuple, poster_url): arr ids first, then the poster they enable."""
+    arr = await _resolve_arr_ids(file_path, media_type, radarr_cache, sonarr_cache)
+    poster_url = await _get_poster_url(
+        emby_id, tmdb_id=tmdb_id, media_type=media_type, radarr_id=arr[0], sonarr_id=arr[1],
+    )
+    return arr, poster_url
+
 
 async def _evaluate_item(
     item: dict,
@@ -444,29 +597,17 @@ async def _evaluate_item(
     ignored_ids: Optional[set] = None,
     series_tmdb_map: Optional[dict] = None,
 ) -> Optional[QueueEntry]:
-    """Evaluate a single Emby item; return queue-entry dict if eligible, else None.
+    """Evaluate a single Emby item; return a queue-entry dict if eligible, else None.
 
-    The caller (_scan_library) is responsible for DB insert and notifications.
-    user_data_cache: {uid: {emby_id: UserData}}       — pre-fetched per library.
-    radarr_cache:    {file_path: radarr_id}            — pre-fetched once per scan.
-    sonarr_cache:    {episode_file_path: entry_dict}   — pre-fetched once per scan.
-    seerr_cache:     {tmdb_id: {seerr_id, user_id, username}} — pre-fetched once per scan.
-    queued_ids:      set of emby_ids already in media_queue   — pre-fetched once per scan.
-    ignored_ids:     set of emby_ids in ignored_media         — pre-fetched once per scan.
-    series_tmdb_map: {series_emby_id: series_tmdb_id} — pre-fetched per library;
-                     required for episodes (their ProviderIds lack the series Tmdb id).
-    Falls back to individual DB/HTTP calls when caches are absent.
-    Pass a ScanContext via `ctx` as a convenient alternative to the individual cache kwargs.
+    The caller (_scan_library) does the DB insert and notifications. Cache kwargs
+    (see ScanContext) are pre-fetched once per scan/library; when absent, this
+    falls back to per-item DB/HTTP calls. `ctx` is an alternative to passing them
+    individually (explicit kwargs win).
     """
-    if ctx is not None:
-        user_data_cache = user_data_cache if user_data_cache is not None else ctx.user_data_cache
-        radarr_cache    = radarr_cache    if radarr_cache is not None    else ctx.radarr_cache
-        sonarr_cache    = sonarr_cache    if sonarr_cache is not None    else ctx.sonarr_cache
-        seerr_cache     = seerr_cache     if seerr_cache is not None     else ctx.seerr_cache
-        seerr_ext       = seerr_ext       or ctx.seerr_ext
-        queued_ids      = queued_ids      if queued_ids is not None      else ctx.queued_ids
-        ignored_ids     = ignored_ids     if ignored_ids is not None     else ctx.ignored_ids
-        series_tmdb_map = series_tmdb_map if series_tmdb_map is not None else ctx.series_tmdb_map
+    (user_data_cache, radarr_cache, sonarr_cache, seerr_cache, seerr_ext,
+     queued_ids, ignored_ids, series_tmdb_map) = _merge_scan_context(
+        ctx, user_data_cache, radarr_cache, sonarr_cache, seerr_cache,
+        seerr_ext, queued_ids, ignored_ids, series_tmdb_map)
 
     emby_id    = item.get("Id")
     title      = item.get("Name") or "?"
@@ -474,87 +615,34 @@ async def _evaluate_item(
     file_path  = item.get("Path") or ""
     tmdb_id    = resolve_item_tmdb(item, series_tmdb_map)
     added_date = parse_iso_dt(item.get("DateCreated") or "")
-
     if not emby_id or not file_path or not added_date:
         return None
 
     play_count, never_watched, last_played = await _aggregate_user_data(
         user_ids, emby_id, user_data_cache, activity_log
     )
-
     if not _evaluate_conditions(conditions, logic, added_date, last_played, play_count, never_watched):
         return None
-
-    if await _is_already_queued(emby_id, queued_ids, lib, grace_days, title, last_played, play_count):
+    if await _is_skipped_by_queue_state(
+        emby_id, queued_ids, ignored_ids, lib, grace_days, title, last_played, play_count
+    ):
         return None
 
-    if await _is_already_ignored(emby_id, ignored_ids):
+    seerr = _seerr_fields(await _lookup_seerr_request(tmdb_id, seerr_cache))
+    seerr_id, seerr_user_id, seerr_username = seerr
+    if await _seerr_filter_rejects(title, seerr_user_id, seerr_conditions):
         return None
-
-    # Seerr lookup
-    if seerr_cache is not None:
-        seerr_data = seerr_cache.get(tmdb_id) if tmdb_id else None
-    else:
-        seerr_data = await seerr_find_request_by_tmdb(tmdb_id) if tmdb_id else None
-    seerr_id       = seerr_data.get("seerr_id") if seerr_data else None
-    seerr_user_id  = seerr_data.get("user_id") if seerr_data else None
-    seerr_username = seerr_data.get("username", "") if seerr_data else ""
-
-    # Seerr filter
-    if seerr_conditions:
-        has_includes = any(c.get("type") == "user_include" for c in seerr_conditions)
-        has_excludes = any(c.get("type") == "user_exclude" for c in seerr_conditions)
-        if has_includes and not seerr_user_id:
-            await add_log("DEBUG", f"Ignoré (non demandé sur Seerr) : {title}", "scan")
-            return None
-        if not _seerr_filter_passes(seerr_user_id, seerr_conditions):
-            reason = "exclu" if has_excludes else "non inclus"
-            await add_log("DEBUG", f"Ignoré (utilisateur Seerr {reason}) : {title}", "scan")
-            return None
 
     effective_grace = await _get_seerr_grace(seerr_user_id, lib["id"], grace_days)
     delete_at = now_utc() + timedelta(days=effective_grace)
-
-    radarr_id_val, sonarr_id_val, sonarr_series_id_val, season_number_val, arr_server_url_val = await _resolve_arr_ids(
-        file_path, media_type, radarr_cache, sonarr_cache
+    arr, poster_url = await _resolve_arr_and_poster(
+        emby_id, file_path, media_type, tmdb_id, radarr_cache, sonarr_cache
     )
+    seerr_request_url = _seerr_request_url(seerr_id, seerr_ext, media_type, tmdb_id)
+    await _log_eligible(title, delete_at, seerr_username, effective_grace, grace_days)
 
-    poster_url = await _get_poster_url(
-        emby_id, tmdb_id=tmdb_id, media_type=media_type,
-        radarr_id=radarr_id_val, sonarr_id=sonarr_id_val,
+    return _build_queue_entry(
+        item, lib, tmdb_id=tmdb_id, added_date=added_date, delete_at=delete_at,
+        last_played=last_played, play_count=play_count, seerr=seerr,
+        seerr_request_url=seerr_request_url, arr=arr, poster_url=poster_url,
     )
-
-    seerr_request_url = ""
-    if seerr_id and seerr_ext:
-        path = "movie" if media_type == "Movie" else "tv"
-        seerr_request_url = f"{seerr_ext.rstrip('/')}/{path}/{tmdb_id}"
-
-    note = ""
-    if seerr_username and effective_grace != grace_days:
-        note = f" (règle Seerr {seerr_username}: {effective_grace}j)"
-    await add_log("INFO", f"Éligible : {title} → {delete_at.strftime('%d/%m/%Y')}{note}", "scan")
-
-    return {
-        "emby_id": emby_id,
-        "title": title,
-        "media_type": media_type,
-        "library_id": lib["id"],
-        "library_name": lib["name"],
-        "file_path": file_path,
-        "poster_url": poster_url,
-        "tmdb_id": tmdb_id,
-        "seerr_id": seerr_id,
-        "seerr_user_id": seerr_user_id,
-        "seerr_username": seerr_username,
-        "seerr_request_url": seerr_request_url,
-        "radarr_id": radarr_id_val,
-        "sonarr_id": sonarr_id_val,
-        "sonarr_series_id": sonarr_series_id_val,
-        "season_number": season_number_val,
-        "arr_server_url": arr_server_url_val,
-        "detected_at": now_utc().isoformat(),
-        "delete_at": delete_at.isoformat(),
-        "added_date": added_date.isoformat(),
-        "last_played": last_played.isoformat() if last_played else None,
-        "view_count": play_count,
-    }

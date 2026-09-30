@@ -112,9 +112,22 @@ return types with `QueueEntry`.
 
 `never_watched` is now a first-class `ConditionField` usable in expert rules.
 
+### Service layer (v4.4, pilot: storage)
+
+Routers stay thin; aggregation and external calls live in `backend/services/`.
+Pilot: `routers/storage.py` → `services/storage_service.py`. Convention:
+
+1. A router only does auth (`Depends`), validation, the service call, response shaping and caching.
+2. `services/<x>_service.py` holds external calls and aggregation, in functions under 50 lines, with no FastAPI/`Request` import.
+3. The service reaches the DB only through `db/repositories` or `get_db` — no SQL in routers.
+4. If tests patch `routers.<x>.<dep>`, the router keeps that dependency and passes it to the service as an argument (default = the real implementation).
+5. Write a characterization test before extracting, then a mutation counter-test.
+
+Other routers migrate one at a time under the same convention.
+
 ### DeletionPipeline (v3.1)
 
-`deletion_pipeline.py` implements the deletion workflow as ordered steps:
+`deletion_pipeline.py` implements the deletion workflow as ordered steps (its helpers — arr, Seerr, qBittorrent, torrent-hash resolution — live in the leaf module `deletion_helpers.py`, imported by both `deletion.py` and the pipeline, so there is no import cycle):
 `SizeLookupStep` → `TorrentHashStep` → `DiscordNotifyStep` → `ServerResolveStep`
 → `MediaServerStep` → `ArrStep` → `SeerrStep` → `QbitStep` → `StatsStep`.
 

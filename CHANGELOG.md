@@ -10,6 +10,7 @@ All notable changes to Hygie are documented here.
 
 - **Service layer introduced on one pilot router.** Storage aggregation (Radarr/Sonarr calls, disk/library/queue stats) moved from `routers/storage.py` to `services/storage_service.py`; the router keeps auth, cache and the stale-while-revalidate logic. No behaviour change (response shape, cache, timeouts identical); characterization tests added.
 - **Pure refactor, behaviour unchanged:** `_evaluate_item` (Emby eligibility gate) and `_scan_plex_library` (Plex scan) are split into named single-purpose helpers (gate order, AND/OR short-circuits, defaults, logs and swallowed errors identical); pinned by new characterization tests with mutation checks.
+- `run_deletion` split into small single-purpose functions and the `deletion` ↔ `deletion_pipeline` import cycle broken (shared helpers moved to `backend/deletion_helpers.py`, re-exported from `backend.deletion`); behaviour unchanged, call-order characterization tests added.
 
 ### Fixed
 
@@ -22,10 +23,6 @@ All notable changes to Hygie are documented here.
 - **The dashboard showed zeros instead of an error when statistics failed to load** (the stats store swallows its own errors).
 - **An invalid `discord_notif_thresholds` (`abc`, `7;1`, `7j,1j`) silently disabled every pre-deletion Discord alert.** The parser kept only `isdigit()` tokens, so such values parsed to `[]` with no error (the fallback `except` was unreachable), and the same parsing was duplicated in the scanner's pre-mark step. There is now one shared parser (`db/settings_store.py`): an empty value still means "alerts disabled" (no warning), invalid tokens are ignored with a WARNING, and a non-empty value with no valid threshold falls back to `7,1` with a WARNING. Saving the setting now returns HTTP 422 (French message listing the invalid tokens) instead of storing such a value.
 - **SQLite DDL aligned on MariaDB (production unchanged).** New SQLite installs now get `expert_rules.library_id TEXT`, nullable `expert_rules.created_at` / `notifications.sent_at` (defaults kept), `media_queue.plex_rating_key DEFAULT NULL`, and `idx_plex_overlays_server`, which `_SQLITE_INDEXES` listed but `init_db()` never created (init now loops over that list, so both can no longer diverge). Existing SQLite databases keep their old table DDL (no rebuild); they only gain the missing index. Tests prove the app handles NULL `plex_rating_key` and both `library_id` flavours.
-
-### Changed
-
-- `run_deletion` split into small single-purpose functions and the `deletion` ↔ `deletion_pipeline` import cycle broken (shared helpers moved to `backend/deletion_helpers.py`, re-exported from `backend.deletion`); behaviour unchanged, call-order characterization tests added.
 
 ### Tests
 

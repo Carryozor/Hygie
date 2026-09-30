@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="frontend/static/img/icon-512.png" width="96" alt="Hygie">
+<img src="frontend/vue/public/assets/img/icon-512.png" width="96" alt="Hygie">
 
 # Hygie
 

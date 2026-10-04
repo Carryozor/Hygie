@@ -436,7 +436,7 @@ async def test_reevaluate_library_queue_returns_zero_when_no_pending_items():
 async def test_reevaluate_removal_restores_poster_when_overlay_enabled():
     await _insert_library("lib1", conditions='[{"field": "days_not_watched", "op": "gt", "value": 5}]')
     await _insert_pending("e1", poster_url="http://emby.local/poster.jpg",
-                          last_played="2026-09-27T00:00:00+00:00")  # watched -> stops matching
+                          last_played=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())  # watched -> stops matching
     from backend.db.engine import get_db
     async with get_db() as db:
         await db.execute(
@@ -469,7 +469,7 @@ async def test_reevaluate_removal_restores_poster_when_overlay_enabled():
 async def test_reevaluate_removal_skips_poster_restore_when_overlay_disabled():
     await _insert_library("lib1", conditions='[{"field": "days_not_watched", "op": "gt", "value": 5}]')
     await _insert_pending("e1", poster_url="http://emby.local/poster.jpg",
-                          last_played="2026-09-27T00:00:00+00:00")
+                          last_played=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
     from backend.db.engine import get_db
     async with get_db() as db:
         await db.execute(
@@ -497,7 +497,7 @@ async def test_reevaluate_removal_swallows_poster_restore_exception():
     important side effect, poster restore is best-effort."""
     await _insert_library("lib1", conditions='[{"field": "days_not_watched", "op": "gt", "value": 5}]')
     await _insert_pending("e1", poster_url="http://emby.local/poster.jpg",
-                          last_played="2026-09-27T00:00:00+00:00")
+                          last_played=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
 
     with (
         patch("backend.scanner._emby_scanner.get_users", new=AsyncMock(return_value=[{"Id": "u1"}])),
@@ -522,7 +522,7 @@ async def test_reevaluate_no_poster_restore_attempt_when_poster_url_not_http():
     real external image."""
     await _insert_library("lib1", conditions='[{"field": "days_not_watched", "op": "gt", "value": 5}]')
     await _insert_pending("e1", poster_url="/api/proxy/poster/0/e1",
-                          last_played="2026-09-27T00:00:00+00:00")
+                          last_played=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
 
     with (
         patch("backend.scanner._emby_scanner.get_users", new=AsyncMock(return_value=[{"Id": "u1"}])),

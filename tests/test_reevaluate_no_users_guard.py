@@ -13,6 +13,7 @@ stays queued — it will still get deleted once its grace period elapses.
 
 Fix: the same _abort_scan_no_users guard used by the main scan.
 """
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -60,7 +61,7 @@ async def _insert_pending(emby_id: str, lib_id: str = "lib1") -> None:
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (emby_id, f"Movie {emby_id}", "Movie", lib_id, "Films", f"/m/{emby_id}.mkv",
              "", "", "2024-01-01T00:00:00+00:00", "2024-01-08T00:00:00+00:00", "pending",
-             "2026-09-27T00:00:00+00:00"),  # watched recently — should NOT still match "days_not_watched > 5"
+             (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()),  # watched recently — should NOT still match "days_not_watched > 5"
         )
         await db.commit()
 
@@ -125,5 +126,5 @@ async def test_reevaluate_proceeds_normally_when_users_present():
 
     # No real watch data available (mocked to {}) → never_watched stays True from
     # aggregation, but last_played in DB overrides it — condition no longer
-    # matches ("days_not_watched > 5" false since watched 2026-09-27) → removed.
+    # matches ("days_not_watched > 5" false since watched yesterday) → removed.
     assert removed == 1

@@ -6,6 +6,10 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+---
+
+## [4.4.0] — 2026-10-04
+
 ### Changed
 
 - **Service layer introduced on one pilot router.** Storage aggregation (Radarr/Sonarr calls, disk/library/queue stats) moved from `routers/storage.py` to `services/storage_service.py`; the router keeps auth, cache and the stale-while-revalidate logic. No behaviour change (response shape, cache, timeouts identical); characterization tests added.
@@ -14,6 +18,7 @@ All notable changes to Hygie are documented here.
 
 ### Fixed
 
+- **The settings form re-displayed `30,14,7,3,1` when the Discord thresholds were saved empty** (empty = alerts disabled), so the next save silently re-enabled them. The form now keeps an empty value empty and uses the default only when the setting was never stored.
 - **A failed backup left an empty file that was listed — and retained — as a valid backup.** A `mysqldump` failure (non-zero exit or timeout), a failed SQLite online backup or a failed gzip step left a 0-byte or truncated file behind; `list_backups()` showed it and retention counted it, so repeated failures could rotate real backups out in favour of empty ones. Failed or partial files are now removed.
 - **A successful Plex deletion was marked as an error.** `lm("plex.deleted", key=...)` raised `TypeError: lm() got multiple values for argument 'key'` right *after* the item had been deleted from Plex, aborting the pipeline and leaving the queue row in `error`. The same crash turned every successful Plex poster restore into a logged failure. `lm()`'s message id is now positional-only. (No trace in the reference production: no queue row in `error`, no such exception in the logs.)
 - **The Radarr/Sonarr "test" button could send `***` as the API key** when the masked key matched no stored server; it now fails fast with "URL et clé API requis".
@@ -31,6 +36,7 @@ All notable changes to Hygie are documented here.
 
 ### Removed
 
+- `jinja2` from `requirements.txt` — only the removed legacy templates used it.
 - `backend/constants.py` and `backend/services/media_service.py` — never imported.
 - **Legacy vanilla-JS frontend** (`frontend/static/`, `frontend/templates/`), the `/static` mount and the Jinja2 fallback. When `frontend/dist` is missing the SPA route now answers HTTP 503 ("Frontend non construit") instead of serving the old UI. Favicons now ship with the Vue build (`frontend/vue/public/assets/img`). The Dockerfile no longer copies these directories nor downloads their Font Awesome / dashboard-icon assets, and `scripts/check_i18n.py` (legacy-only) is removed.
 - **`/ws` log-stream WebSocket** and `backend/db/websocket.py` (client registry and no-op `_broadcast`): only the legacy UI used them; the Vue app reads logs through `GET /api/logs`. CSP `connect-src` is tightened from `'self' wss: ws:` to `'self'`.

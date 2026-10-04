@@ -105,7 +105,7 @@ function syncForm() {
     qbit_user: s.qbit_user || '', qbit_password: s.qbit_password || '',
     qbit_action: s.qbit_action || '', qbit_tag: s.qbit_tag || '',
     discord_webhook: s.discord_webhook || '', discord_webhook_alerts: s.discord_webhook_alerts || '',
-    discord_notif_thresholds: s.discord_notif_thresholds || '30,14,7,3,1',
+    discord_notif_thresholds: s.discord_notif_thresholds ?? '30,14,7,3,1',
     discord_alert_deletion_error: s.discord_alert_deletion_error || 'false',
     discord_alert_deletion_error_mention: s.discord_alert_deletion_error_mention || '',
     discord_alert_deletion_error_msg: s.discord_alert_deletion_error_msg || '',

@@ -35,6 +35,16 @@ describe('SettingsView', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => vi.useRealTimers())
 
+  it('keeps an empty Discord thresholds setting empty (empty = disabled), not the placeholder default', async () => {
+    const { wrapper } = await mountSettings({ discord_notif_thresholds: '' })
+    expect(wrapper.findComponent(GeneralTabStub).props('form').discord_notif_thresholds).toBe('')
+  })
+
+  it('falls back to the default thresholds only when the setting was never stored', async () => {
+    const { wrapper } = await mountSettings({})
+    expect(wrapper.findComponent(GeneralTabStub).props('form').discord_notif_thresholds).toBe('30,14,7,3,1')
+  })
+
   it('defaults to the General tab and switches tabs on click', async () => {
     const { wrapper } = await mountSettings()
     const tabs = wrapper.findAll('button').filter(b => b.text().length > 0 && !['Enregistrer', 'Enregistrement…'].includes(b.text()))

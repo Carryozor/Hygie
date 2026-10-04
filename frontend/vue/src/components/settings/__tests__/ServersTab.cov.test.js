@@ -8,7 +8,7 @@
 // '***' as a no-op so it never overwrites a real stored key. These tests
 // verify the front never bypasses that contract (no eager reveal, no key
 // echoed back before an explicit user action).
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { i18n } from '@/i18n'
 
@@ -29,8 +29,12 @@ const MASKED_SERVER = {
   api_key: '***', ext_url: '', enabled: true,
 }
 
+// ServersTab keeps its auto-detect timers in a module-level Map: a wrapper left
+// mounted leaks a real 800ms timer into whichever test runs next (flaky on slow CI).
+const mounted = []
+
 function mountTab(formOverrides = {}) {
-  return mount(ServersTab, {
+  const wrapper = mount(ServersTab, {
     props: {
       form: {
         plex_webhook_secret: '', plex_overlay_enabled: false,
@@ -40,12 +44,17 @@ function mountTab(formOverrides = {}) {
     },
     global: { plugins: [i18n] },
   })
+  mounted.push(wrapper)
+  return wrapper
 }
 
 describe('ServersTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+  })
+  afterEach(() => {
+    mounted.splice(0).forEach(w => w.unmount())
   })
 
   it('loads servers on mount and renders the masked api_key without revealing it', async () => {

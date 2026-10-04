@@ -8,6 +8,18 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.4.2] — 2026-10-04
+
+### Security
+
+- **`PyJWT` 2.13.0 → 2.15.1** (13 advisories published since 4.3.6, fixed in 2.14.0 / 2.15.0; `pip-audit` was red). The authentication test suite passes unchanged.
+
+### Fixed
+
+- **Flaky `ServersTab` frontend test**: auto-detect timers live in a module-level `Map`, so a component left mounted by one test leaked a real 800 ms timer into the next one on slow runners. Tests now unmount after each case (verified by injecting a 900 ms real delay: failed before, passes after). No product change.
+
+---
+
 ## [4.4.1] — 2026-10-04
 
 ### Security

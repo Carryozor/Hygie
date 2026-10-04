@@ -156,11 +156,9 @@ async def test_version_returns_version_string(client):
     assert isinstance(r.json()["version"], str)
 
 
-@pytest.mark.skipif(
-    __import__("sys").version_info >= (3, 13),
-    reason="Jinja2 LRU cache incompatibility with Python 3.13 in test env; passes in container (3.12)"
-)
-async def test_index_returns_html(client):
+async def test_index_returns_html(client, tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text("<!doctype html><title>Hygie</title>")
+    monkeypatch.setattr("backend.main._DIST", str(tmp_path))
     r = await client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]

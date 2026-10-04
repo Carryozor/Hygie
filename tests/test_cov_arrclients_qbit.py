@@ -20,10 +20,10 @@ def _reset_module_globals():
     """qbit_client keeps SID cookie + alert cooldown as module globals — leak
     between tests would make later tests depend on earlier ones' outcomes."""
     qbit._sid_cookie = None
-    qbit._proxy_alert_ts = 0.0
+    qbit._proxy_alert_ts = float("-inf")
     yield
     qbit._sid_cookie = None
-    qbit._proxy_alert_ts = 0.0
+    qbit._proxy_alert_ts = float("-inf")
 
 
 def _settings(**overrides):
@@ -161,6 +161,28 @@ async def test_alert_proxy_fallback_sends_alert(monkeypatch):
     await qbit._alert_proxy_fallback()
     assert len(sent) == 1
     assert sent[0][1] == "warning"
+
+
+async def test_first_alert_fires_even_when_host_booted_less_than_cooldown_ago(monkeypatch):
+    """time.monotonic() restarts near 0 at boot: a module default of 0.0 made the
+    first alert look 'within cooldown' on any host up for under an hour."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("backend.qbit_client_pristine", qbit.__file__)
+    pristine = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pristine)
+
+    sent = []
+
+    async def _send_alert(title, desc, level="error", **kw):
+        sent.append(title)
+        return True
+
+    import backend.discord_client as discord_mod
+    monkeypatch.setattr(discord_mod, "send_alert", _send_alert)
+    monkeypatch.setattr(pristine.time, "monotonic", lambda: 100.0)  # host up for 100 s
+
+    await pristine._alert_proxy_fallback()
+    assert len(sent) == 1
 
 
 async def test_alert_proxy_fallback_respects_cooldown(monkeypatch):

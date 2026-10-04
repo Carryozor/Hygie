@@ -24,7 +24,7 @@ _sid_cookie: Optional[str] = None
 _sid_lock = asyncio.Lock()
 
 # Alert cooldown: send proxy-fallback Discord alert at most once per hour
-_proxy_alert_ts: float = 0.0
+_proxy_alert_ts: float = float("-inf")  # monotonic() restarts at boot; 0.0 would suppress the first alert
 _PROXY_ALERT_COOLDOWN = 3600.0
 
 

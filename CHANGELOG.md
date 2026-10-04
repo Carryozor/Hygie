@@ -18,6 +18,7 @@ All notable changes to Hygie are documented here.
 
 ### Fixed
 
+- **The first "QUI proxy unreachable" Discord alert was swallowed on any host up for less than an hour.** The cooldown timestamp started at `0.0` while `time.monotonic()` restarts near 0 at boot, so the first alert looked "within cooldown" (found when CI runners, freshly booted, failed the alert tests). It now starts at `-inf`.
 - **The settings form re-displayed `30,14,7,3,1` when the Discord thresholds were saved empty** (empty = alerts disabled), so the next save silently re-enabled them. The form now keeps an empty value empty and uses the default only when the setting was never stored.
 - **A failed backup left an empty file that was listed — and retained — as a valid backup.** A `mysqldump` failure (non-zero exit or timeout), a failed SQLite online backup or a failed gzip step left a 0-byte or truncated file behind; `list_backups()` showed it and retention counted it, so repeated failures could rotate real backups out in favour of empty ones. Failed or partial files are now removed.
 - **A successful Plex deletion was marked as an error.** `lm("plex.deleted", key=...)` raised `TypeError: lm() got multiple values for argument 'key'` right *after* the item had been deleted from Plex, aborting the pipeline and leaving the queue row in `error`. The same crash turned every successful Plex poster restore into a logged failure. `lm()`'s message id is now positional-only. (No trace in the reference production: no queue row in `error`, no such exception in the logs.)

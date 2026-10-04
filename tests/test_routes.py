@@ -1,6 +1,5 @@
 """Smoke tests for FastAPI routes using TestClient with isolated DB."""
 import os
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 

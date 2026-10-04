@@ -8,6 +8,18 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.4.1] — 2026-10-04
+
+### Security
+
+- **Frontend dependencies updated (`npm audit fix`)**: `axios` (12 advisories, runtime dependency bundled in the UI), `undici` and `brace-expansion`. `npm audit --omit=dev` now reports 0 vulnerabilities. The CI audit step covers runtime dependencies only: the 5 remaining advisories are in build tooling (`tailwindcss` 3 → `braces`) that is never shipped; fixing them needs a breaking Tailwind 4 migration.
+
+### Notes
+
+- 4.4.0 shipped with the vulnerable `axios` above; deploy 4.4.1 instead. The 4.4.0 tag was moved once (before any deployment) after its first CI run failed on the qBittorrent alert and `test_index_returns_html` fixes listed under 4.4.0.
+
+---
+
 ## [4.4.0] — 2026-10-04
 
 ### Changed

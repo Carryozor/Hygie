@@ -15,6 +15,7 @@ from .shared import (
     _get_arr_servers,
     _resolve_arr_creds,
     _resolve_arr_server,
+    _servers_for,
     _test_arr_connection,
 )
 
@@ -198,17 +199,64 @@ async def sonarr_get_series_by_id(series_id: int, url: str = "", key: str = "") 
     return None
 
 
-async def sonarr_get_series_by_id_any(series_id: int) -> Optional[dict]:
+async def sonarr_get_series_by_id_any(
+    series_id: int, arr_server_url: Optional[str] = None
+) -> Optional[dict]:
     """Get a series from any configured Sonarr server that has this ID.
 
     Unlike sonarr_get_series_by_id()'s legacy single-server fallback, this
     checks every enabled server — needed in multi-Sonarr setups where
     series_id is only meaningful on the server that issued it.
+    ``arr_server_url`` (recorded on the queue row) restricts it to one server.
     """
-    servers = await get_sonarr_servers()
+    servers = _servers_for(await get_sonarr_servers(), arr_server_url)
     return await _first_from_servers(
         servers, lambda url, key: sonarr_get_series_by_id(series_id, url=url, key=key)
     )
+
+
+async def sonarr_get_files_size(
+    series_id: int,
+    season_number: Optional[int] = None,
+    episode_file_id: Optional[int] = None,
+    arr_server_url: Optional[str] = None,
+) -> Optional[int]:
+    """Total size in bytes of the episode files concerned by a deletion.
+
+    One file (``episode_file_id``), one season (``season_number``) or, with
+    neither, the whole series. None when it cannot be established (no server,
+    request failure, file not found) so callers can fall back.
+    """
+    servers = _servers_for(await get_sonarr_servers(), arr_server_url)
+
+    async def _fetch(url: str, key: str) -> Optional[int]:
+        async def _do():
+            async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+                return await c.get(
+                    f"{url}/api/v3/episodefile", headers=_arr_auth(key),
+                    params={"seriesId": series_id},
+                )
+        try:
+            r = await with_retry(_do, label=f"sonarr.files_size[{series_id}]", service="sonarr")
+            if r.status_code != 200:
+                return None
+            files = r.json()
+        except Exception as e:
+            logger.warning("sonarr_get_files_size: %s", e)
+            return None
+        if episode_file_id is not None:
+            files = [f for f in files if f.get("id") == episode_file_id]
+        elif season_number is not None:
+            files = [f for f in files if f.get("seasonNumber") == season_number]
+        if not files:
+            return None
+        return sum(int(f.get("size") or 0) for f in files)
+
+    for srv in servers:
+        size = await _fetch(srv["url"].rstrip("/"), srv["api_key"])
+        if size is not None:
+            return size
+    return None
 
 
 async def sonarr_get_poster_url(episode_file_id: int) -> str:
@@ -224,8 +272,12 @@ async def sonarr_delete_episode_file(
     key: str = "",
     arr_server_url: Optional[str] = None,
     file_path: str = "",
+    missing_ok: bool = False,
 ) -> bool:
     """Delete an episode file from Sonarr.
+
+    ``missing_ok``: a 404 (file already removed by an interrupted earlier
+    attempt) counts as success — set it only on a retry.
 
     When url/key are given explicitly (e.g. a pre-resolved server), they're
     used as-is. Otherwise the target server is resolved from arr_server_url
@@ -259,7 +311,7 @@ async def sonarr_delete_episode_file(
                     f"{url}/api/v3/episodefile/{episode_file_id}",
                     headers=_arr_auth(key),
                 )
-                return r.status_code in (200, 204)
+                return r.status_code in (200, 204) or (missing_ok and r.status_code == 404)
         return await with_retry(_do, label=f"sonarr.delete_episode_file[{episode_file_id}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_delete_episode_file: {e}")
@@ -304,8 +356,12 @@ async def sonarr_delete_season(
     key: str = "",
     arr_server_url: Optional[str] = None,
     file_path: str = "",
+    missing_ok: bool = False,
 ) -> bool:
     """Delete all episode files for a given season, then unmonitor those episodes.
+
+    ``missing_ok``: a 404 on the listing or the bulk delete (already removed
+    by an interrupted earlier attempt) counts as success — retry only.
 
     See sonarr_delete_episode_file for why url/key are resolved from
     arr_server_url (or a file-path match) instead of falling back to a
@@ -337,7 +393,7 @@ async def sonarr_delete_season(
                     params={"seriesId": series_id},
                 )
                 if rf.status_code != 200:
-                    return False
+                    return missing_ok and rf.status_code == 404
                 ef_ids = [ef["id"] for ef in rf.json() if ef.get("seasonNumber") == season_number]
                 if not ef_ids:
                     return True
@@ -347,6 +403,8 @@ async def sonarr_delete_season(
                     headers=_arr_auth(key),
                     json={"episodeFileIds": ef_ids},
                 )
+                if dr.status_code == 404 and missing_ok:
+                    return True
                 ok = dr.status_code in (200, 204)
                 if ok:
                     episode_ids = await _episode_ids_for_files(c, url, key, series_id, set(ef_ids))
@@ -364,8 +422,12 @@ async def sonarr_delete_series(
     key: str = "",
     arr_server_url: Optional[str] = None,
     file_path: str = "",
+    missing_ok: bool = False,
 ) -> bool:
     """Delete all files of an entire series, then unmonitor the series.
+
+    ``missing_ok``: a 404 on the listing or the bulk delete (already removed
+    by an interrupted earlier attempt) counts as success — retry only.
 
     Keeps the series entry itself (matching Hygie's per-episode behavior of
     never touching arr bookkeeping beyond what's needed), but disables
@@ -403,7 +465,7 @@ async def sonarr_delete_series(
                     params={"seriesId": series_id},
                 )
                 if rf.status_code != 200:
-                    return False
+                    return missing_ok and rf.status_code == 404
                 ef_ids = [ef["id"] for ef in rf.json()]
                 if not ef_ids:
                     return True
@@ -413,6 +475,8 @@ async def sonarr_delete_series(
                     headers=_arr_auth(key),
                     json={"episodeFileIds": ef_ids},
                 )
+                if dr.status_code == 404 and missing_ok:
+                    return True
                 ok = dr.status_code in (200, 204)
                 if ok:
                     rs = await c.get(f"{url}/api/v3/series/{series_id}", headers=_arr_auth(key))
@@ -432,40 +496,85 @@ async def sonarr_delete_series(
         return False
 
 
-async def sonarr_get_torrent_hash(episode_file_id: int, url: str = "", key: str = "") -> Optional[str]:
-    """Get qBittorrent hash from Sonarr download history."""
-    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
+def _pick_episode_hash(records: list, episode_ids: set) -> Optional[str]:
+    """Pick the torrent hash of the history records belonging to ``episode_ids``.
+
+    Records of other episodes are ignored. Among the matching ones the
+    ``downloadFolderImported`` records win over plain grabs (a grab may never
+    have produced the current file); ties are broken by newest ``date``.
+    """
+    matching = [
+        r for r in records
+        if r.get("episodeId") in episode_ids
+        and len((r.get("downloadId") or "")) >= 32
+    ]
+    imported = [r for r in matching if r.get("eventType") == "downloadFolderImported"]
+    pool = imported or matching
+    if not pool:
+        return None
+    pool = sorted(pool, key=lambda r: r.get("date") or "", reverse=True)
+    return pool[0]["downloadId"].lower()
+
+
+async def _creds_for_row(url: str, key: str, arr_server_url: Optional[str]) -> tuple[str, str]:
+    """Explicit creds win; else the server recorded on the row; else legacy default."""
+    if (not url or not key) and arr_server_url:
+        target = await _resolve_arr_server(await get_sonarr_servers(), arr_server_url)
+        return target if target else ("", "")
+    return await _resolve_arr_creds(url, key, _sonarr_config)
+
+
+async def sonarr_get_torrent_hash(
+    episode_file_id: int, url: str = "", key: str = "",
+    arr_server_url: Optional[str] = None,
+) -> Optional[str]:
+    """Get the qBittorrent hash of the download that produced one episode file.
+
+    Only history records whose ``episodeId`` belongs to the targeted file are
+    considered. If that membership cannot be established (file linked to no
+    episode, lookup failure) the result is None — never a hash taken from
+    another episode of the series. ``arr_server_url`` (recorded on the queue
+    row) selects the Sonarr instance that owns the file id.
+    """
+    url, key = await _creds_for_row(url, key, arr_server_url)
     if not url or not key or not episode_file_id:
         return None
-    try:
+
+    async def _do() -> Optional[str]:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as c:
             ref = await c.get(
-                f"{url}/api/v3/episodefile/{episode_file_id}",
-                headers=_arr_auth(key),
+                f"{url}/api/v3/episodefile/{episode_file_id}", headers=_arr_auth(key),
             )
             if ref.status_code != 200:
                 return None
             series_id = ref.json().get("seriesId")
             if not series_id:
                 return None
+            episode_ids = set(await _episode_ids_for_files(
+                c, url, key, series_id, {episode_file_id}))
+            if not episode_ids:
+                return None
             r = await c.get(
-                f"{url}/api/v3/history/series",
-                headers=_arr_auth(key),
+                f"{url}/api/v3/history/series", headers=_arr_auth(key),
                 params={"seriesId": series_id},
             )
-            if r.status_code == 200:
-                records = r.json() if isinstance(r.json(), list) else r.json().get("records", [])
-                for rec in records:
-                    dl_id = (rec.get("downloadId") or "").lower()
-                    if dl_id and len(dl_id) >= 32:
-                        return dl_id
+            if r.status_code != 200:
+                return None
+            body = r.json()
+            records = body if isinstance(body, list) else body.get("records", [])
+            return _pick_episode_hash(records, episode_ids)
+
+    try:
+        return await with_retry(
+            _do, label=f"sonarr.torrent_hash[{episode_file_id}]", service="sonarr")
     except Exception as e:
         logger.warning(f"sonarr_get_torrent_hash: {e}")
-    return None
+        return None
 
 
 async def sonarr_get_torrent_hashes_for_group(
-    series_id: int, season_number: Optional[int] = None, url: str = "", key: str = ""
+    series_id: int, season_number: Optional[int] = None, url: str = "", key: str = "",
+    arr_server_url: Optional[str] = None,
 ) -> set[str]:
     """Resolve every distinct qBittorrent hash backing a season's or series'
     episode files, by matching history records to the actual episodes involved.
@@ -481,7 +590,7 @@ async def sonarr_get_torrent_hashes_for_group(
     Must run BEFORE the bulk episodefile delete — Sonarr's episode/history
     records are looked up by the (still-existing) episode file IDs.
     """
-    url, key = await _resolve_arr_creds(url, key, _sonarr_config)
+    url, key = await _creds_for_row(url, key, arr_server_url)
     if not url or not key or not series_id:
         return set()
     try:
@@ -519,3 +628,72 @@ async def sonarr_get_torrent_hashes_for_group(
     except Exception as e:
         logger.warning(f"sonarr_get_torrent_hashes_for_group: {e}")
         return set()
+
+
+async def sonarr_remaining_files_for_hash(
+    series_id: int, torrent_hash: str, url: str = "", key: str = "",
+    arr_server_url: Optional[str] = None,
+) -> Optional[int]:
+    """Count the episode files still present in Sonarr that came from ``torrent_hash``.
+
+    Episodes covered by the download are read from ``/history/series``
+    (``downloadId`` == hash); a file counts when its ``episodeIds`` intersect
+    that set. Used to avoid deleting a season pack's files while other
+    episodes of the pack are still in the library.
+
+    Returns None whenever the answer cannot be established (Sonarr
+    unreachable, HTTP error, no history record for the hash) — callers must
+    then assume the torrent is shared.
+    """
+    url, key = await _creds_for_row(url, key, arr_server_url)
+    wanted = (torrent_hash or "").lower()
+    if not url or not key or not series_id or not wanted:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            rh = await c.get(f"{url}/api/v3/history/series", headers=_arr_auth(key),
+                             params={"seriesId": series_id})
+            if rh.status_code != 200:
+                return None
+            body = rh.json()
+            records = body if isinstance(body, list) else body.get("records", [])
+            episode_ids = {r["episodeId"] for r in records
+                           if r.get("episodeId") is not None
+                           and (r.get("downloadId") or "").lower() == wanted}
+            if not episode_ids:
+                return None
+            rf = await c.get(f"{url}/api/v3/episodefile", headers=_arr_auth(key),
+                             params={"seriesId": series_id})
+            if rf.status_code != 200:
+                return None
+            return sum(1 for ef in rf.json() if episode_ids & set(ef.get("episodeIds") or []))
+    except Exception as e:
+        logger.warning(f"sonarr_remaining_files_for_hash: {e}")
+        return None
+
+
+async def sonarr_series_file_count(
+    series_id: int, url: str = "", key: str = "",
+    arr_server_url: Optional[str] = None,
+) -> Optional[int]:
+    """Number of episode files Sonarr still lists for a whole series.
+
+    Independent of the download history: 0 means nothing of the series is
+    left in the library. Returns None whenever the answer cannot be
+    established (no credentials, HTTP error, unreachable) — callers must then
+    assume files remain.
+    """
+    url, key = await _creds_for_row(url, key, arr_server_url)
+    if not url or not key or not series_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_MEDIUM) as c:
+            rf = await c.get(f"{url}/api/v3/episodefile", headers=_arr_auth(key),
+                             params={"seriesId": series_id})
+            if rf.status_code != 200:
+                return None
+            files = rf.json()
+            return len(files) if isinstance(files, list) else None
+    except Exception as e:
+        logger.warning(f"sonarr_series_file_count: {e}")
+        return None

@@ -183,9 +183,14 @@ async def test_failed_item_is_recorded_as_error_status():
     patches = _install(rec, media_ok=False) + [
         patch.object(dmod, "update_queue_status",
                      rec.wrap("status", side=lambda i, s: statuses.append(s))),
+        patch.object(dmod, "record_deletion_failure",
+                     rec.wrap("failure", {"attempts": 1, "final": False},
+                              side=lambda i, err: statuses.append(STATUS_ERROR))),
     ]
     await _run(patches)
 
+    # failure goes through record_deletion_failure (status=error + backoff),
+    # never through update_queue_status(deleted)
     assert statuses == [STATUS_ERROR]
 
 

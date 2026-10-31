@@ -51,10 +51,23 @@ class DeletionContext:
     # Used by StatsStep and the pipeline to surface persistent partial failures.
     step_warnings: list = field(default_factory=list)
 
+    # Set by QbitStep when torrents were deliberately kept (shared or
+    # unverifiable): "N torrent(s) conservé(s) : ..." — surfaced to the user.
+    kept_note: str = ""
+
     # ── Convenience properties ────────────────────────────────────────────────
     @property
     def title(self) -> str:
         return self.item.get("title", "?")
+
+    @property
+    def is_retry(self) -> bool:
+        """True when a previous attempt already ran on this row (attempts > 0,
+        migration m018): "already absent" answers are then legitimate."""
+        try:
+            return int(self.item.get("attempts") or 0) > 0
+        except (TypeError, ValueError):
+            return False
 
     @property
     def emby_id(self) -> str:
@@ -107,23 +120,50 @@ class SizeLookupStep(DeletionStep):
         if ctx.dry_run:
             return
         try:
-            from .arr_clients import radarr_get_any, sonarr_get_series_by_id_any
             # *_any() checks every configured server instead of only the
             # legacy default — radarr_id/sonarr_series_id are only meaningful
             # on the specific server that issued them in multi-server setups.
             if ctx.media_type == "Movie":
-                rid = ctx.item.get("radarr_id")
-                if rid:
-                    movie = await radarr_get_any(int(rid))
-                    ctx.size_bytes = int((movie.get("movieFile") or {}).get("size") or 0) if movie else 0
+                ctx.size_bytes = await self._movie_size(ctx)
             else:
-                sid = ctx.item.get("sonarr_series_id")
-                if sid:
-                    series = await sonarr_get_series_by_id_any(int(sid))
-                    ctx.size_bytes = int((series.get("statistics") or {}).get("sizeOnDisk") or 0) if series else 0
+                ctx.size_bytes = await self._series_size(ctx)
         except Exception as e:
             logger.info("SizeLookupStep: size unavailable for '%s' (stats will show 0): %s", ctx.title, e)
             ctx.step_warnings.append(f"SizeLookup: {e}")
+
+    @staticmethod
+    async def _movie_size(ctx: DeletionContext) -> int:
+        from .arr_clients import radarr_get_any
+        rid = ctx.item.get("radarr_id")
+        if not rid:
+            return 0
+        srv = ctx.item.get("arr_server_url")
+        movie = await (radarr_get_any(int(rid), arr_server_url=srv) if srv else radarr_get_any(int(rid)))
+        return int((movie.get("movieFile") or {}).get("size") or 0) if movie else 0
+
+    @staticmethod
+    async def _series_size(ctx: DeletionContext) -> int:
+        """Size of the files really concerned: one episode file, one season, or
+        the whole series. When the per-file size is unavailable, falls back to
+        the series' sizeOnDisk (previous behaviour)."""
+        from .arr_clients import sonarr_get_files_size, sonarr_get_series_by_id_any
+        sid = ctx.item.get("sonarr_series_id")
+        if not sid:
+            return 0
+        srv = ctx.item.get("arr_server_url")
+        season = ctx.item.get("season_number")
+        episode_file = None if ctx.is_consolidated else ctx.item.get("sonarr_id")
+        if episode_file or (ctx.is_consolidated and season is not None):
+            size = await sonarr_get_files_size(
+                int(sid), season_number=None if episode_file else season,
+                episode_file_id=int(episode_file) if episode_file else None,
+                arr_server_url=srv,
+            )
+            if size is not None:
+                return size
+        series = await (sonarr_get_series_by_id_any(int(sid), arr_server_url=srv)
+                        if srv else sonarr_get_series_by_id_any(int(sid)))
+        return int((series.get("statistics") or {}).get("sizeOnDisk") or 0) if series else 0
 
 
 class TorrentHashStep(DeletionStep):
@@ -135,18 +175,67 @@ class TorrentHashStep(DeletionStep):
     """
 
     async def execute(self, ctx: DeletionContext) -> None:
+        """Fresh resolution first; the persisted hash is only a fallback on a
+        retry (arr history may have vanished with the media). A fresh result
+        always wins — the arr may have replaced the file since — and is
+        written back."""
         if ctx.dry_run:
             return
         try:
-            if ctx.is_consolidated:
-                from .deletion_helpers import _find_torrent_hashes_consolidated
-                ctx.torrent_hashes = await _find_torrent_hashes_consolidated(ctx.item)
-            else:
-                from .deletion_helpers import _find_torrent_hash
-                ctx.torrent_hash = await _find_torrent_hash(ctx.item)
+            await self._resolve_fresh(ctx)
         except Exception as e:
             logger.info("TorrentHashStep: hash unavailable for '%s' (qBit step will be skipped): %s", ctx.title, e)
             ctx.step_warnings.append(f"TorrentHash: {e}")
+        if ctx.torrent_hashes or ctx.torrent_hash:
+            await self._persist(ctx)
+        elif ctx.is_retry:
+            await self._load_persisted(ctx)
+
+    @staticmethod
+    async def _resolve_fresh(ctx: DeletionContext) -> None:
+        if ctx.is_consolidated:
+            from .deletion_helpers import _find_torrent_hashes_consolidated
+            ctx.torrent_hashes = await _find_torrent_hashes_consolidated(ctx.item)
+        else:
+            from .deletion_helpers import _find_torrent_hash
+            ctx.torrent_hash = await _find_torrent_hash(ctx.item)
+
+    @staticmethod
+    async def _load_persisted(ctx: DeletionContext) -> bool:
+        """Use the hash(es) stored by an earlier attempt, if any (arr history
+        may be gone by now). Only called when the fresh lookup found nothing."""
+        item_id = ctx.item.get("id")
+        if not item_id:
+            return False
+        try:
+            from .db.repositories import get_queue_torrent_hash
+            stored = await get_queue_torrent_hash(int(item_id))
+        except Exception as e:
+            logger.warning("TorrentHashStep: persisted hash unreadable for '%s': %s", ctx.title, e)
+            return False
+        hashes = [h for h in (p.strip() for p in stored.split(",")) if h]
+        if not hashes:
+            return False
+        if ctx.is_consolidated:
+            ctx.torrent_hashes = set(hashes)
+        else:
+            ctx.torrent_hash = hashes[0]
+        return True
+
+    @staticmethod
+    async def _persist(ctx: DeletionContext) -> None:
+        """Store the freshly resolved hash(es) — nothing when none was found."""
+        item_id = ctx.item.get("id")
+        found = sorted(ctx.torrent_hashes) if ctx.is_consolidated else (
+            [ctx.torrent_hash] if ctx.torrent_hash else [])
+        if not item_id or not found:
+            return
+        try:
+            from .db.repositories import set_queue_torrent_hash
+            await set_queue_torrent_hash(int(item_id), ",".join(found))
+        except Exception as e:
+            logger.warning("TorrentHashStep: hash not persisted for '%s': %s", ctx.title, e)
+            ctx.step_warnings.append(f"TorrentHash: not persisted: {e}")
 
 
 class DiscordNotifyStep(DeletionStep):
@@ -229,7 +318,8 @@ class MediaServerStep(DeletionStep):
         from .logmsg import lm
 
         server = ctx.server or {}
-        ok = await delete_server_item(server, ctx.item, server_id=ctx.server_id)
+        ok = await delete_server_item(
+            server, ctx.item, server_id=ctx.server_id, missing_ok=ctx.is_retry)
         if not ok:
             raise RuntimeError(f"media server delete failed for '{ctx.title}'")
         if is_plex(server):
@@ -259,6 +349,8 @@ class MediaServerStep(DeletionStep):
         series = await sonarr_get_series_by_id_any(int(series_id))
         series_path = (series or {}).get("path") or ""
         if not series_path:
+            ctx.step_warnings.append(
+                f"MediaServer: chemin de la série introuvable côté Sonarr pour '{ctx.title}'")
             return
 
         season_number = ctx.item.get("season_number")
@@ -269,10 +361,13 @@ class MediaServerStep(DeletionStep):
             target = await find_item_by_path(series_path, include_types="Series", server_id=ctx.server_id)
 
         if not target:
-            await add_log("DEBUG", lm("emby.consolidated_not_found", title=ctx.title), "deletion")
+            await add_log("WARN", lm("emby.consolidated_not_found", title=ctx.title), "deletion")
+            ctx.step_warnings.append(
+                f"MediaServer: cible introuvable côté serveur média pour '{ctx.title}'")
             return
 
-        ok = await emby_delete_item(str(target.get("Id")), server_id=ctx.server_id)
+        extra = {"missing_ok": True} if ctx.is_retry else {}
+        ok = await emby_delete_item(str(target.get("Id")), server_id=ctx.server_id, **extra)
         await add_log(
             "DEBUG" if ok else "WARN",
             lm("emby.consolidated_ok" if ok else "emby.consolidated_err", title=ctx.title),
@@ -289,7 +384,10 @@ class ArrStep(DeletionStep):
         if ctx.dry_run:
             return
         from .deletion_helpers import _delete_from_arr
-        ok = await _delete_from_arr(ctx.item)
+        # missing_ok only on a retry: a 404 then means "removed by the
+        # interrupted previous attempt"; on a first attempt it stays a failure.
+        ok = await (_delete_from_arr(ctx.item, missing_ok=True) if ctx.is_retry
+                    else _delete_from_arr(ctx.item))
         if not ok:
             raise RuntimeError(f"arr delete failed for '{ctx.title}'")
 
@@ -316,19 +414,56 @@ class QbitStep(DeletionStep):
             return
         from .db.logs import add_log
         from .logmsg import lm
-        from .deletion_helpers import _handle_qbit
-
         if ctx.torrent_hashes:
-            for torrent_hash in ctx.torrent_hashes:
-                await _handle_qbit(torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag)
+            hashes = sorted(ctx.torrent_hashes)
         elif ctx.torrent_hash:
-            await _handle_qbit(ctx.torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag)
+            hashes = [ctx.torrent_hash]
         else:
             await add_log(
-                "INFO",
+                "WARN",
                 lm("deletion.qbit_not_found", prefix=ctx.log_prefix, title=ctx.title),
                 "deletion",
             )
+            ctx.step_warnings.append("Qbit: torrent hash not found")
+            return
+        kept = 0
+        for torrent_hash in hashes:
+            if not await self._apply(ctx, torrent_hash):
+                kept += 1
+        if kept:
+            await self._record_kept(ctx, kept)
+
+    @staticmethod
+    async def _record_kept(ctx: DeletionContext, kept: int) -> None:
+        """Make an incomplete deletion visible on the queue row and in the log."""
+        from .db.repositories import KEPT_NOTE_PREFIX, set_queue_note
+        ctx.kept_note = f"{kept} torrent(s) conservé(s) : partagé(s) ou non vérifiable(s)"
+        item_id = ctx.item.get("id")
+        if not item_id:
+            return
+        try:
+            await set_queue_note(int(item_id), KEPT_NOTE_PREFIX + ctx.kept_note)
+        except Exception as e:
+            logger.warning("QbitStep: kept-torrents note not stored for '%s': %s", ctx.title, e)
+            ctx.step_warnings.append(f"Qbit: note de conservation non enregistrée: {e}")
+
+    @staticmethod
+    async def _apply(ctx: DeletionContext, torrent_hash: str) -> bool:
+        """Tag/pause/delete one torrent, unless deleting its files could hit
+        episodes that are still in the library (shared season pack).
+        Returns False when the torrent was deliberately kept."""
+        from .db.logs import add_log
+        from .deletion_helpers import _handle_qbit, _shared_pack_blocker
+
+        if ctx.qbit_action == "delete_files" and ctx.media_type != "Movie":
+            blocker = await _shared_pack_blocker(ctx.item, torrent_hash)
+            if blocker:
+                ctx.step_warnings.append(f"Qbit: {blocker}")
+                await add_log("WARN", f"{ctx.log_prefix}{ctx.title} : {blocker}", "deletion")
+                return False
+        await _handle_qbit(
+            torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag, ctx.step_warnings)
+        return True
 
 
 class StatsStep(DeletionStep):
@@ -351,7 +486,8 @@ class StatsStep(DeletionStep):
                 )
                 await db.commit()
         except Exception as e:
-            logger.debug("StatsStep for '%s': %s", ctx.title, e)
+            logger.warning("StatsStep for '%s': stats not recorded: %s", ctx.title, e)
+            ctx.step_warnings.append(f"Stats: {e}")
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────

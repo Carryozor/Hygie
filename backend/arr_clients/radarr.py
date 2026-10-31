@@ -15,6 +15,7 @@ from .shared import (
     _path_matches,
     _resolve_arr_creds,
     _resolve_arr_server,
+    _servers_for,
     _test_arr_connection,
 )
 
@@ -125,8 +126,15 @@ async def radarr_get_poster_url(radarr_id: int) -> str:
     return _extract_poster_url(movie.get("images", []))
 
 
-async def radarr_delete(radarr_id: int, delete_files: bool = False, url: str = "", key: str = "") -> bool:
-    """Delete a movie from Radarr (keeping files by default)."""
+async def radarr_delete(
+    radarr_id: int, delete_files: bool = False, url: str = "", key: str = "",
+    missing_ok: bool = False,
+) -> bool:
+    """Delete a movie from Radarr (keeping files by default).
+
+    ``missing_ok``: a 404 (movie already removed by an interrupted earlier
+    attempt) counts as success. Only set it on a retry.
+    """
     url, key = await _resolve_arr_creds(url, key, _radarr_config)
     if not url or not key or not radarr_id:
         return False
@@ -138,7 +146,7 @@ async def radarr_delete(radarr_id: int, delete_files: bool = False, url: str = "
                     headers=_arr_auth(key),
                     params={"deleteFiles": str(delete_files).lower(), "addImportExclusion": "false"},
                 )
-                return r.status_code in (200, 204)
+                return r.status_code in (200, 204) or (missing_ok and r.status_code == 404)
         return await with_retry(_do, label=f"radarr.delete[{radarr_id}]", service="radarr")
     except Exception as e:
         logger.warning(f"radarr_delete: {e}")
@@ -186,6 +194,7 @@ async def radarr_delete_by_id(
     delete_files: bool = False,
     arr_server_url: Optional[str] = None,
     file_path: str = "",
+    missing_ok: bool = False,
 ) -> bool:
     """Delete a movie from the single Radarr server that owns this id.
 
@@ -215,23 +224,30 @@ async def radarr_delete_by_id(
         )
         return False
     url, key = target
-    return await radarr_delete(radarr_id, delete_files=delete_files, url=url, key=key)
+    extra = {"missing_ok": True} if missing_ok else {}
+    return await radarr_delete(radarr_id, delete_files=delete_files, url=url, key=key, **extra)
 
 
-async def radarr_get_any(radarr_id: int) -> Optional[dict]:
+async def radarr_get_any(radarr_id: int, arr_server_url: Optional[str] = None) -> Optional[dict]:
     """Get full movie details from any configured Radarr server that has this ID.
 
     Unlike radarr_get()'s legacy single-server fallback, this checks every
     enabled server — needed in multi-Radarr setups where radarr_id is only
-    meaningful on the server that issued it.
+    meaningful on the server that issued it. ``arr_server_url`` (recorded on
+    the queue row) restricts the lookup to that single server.
     """
-    servers = await get_radarr_servers()
+    servers = _servers_for(await get_radarr_servers(), arr_server_url)
     return await _first_from_servers(servers, lambda url, key: radarr_get(radarr_id, url=url, key=key))
 
 
-async def radarr_get_torrent_hash_any(radarr_id: int) -> Optional[str]:
-    """Get torrent hash from any configured Radarr server that has this movie."""
-    servers = await get_radarr_servers()
+async def radarr_get_torrent_hash_any(
+    radarr_id: int, arr_server_url: Optional[str] = None
+) -> Optional[str]:
+    """Get torrent hash from any configured Radarr server that has this movie.
+
+    ``arr_server_url`` (recorded on the queue row) restricts it to one server.
+    """
+    servers = _servers_for(await get_radarr_servers(), arr_server_url)
     return await _first_from_servers(
         servers, lambda url, key: radarr_get_torrent_hash(radarr_id, url=url, key=key)
     )

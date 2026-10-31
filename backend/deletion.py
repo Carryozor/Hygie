@@ -7,7 +7,7 @@ from datetime import timedelta
 from typing import Optional
 
 from .db.utils import (
-    DB_PATH, STATUS_DELETED, STATUS_ERROR, now_utc, parse_iso_dt,
+    DB_PATH, STATUS_DELETED, now_utc, parse_iso_dt,
 )
 from .db.engine import get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
@@ -15,7 +15,8 @@ from .db.logs import add_job_run, add_log, finish_job_run, set_job_context, _cur
 from .emby_client import delete_item, get_client, get_play_activity  # noqa: F401 - delete_item is unused in this module's own code, but mock.patch("backend.deletion.delete_item") targets require it re-imported here
 from .db.repositories import (
     get_pending_queue, update_queue_status,
-    reset_deleting_to_pending, claim_for_deletion,
+    reset_deleting_to_pending, claim_for_deletion, release_claim,
+    record_deletion_failure,
     delete_stale_deleted, delete_by_id,
     update_activity_log_batch, update_consolidated_watch_state,
 )
@@ -245,11 +246,14 @@ async def _load_batch_config(dry_run: bool, run_id: int) -> _BatchConfig:
     )
 
 
-async def _alert_item_failure(row: dict, cfg: _BatchConfig) -> None:
+async def _alert_item_failure(row: dict, cfg: _BatchConfig, final: bool = False) -> None:
     title = row.get("title", "?")
+    head = "Échec définitif suppression" if final else "Échec suppression"
+    body = (f"La suppression de **{title}** a échoué définitivement (plus de nouvelle tentative)."
+            if final else f"La suppression de **{title}** a échoué (nouvelle tentative programmée).")
     await send_alert(
-        f"❌ Échec suppression : {title}",
-        f"La suppression de **{title}** a échoué.",
+        f"❌ {head} : {title}",
+        body,
         "error",
         mention=cfg.mention, custom_msg=cfg.msg_tpl,
         template_vars={"title": title, "detail": f"Échec suppression de {title}"},
@@ -274,16 +278,76 @@ async def _delete_one(
                 row.get("title", row["id"]),
             )
             return None
-        ok = await _delete_media(
-            row, False,
-            qbit_action=cfg.qbit_action, qbit_tag_val=cfg.qbit_tag, run_id=cfg.run_id,
-        )
-        await update_queue_status(row["id"], STATUS_DELETED if ok else STATUS_ERROR)
-        if not ok:
-            counters["errors"] += 1
+        return await _run_claimed(row, cfg, counters)
+
+
+async def record_failure_and_alert(
+    row: dict, error: str, cfg: Optional[_BatchConfig] = None,
+) -> dict:
+    """Record a failed attempt (status 'error', attempts+1, backoff) and alert.
+
+    Shared by the job and the manual delete routes. The Discord alert fires on
+    the first failure and on the definitive one only — not on every retry in
+    between — and the alert itself never raises. If the failure cannot be
+    recorded, the error is logged and a RuntimeError is raised. Returns the repository info plus
+    ``alerted`` (True when this attempt is alert-worthy).
+    """
+    try:
+        info = await record_deletion_failure(row["id"], error)
+    except Exception as e:
+        logger.exception("Could not record deletion failure for '%s'", row.get("title", row["id"]))
+        raise RuntimeError(
+            f"Impossible d'enregistrer l'échec de suppression de '{row.get('title', row['id'])}'"
+        ) from e
+    alerted = info["attempts"] == 1 or info["final"]
+    if alerted:
+        try:
+            cfg = cfg or await _load_batch_config(False, 0)
             if cfg.alert_on_error:
-                await _alert_item_failure(row, cfg)
-        return ok
+                await _alert_item_failure(row, cfg, final=info["final"])
+        except Exception as e:
+            logger.error("Could not send failure alert for '%s': %s", row.get("title", row["id"]), e)
+    return {**info, "alerted": alerted}
+
+
+async def _run_claimed(row: dict, cfg: _BatchConfig, counters: dict) -> bool:
+    """Delete one claimed row and record the outcome.
+
+    Invariant: once claimed, the row never stays in 'deleting'. An ordinary
+    exception is recorded as a failed attempt; a BaseException (task
+    cancellation, shutdown) before the outcome is written hands the row back
+    to 'pending' so the next run picks it up.
+    """
+    finalized = False
+    try:
+        error = "pipeline step failed (see deletion logs)"
+        try:
+            ok = await _delete_media(
+                row, False,
+                qbit_action=cfg.qbit_action, qbit_tag_val=cfg.qbit_tag, run_id=cfg.run_id,
+            )
+        except Exception as e:
+            logger.exception("Deletion: unexpected error for '%s'", row.get("title", row["id"]))
+            ok, error = False, f"{type(e).__name__}: {e}"
+        if ok:
+            await update_queue_status(row["id"], STATUS_DELETED)
+            finalized = True
+            return True
+        info = await record_failure_and_alert(row, error, cfg)
+        finalized = True
+        counters["errors"] += 1
+        return False
+    finally:
+        if not finalized:
+            await _release_claim_safely(row["id"])
+
+
+async def _release_claim_safely(item_id: int) -> None:
+    """Return an interrupted claim to 'pending', shielded from cancellation."""
+    try:
+        await asyncio.shield(release_claim(item_id))
+    except Exception as e:
+        logger.error("Could not release claim on queue item %s: %s", item_id, e)
 
 
 async def _execute_batch(to_delete: list, cfg: _BatchConfig) -> int:
@@ -389,8 +453,18 @@ async def _run_deletion_guarded() -> None:
 
 
 async def reset_stale_deleting() -> int:
-    """Recover items stuck in 'deleting' after a crash mid-deletion."""
-    n = await reset_deleting_to_pending()
+    """Recover items stuck in 'deleting' after a crash mid-deletion.
+
+    Runs under the deletion lock: a live worker mid-batch holds it, so its
+    freshly claimed rows are not mistaken for stale ones. If another worker
+    holds the lock, nothing is reset (its rows are not stale).
+    """
+    try:
+        async with _deletion_lock:
+            n = await reset_deleting_to_pending()
+    except LockNotAvailable:
+        logger.info("reset_stale_deleting: deletion lock held elsewhere — skipping")
+        return 0
     if n:
         logger.warning("Recovered %d item(s) stuck in 'deleting' status (crash recovery)", n)
     return n
@@ -398,7 +472,7 @@ async def reset_stale_deleting() -> int:
 
 async def _claim_pending(item_id: int) -> bool:
     """Atomically claim a queue item (pending → deleting)."""
-    return await claim_for_deletion(item_id)
+    return await claim_for_deletion(item_id, scheduled=True)
 
 
 async def _delete_media(
@@ -437,7 +511,10 @@ async def _delete_media(
     ok = await build_default_pipeline().execute(ctx)
 
     if ok:
-        await add_log("INFO", lm("deletion.item_done", prefix=log_prefix, title=title), "deletion")
+        done = lm("deletion.item_done", prefix=log_prefix, title=title)
+        if ctx.kept_note:
+            done += f" — {ctx.kept_note}"
+        await add_log("INFO", done, "deletion")
     else:
         await add_log("ERROR", lm("deletion.item_error", prefix=log_prefix, title=title, detail="pipeline step failed"), "deletion")
 

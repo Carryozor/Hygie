@@ -5,7 +5,8 @@ Public API:
   test_qbit()                    — (bool, message)
   qbit_find_by_path(path)        — torrent hash matching a file path
   qbit_add_tag(hash, tag)        — add a tag to a torrent
-  qbit_delete_torrent(hash, ...)  — remove torrent (+files optional)
+  qbit_delete_torrent(hash, ...)  — remove torrent (+files optional), effect verified
+  qbit_pause_torrent(hash)       — pause (v5 /stop, v4 /pause fallback)
 """
 import asyncio
 import logging
@@ -249,8 +250,31 @@ async def qbit_add_tag(torrent_hash: str, tag: str) -> bool:
     return r is not None and r.status_code in (200, 204)
 
 
+# Waits (seconds) before each re-check of /torrents/info after a delete: the
+# first check is immediate, then 5 attempts in total with growing pauses.
+_VERIFY_DELAYS = (0.5, 1, 2, 3)
+
+
+async def _torrent_exists(torrent_hash: str) -> Optional[bool]:
+    """True/False whether the hash is listed by qBittorrent, None if unknown."""
+    r = await _request("GET", "/api/v2/torrents/info", params={"hashes": torrent_hash})
+    if r is None or r.status_code != 200:
+        return None
+    try:
+        listed = r.json()
+    except Exception:
+        return None
+    wanted = torrent_hash.lower()
+    return any((t.get("hash") or "").lower() == wanted for t in listed)
+
+
 async def qbit_delete_torrent(torrent_hash: str, delete_files: bool = True) -> bool:
-    """Delete a torrent (and optionally its files)."""
+    """Delete a torrent (and optionally its files).
+
+    Success means the hash has really disappeared from /torrents/info: the
+    delete endpoint answers 200 even for a hash it did not remove. If the
+    effect cannot be verified the call is reported as failed.
+    """
     if not torrent_hash:
         return False
     r = await _request(
@@ -261,4 +285,27 @@ async def qbit_delete_torrent(torrent_hash: str, delete_files: bool = True) -> b
             "deleteFiles": "true" if delete_files else "false",
         },
     )
-    return r is not None and r.status_code in (200, 204)
+    if r is None or r.status_code not in (200, 204):
+        return False
+    for delay in (0, *_VERIFY_DELAYS):
+        if delay:
+            await asyncio.sleep(delay)
+        if await _torrent_exists(torrent_hash) is False:
+            return True
+    return False
+
+
+async def qbit_pause_torrent(torrent_hash: str) -> bool:
+    """Pause a torrent. qBittorrent v5 renamed /pause to /stop: try the new
+    endpoint first and fall back to the v4 one on 404."""
+    if not torrent_hash:
+        return False
+    for path in ("/api/v2/torrents/stop", "/api/v2/torrents/pause"):
+        r = await _request("POST", path, data={"hashes": torrent_hash})
+        if r is None:
+            return False
+        if r.status_code in (200, 204):
+            return True
+        if r.status_code != 404:
+            return False
+    return False

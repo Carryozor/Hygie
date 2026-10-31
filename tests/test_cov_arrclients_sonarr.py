@@ -636,8 +636,12 @@ async def test_get_torrent_hash_returns_none_without_creds(monkeypatch):
 async def test_get_torrent_hash_resolves_via_series_history(httpx_mock: HTTPXMock):
     httpx_mock.add_response(url=f"{SONARR_URL}/api/v3/episodefile/10", json={"seriesId": 5})
     httpx_mock.add_response(
+        url=f"{SONARR_URL}/api/v3/episode?seriesId=5",
+        json=[{"id": 77, "episodeFileId": 10}],
+    )
+    httpx_mock.add_response(
         url=f"{SONARR_URL}/api/v3/history/series?seriesId=5",
-        json=[{"downloadId": "AABBCCDDEEFF00112233445566778899AABBCC"}],
+        json=[{"episodeId": 77, "downloadId": "AABBCCDDEEFF00112233445566778899AABBCC"}],
     )
     result = await sonarr.sonarr_get_torrent_hash(10)
     assert result == "aabbccddeeff00112233445566778899aabbcc"
@@ -654,7 +658,8 @@ async def test_get_torrent_hash_returns_none_when_no_series_id(httpx_mock: HTTPX
 
 
 async def test_get_torrent_hash_returns_none_on_exception(httpx_mock: HTTPXMock):
-    httpx_mock.add_exception(httpx.ConnectError("down"))
+    for _ in range(3):  # with_retry makes 3 attempts
+        httpx_mock.add_exception(httpx.ConnectError("down"))
     assert await sonarr.sonarr_get_torrent_hash(10) is None
 
 

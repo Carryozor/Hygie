@@ -496,14 +496,27 @@ async def find_item_by_path(path: str, include_types: str = "Series,Season", ser
     return None
 
 
-async def delete_item(item_id: str, server_id: str = "0") -> bool:
-    """Delete an item from the media server. Removes the hardlink but not the physical file."""
+async def delete_item(item_id: str, server_id: str = "0", *, missing_ok: bool = False) -> bool:
+    """Delete an item from the media server. Removes the hardlink but not the physical file.
+
+    ``missing_ok``: a 404 counts as success ("already absent") ONLY when the
+    caller knows a previous attempt may have removed the item (a retry).
+    Otherwise a 404 (wrong server, bad id) is a failure. An empty id never
+    reaches the network.
+    """
+    if not item_id:
+        return False
     url, key = await get_client(server_id)
     if not url or not key:
         return False
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             r = await http_retry(lambda: client.delete(f"{url}/Items/{item_id}", headers=_auth(key)))
+            if r.status_code == 404 and missing_ok:
+                # Already absent after a previous attempt got this far before
+                # failing later in the pipeline: idempotent success.
+                logger.debug("delete_item: %s already absent (404)", item_id)
+                return True
             return r.status_code in (200, 204)
     except Exception as e:
         logger.warning(f"delete_item error: {e}")

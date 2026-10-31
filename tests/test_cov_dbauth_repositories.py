@@ -236,7 +236,7 @@ async def test_get_expert_rule_by_id_round_trip_with_library_ids(db_path):
     assert fetched.library_ids == ["1", "2"]
 
 
-async def test_get_expert_rules_tolerates_invalid_library_ids_json(db_path):
+async def test_get_expert_rules_ignores_rule_with_invalid_library_ids_json(db_path):
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "INSERT INTO expert_rules (name, library_ids, conditions, operator, action, enabled, priority) "
@@ -246,11 +246,10 @@ async def test_get_expert_rules_tolerates_invalid_library_ids_json(db_path):
         )
         await db.commit()
     rules = await get_expert_rules()
-    assert len(rules) == 1
-    assert rules[0].library_ids is None  # decode failure swallowed, stays None
+    assert rules == []  # fail closed: never widened to "all libraries"
 
 
-async def test_get_expert_rule_by_id_tolerates_invalid_library_ids_json(db_path):
+async def test_get_expert_rule_by_id_ignores_rule_with_invalid_library_ids_json(db_path):
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "INSERT INTO expert_rules (id, name, library_ids, conditions, operator, action, enabled, priority) "
@@ -259,8 +258,7 @@ async def test_get_expert_rule_by_id_tolerates_invalid_library_ids_json(db_path)
             "'AND', 'queue', 1, 0)"
         )
         await db.commit()
-    rule = await get_expert_rule_by_id(7)
-    assert rule.library_ids is None
+    assert await get_expert_rule_by_id(7) is None
 
 
 async def test_delete_expert_rule_removes_row(db_path):
@@ -303,14 +301,12 @@ def test_parse_condition_groups_new_groups_format():
     assert groups[0].operator == RuleOperator.OR
 
 
-def test_parse_condition_groups_skips_unparseable_group_but_keeps_others():
+def test_parse_condition_groups_one_bad_group_invalidates_whole_rule():
     raw = json.dumps([
         {"operator": "BOGUS", "conditions": [{"field": "play_count", "op": "eq", "value": 0}]},
         {"operator": "AND", "conditions": [{"field": "play_count", "op": "eq", "value": 1}]},
     ])
-    groups = _parse_condition_groups(raw)
-    assert len(groups) == 1
-    assert groups[0].conditions[0].value == 1
+    assert _parse_condition_groups(raw) == []  # fail closed
 
 
 # ─── media_queue reads ──────────────────────────────────────────────────────────
@@ -440,11 +436,11 @@ async def test_claim_for_deletion_transitions_pending_to_deleting(db_path):
     assert await claim_for_deletion(item_id) is False  # already claimed
 
 
-async def test_update_last_played_scrobble_resets_status_to_pending(db_path):
+async def test_update_last_played_scrobble_resets_error_status_to_pending(db_path):
     await insert_queue_entry(_entry(emby_id="e1"))
     item_id = (await _one(db_path, "SELECT id FROM media_queue WHERE emby_id='e1'"))[0]
     async with aiosqlite.connect(db_path) as db:
-        await db.execute("UPDATE media_queue SET status='deleted' WHERE id=?", (item_id,))
+        await db.execute("UPDATE media_queue SET status='error' WHERE id=?", (item_id,))
         await db.commit()
     await update_last_played_scrobble("e1", "2026-01-02T00:00:00+00:00")
     row = await _one(db_path, "SELECT status, last_played FROM media_queue WHERE id=?", (item_id,))

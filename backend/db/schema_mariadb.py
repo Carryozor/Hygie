@@ -97,6 +97,9 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             plex_rating_key     VARCHAR(64)  DEFAULT NULL,
             view_count          INT          DEFAULT 0,
             arr_server_url      TEXT         DEFAULT NULL,
+            attempts            INT          NOT NULL DEFAULT 0,
+            last_error          TEXT         DEFAULT NULL,
+            next_retry_at       VARCHAR(32)  DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY uq_mq_emby_id (emby_id)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",

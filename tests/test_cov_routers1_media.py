@@ -206,7 +206,7 @@ async def test_delete_now_real_success_marks_deleted(test_client, monkeypatch):
     assert row["status"] == "deleted"
 
 
-async def test_delete_now_real_failure_reverts_to_pending_and_returns_500(test_client, monkeypatch):
+async def test_delete_now_real_failure_records_error_and_returns_500(test_client, monkeypatch):
     await _set_dry_run(False)
     item_id = await _seed_item("d4", status="pending")
     import backend.routers.media as media_mod
@@ -216,7 +216,8 @@ async def test_delete_now_real_failure_reverts_to_pending_and_returns_500(test_c
     assert r.status_code == 500
 
     row = await _fetch_item(item_id)
-    assert row["status"] == "pending"  # claimed as 'deleting' then reverted
+    assert row["status"] == "error"  # R2/B2: failure recorded like the job (attempts+1, backoff)
+    assert row["attempts"] == 1
 
 
 async def test_delete_now_404_when_already_claimed(test_client):
@@ -299,10 +300,10 @@ async def test_bulk_delete_marks_only_successful_items_deleted(test_client, monk
 
     r = test_client.post("/api/media/bulk", json={"ids": [id_ok, id_fail], "action": "delete"})
     assert r.status_code == 200
-    assert r.json() == {"affected": 1}
+    assert r.json() == {"affected": 1, "skipped": 1}
 
     assert (await _fetch_item(id_ok))["status"] == "deleted"
-    assert (await _fetch_item(id_fail))["status"] == "pending"
+    assert (await _fetch_item(id_fail))["status"] == "error"  # R2/B2
 
 
 # ─── ignore_one ─────────────────────────────────────────────────────────────

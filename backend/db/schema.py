@@ -106,7 +106,10 @@ _TABLES = [
             season_number INTEGER,
             plex_rating_key TEXT DEFAULT NULL,
             view_count INTEGER DEFAULT 0,
-            arr_server_url TEXT DEFAULT NULL
+            arr_server_url TEXT DEFAULT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT DEFAULT NULL,
+            next_retry_at TEXT DEFAULT NULL
         )""",
         [
             ("poster_url", "TEXT DEFAULT ''"),
@@ -133,6 +136,9 @@ _TABLES = [
             ("seerr_discord_id", "TEXT DEFAULT ''"),
             ("ignored", "INTEGER DEFAULT 0"),
             ("arr_server_url", "TEXT DEFAULT NULL"),
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_error", "TEXT DEFAULT NULL"),
+            ("next_retry_at", "TEXT DEFAULT NULL"),
         ],
     ),
     (
@@ -543,7 +549,24 @@ async def _init_db_mariadb() -> None:
                 await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", (k, v))
         await db.commit()
 
+    await _encrypt_existing_sensitive_settings()
     logger.info("MariaDB schema initialized")
+
+
+async def _encrypt_existing_sensitive_settings() -> None:
+    """Encrypt sensitive settings still stored in plaintext (idempotent).
+
+    The SQLite path does this at the end of init_db(); MariaDB deployments
+    skipped it, so a key added to SENSITIVE_KEYS later stayed in clear text
+    until its next edit. Non-fatal: reads handle both forms, so a failure here
+    must not block the boot.
+    """
+    from .engine import get_db
+    try:
+        async with get_db() as db:
+            await _migrate_encrypt_settings(db)
+    except Exception as e:
+        logger.warning("Could not encrypt existing sensitive settings: %s", e)
 
 
 async def _migrate_libraries_to_expert_rules_dbconn() -> int:

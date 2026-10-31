@@ -512,7 +512,11 @@ async def test_delete_torrent_sends_exact_hash_and_delete_files_true(monkeypatch
     captured = {}
     class _R:
         status_code = 200
+        def json(self):
+            return []  # /torrents/info: hash is gone
     async def _req(method, path, **kw):
+        if path == "/api/v2/torrents/info":
+            return _R()
         captured.update(method=method, path=path, **kw)
         return _R()
     monkeypatch.setattr(qbit, "_request", _req)
@@ -528,7 +532,13 @@ async def test_delete_torrent_sends_delete_files_false_when_keeping_files(monkey
     captured = {}
     class _R:
         status_code = 204
+    class _Info:
+        status_code = 200
+        def json(self):
+            return []
     async def _req(method, path, **kw):
+        if path == "/api/v2/torrents/info":
+            return _Info()
         captured.update(**kw)
         return _R()
     monkeypatch.setattr(qbit, "_request", _req)

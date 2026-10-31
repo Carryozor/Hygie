@@ -33,18 +33,17 @@ async def test_delete_from_seerr_noop_without_seerr_id():
 
 # ─── _handle_qbit ────────────────────────────────────────────────────────
 
-async def test_handle_qbit_delete_torrent_action_deletes_with_files():
+async def test_handle_qbit_delete_torrent_action_keeps_files():
     from backend.deletion import _handle_qbit
 
     with patch("backend.deletion_helpers.qbit_delete_torrent", new=AsyncMock(return_value=True)) as mock_delete:
         await _handle_qbit("hash1", "Inception", "delete_torrent", "Supprimé")
 
-    mock_delete.assert_awaited_once_with("hash1", delete_files=True)
+    mock_delete.assert_awaited_once_with("hash1", delete_files=False)
 
 
-async def test_handle_qbit_delete_files_action_also_deletes_with_files():
-    """'delete_files' is an alias of 'delete_torrent' in the dispatch — both
-    must route to the same destructive qBit call, not to tagging."""
+async def test_handle_qbit_delete_files_action_deletes_files_not_tag():
+    """'delete_files' removes torrent AND files, and must not route to tagging."""
     from backend.deletion import _handle_qbit
 
     with (

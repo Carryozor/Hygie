@@ -33,12 +33,15 @@ async def delete_server_item(
     item: dict,
     *,
     server_id: Optional[str] = None,
+    missing_ok: bool = False,
 ) -> bool:
     """Delete an item on the appropriate media server.
 
     Returns True on success, False on failure (client unavailable or error).
-    Does NOT handle dry_run — callers guard that themselves.
+    ``missing_ok`` makes a 404 ("already absent") a success; callers set it
+    only on a retry. Does NOT handle dry_run — callers guard that themselves.
     """
+    extra = {"missing_ok": True} if missing_ok else {}
     if is_plex(server):
         from .plex_client import build_plex_client
         plex = build_plex_client(server)
@@ -46,9 +49,9 @@ async def delete_server_item(
             logger.warning("delete_server_item: could not build Plex client for server %s", server.get("id"))
             return False
         rating_key = get_server_item_id(server, item)
-        return await plex.delete_item(rating_key)
+        return await plex.delete_item(rating_key, **extra)
     else:
         from .emby_client import delete_item
         emby_id = item.get("emby_id", "")
         sid = server_id or str(server.get("id", "0"))
-        return await delete_item(emby_id, server_id=sid)
+        return await delete_item(emby_id, server_id=sid, **extra)

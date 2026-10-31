@@ -13,12 +13,15 @@ from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 from ..db.repositories import (
-    get_by_id, claim_for_deletion, update_queue_status,
+    get_by_id, claim_for_deletion, update_queue_status, release_claim,
     delete_by_id, purge_by_status,
     get_status_counts, get_all_for_enrichment, update_enrichment_fields,
     get_pending_for_poster_regen, update_poster,
 )
-from ..deletion import _delete_media
+from ..deletion import (
+    _delete_media, _load_library_server_map, _refresh_watch_state_before_deletion,
+    _rescue_watched_since_queued, record_failure_and_alert,
+)
 from ..rules.legacy_conditions import _get_poster_url
 from ..arr_clients import build_seerr_request_cache
 
@@ -113,6 +116,36 @@ async def list_queue(
     return {"items": items, "total": total}
 
 
+async def _delete_claimed(media_id: int, row: dict) -> bool:
+    """Run the deletion of an already-claimed row; it never stays 'deleting'.
+
+    Success -> 'deleted'. Failure or exception -> recorded exactly like the
+    job does (status 'error', attempts+1, backoff, Discord alert on the first
+    and the final failure). If the attempt is interrupted (task cancellation)
+    the claim is released to 'pending' with the attempt counted.
+    """
+    finalized = False
+    try:
+        error = "pipeline step failed (see deletion logs)"
+        try:
+            ok = await _delete_media(row, False)
+        except Exception as e:
+            logger.exception("Manual deletion: unexpected error for '%s'", row.get("title", media_id))
+            ok, error = False, f"{type(e).__name__}: {e}"
+        if ok:
+            await update_queue_status(media_id, STATUS_DELETED)
+        else:
+            await record_failure_and_alert({**row, "id": media_id}, error)
+        finalized = True
+        return ok
+    finally:
+        if not finalized:
+            try:
+                await asyncio.shield(release_claim(media_id))
+            except Exception as e:
+                logger.error("Could not release claim on queue item %s: %s", media_id, e)
+
+
 @router.post("/{media_id}/delete-now")
 async def delete_now(
     media_id: int, user: str = Depends(require_auth)
@@ -132,9 +165,10 @@ async def delete_now(
     if not await claim_for_deletion(media_id):
         raise HTTPException(404, "Média introuvable ou déjà supprimé")
     row = await get_by_id(media_id)
+    server_map = await _load_library_server_map()
+    row = {**dict(row), "_server_id": server_map.get(row.get("library_id"), "0")}
 
-    ok = await _delete_media(row, False)
-    await update_queue_status(media_id, STATUS_DELETED if ok else STATUS_PENDING)
+    ok = await _delete_claimed(media_id, row)
     if ok:
         return {"status": "deleted"}
     raise HTTPException(500, "Suppression échouée")
@@ -166,6 +200,55 @@ def _upsert_ignored_params(row: dict, reason: str, ignored_at: str, expire_at) -
     )
 
 
+async def _bulk_candidates(ids: list, placeholders: str, server_map: dict) -> tuple[list, int]:
+    """Pending/error rows of the selection that survive the last-chance watch guards.
+
+    Error rows stay selectable so an operator can explicitly retry a failed
+    item. Returns (rows to delete, number skipped). Other statuses are ignored,
+    rows whose watch state is unreadable stay queued, rows played since they
+    were queued are rescued (removed from the queue) — same guards as the job.
+    """
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            f"SELECT * FROM media_queue WHERE id IN ({placeholders})",  # nosec B608 - placeholders count from len(ids), values bound
+            ids,
+        )
+    pending = [dict(r) for r in rows if r["status"] in (STATUS_PENDING, STATUS_ERROR)]
+    kept = await _refresh_watch_state_before_deletion(pending, server_map)
+    kept = await _rescue_watched_since_queued(kept)
+    return kept, len(ids) - len(kept)
+
+
+async def _bulk_delete(ids: list, placeholders: str) -> dict:
+    """Delete the selected pending items one by one, isolating failures.
+
+    Dry-run only simulates (no claim, no status change). A failure or
+    exception on one row never interrupts the rest; such rows, like rows
+    ignored for not being pending, are counted in ``skipped``.
+    """
+    dry_run = (await get_setting("dry_run") or "false").lower() == "true"
+    server_map = await _load_library_server_map()
+    rows, skipped = await _bulk_candidates(ids, placeholders, server_map)
+    affected = 0
+    for row in rows:
+        row = {**row, "_server_id": server_map.get(row.get("library_id"), "0")}
+        try:
+            if dry_run:
+                ok = await _delete_media(row, True)
+            elif await claim_for_deletion(row["id"]):
+                ok = await _delete_claimed(row["id"], row)
+            else:
+                ok = False
+        except Exception as e:
+            logger.error("bulk delete: '%s' failed: %s", row.get("title", row["id"]), e)
+            ok = False
+        if ok:
+            affected += 1
+        else:
+            skipped += 1
+    return {"affected": affected, "skipped": skipped}
+
+
 @router.post("/bulk")
 async def bulk(body: BulkAction, user: str = Depends(require_auth)):
     """Bulk action on selected items."""
@@ -195,18 +278,7 @@ async def bulk(body: BulkAction, user: str = Depends(require_auth)):
         return {"affected": len(rows)}
 
     if body.action == "delete":
-        dry_run = (await get_setting("dry_run") or "false").lower() == "true"
-        success = 0
-        async with get_db() as db:
-            rows = await db.fetch_all(
-                f"SELECT * FROM media_queue WHERE id IN ({placeholders})",  # nosec B608 - placeholders count from len(body.ids), values bound
-                body.ids,
-            )
-        for row in rows:
-            if await _delete_media(row, dry_run):
-                await update_queue_status(row["id"], STATUS_DELETED)
-                success += 1
-        return {"affected": success}
+        return await _bulk_delete(body.ids, placeholders)
 
     raise HTTPException(400, "Action invalide")
 

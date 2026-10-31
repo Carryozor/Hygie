@@ -670,6 +670,28 @@ async def _m017_ensure_plex_overlays_table():
             await db.commit()
 
 
+async def _m018_add_deletion_retry_columns():
+    """Add media_queue.attempts / last_error / next_retry_at (both dialects).
+
+    Back a replayable 'error' status: a failed deletion records its attempt
+    count, the (truncated) error and when it may be retried (backoff), instead
+    of staying stuck in 'error' forever. Existing rows get attempts=0 and NULL
+    for the other two (no retry is scheduled for legacy 'error' rows).
+    """
+    maria = DIALECT == "mariadb"
+    wanted = (
+        ("attempts", "INT NOT NULL DEFAULT 0" if maria else "INTEGER NOT NULL DEFAULT 0"),
+        ("last_error", "TEXT DEFAULT NULL"),
+        ("next_retry_at", "VARCHAR(32) DEFAULT NULL" if maria else "TEXT DEFAULT NULL"),
+    )
+    async with get_db() as db:
+        cols = await db.table_columns("media_queue")
+        for col, col_type in wanted:
+            if col not in cols:
+                await db.execute(f"ALTER TABLE media_queue ADD COLUMN {col} {col_type}")
+        await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -688,4 +710,5 @@ _MIGRATIONS = [
     ("m015", "Fix remaining MariaDB column gaps (seerr_user_rules.name, etc.)", _m015_fix_remaining_mariadb_column_gaps),
     ("m016", "Add media_queue.arr_server_url (multi-Radarr/Sonarr deletion routing)", _m016_add_arr_server_url_to_media_queue),
     ("m017", "Ensure plex_overlays table (persist Plex overlay tracking)", _m017_ensure_plex_overlays_table),
+    ("m018", "Add media_queue attempts/last_error/next_retry_at (error replay with backoff)", _m018_add_deletion_retry_columns),
 ]

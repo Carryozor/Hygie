@@ -101,12 +101,14 @@ async def test_delete_item(plex):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_delete_item_not_found(plex):
+async def test_delete_item_not_found_fails_unless_missing_ok(plex):
     respx.delete(f"{PLEX_URL}/library/metadata/999").mock(
         return_value=httpx.Response(404)
     )
     result = await plex.delete_item("999")
-    assert result is False
+    assert result is False  # a 404 on a first attempt is a visible failure
+    retry = await plex.delete_item("999", missing_ok=True)
+    assert retry is True    # on a retry, "already absent" is an idempotent success
 
 
 @pytest.mark.asyncio

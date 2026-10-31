@@ -131,13 +131,23 @@ class PlexClient:
             metadata = [metadata]
         return self._normalize_item(metadata[0])
 
-    async def delete_item(self, rating_key: str) -> bool:
+    async def delete_item(self, rating_key: str, *, missing_ok: bool = False) -> bool:
+        """Delete a library item. An empty key is refused without any request;
+        a 404 is success only with ``missing_ok`` (retry of an earlier attempt)."""
+        if not rating_key:
+            logger.warning("Plex delete: empty ratingKey — refusing to call the server")
+            return False
         async with httpx.AsyncClient(timeout=TIMEOUT_SHORT) as client:
             resp = await client.delete(
                 f"{self._url}/library/metadata/{rating_key}",
                 headers=self._headers,
             )
         if resp.status_code == 404:
+            if missing_ok:
+                # Already absent: idempotent success so a retried deletion can
+                # carry on with the remaining pipeline steps.
+                logger.debug("Plex delete: item %s already absent (404)", rating_key)
+                return True
             logger.warning("Plex delete: item %s not found", rating_key)
             return False
         resp.raise_for_status()

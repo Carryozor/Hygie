@@ -83,6 +83,19 @@ async def _resolve_arr_server(
     return None
 
 
+def _servers_for(servers: list[dict], arr_server_url: Optional[str]) -> list[dict]:
+    """Restrict a server list to the one recorded on a queue row.
+
+    No arr_server_url (legacy row): every server, as before. A recorded URL
+    that matches no configured server yields an empty list — an id is only
+    meaningful on the server that issued it, so we never guess another one.
+    """
+    if not arr_server_url:
+        return servers
+    target = _normalize_arr_url(arr_server_url)
+    return [s for s in servers if _normalize_arr_url(s.get("url", "")) == target]
+
+
 async def _first_from_servers(
     servers: list[dict], fetch_fn: Callable[[str, str], Awaitable[Optional[T]]]
 ) -> Optional[T]:

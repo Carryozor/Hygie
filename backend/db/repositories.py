@@ -4,7 +4,9 @@ import logging
 from typing import Optional
 
 from .engine import get_db
-from .utils import now_utc, STATUS_PENDING, STATUS_DELETING
+from datetime import timedelta
+
+from .utils import now_utc, STATUS_PENDING, STATUS_DELETING, STATUS_ERROR
 from ..rules.models import ExpertRule as _ExpertRule, Condition as _Condition, ConditionGroup as _ConditionGroup, RuleOperator, RuleAction
 
 logger = logging.getLogger(__name__)
@@ -13,13 +15,58 @@ logger = logging.getLogger(__name__)
 _ENRICH_ALLOWED = frozenset({"poster_url", "seerr_id", "seerr_user_id", "seerr_username", "seerr_request_url"})
 
 
+# Delay before the next attempt after the Nth failed deletion (N = index + 1).
+# The 5th failure is final: no further retry is scheduled.
+RETRY_BACKOFF_HOURS = (1, 4, 12, 24, 24)
+MAX_DELETION_ATTEMPTS = len(RETRY_BACKOFF_HOURS)
+_LAST_ERROR_MAX = 500
+# Marker of a "torrent(s) kept" note stored in last_error: it must survive the
+# transition to 'deleted' (unlike a stale failure message).
+KEPT_NOTE_PREFIX = "Conservation : "
+# An interruption/crash recovery may add one attempt but never reach the
+# definitive threshold on its own.
+_MAX_INTERRUPTION_ATTEMPTS = MAX_DELETION_ATTEMPTS - 1
+_BUMP_ATTEMPTS_SQL = (
+    f"CASE WHEN attempts < {_MAX_INTERRUPTION_ATTEMPTS} THEN attempts + 1 ELSE attempts END"
+)
+
+
 async def get_pending_queue() -> list[dict]:
-    """Return pending media_queue rows whose delete_at has passed."""
+    """Return the rows the deletion job may process now.
+
+    Pending rows whose delete_at has passed (unchanged rule), plus 'error'
+    rows still under the attempt cap whose backoff has elapsed.
+    """
+    now = now_utc().isoformat()
     async with get_db() as db:
         return await db.fetch_all(
-            "SELECT * FROM media_queue WHERE status='pending' AND delete_at <= ?",
-            (now_utc().isoformat(),),
+            "SELECT * FROM media_queue WHERE "
+            "(status='pending' AND delete_at <= ?) OR "
+            "(status='error' AND attempts < ? AND next_retry_at IS NOT NULL "
+            "AND next_retry_at <= ?)",
+            (now, MAX_DELETION_ATTEMPTS, now),
         )
+
+
+async def record_deletion_failure(item_id: int, error: str) -> dict:
+    """Record a failed deletion attempt: status='error', attempts+1, backoff.
+
+    Returns {"attempts": n, "final": bool}; ``final`` means the attempt cap was
+    reached and no retry is scheduled (next_retry_at=NULL).
+    """
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT attempts FROM media_queue WHERE id=?", (item_id,))
+        attempts = int((row or {}).get("attempts") or 0) + 1
+        final = attempts >= MAX_DELETION_ATTEMPTS
+        next_retry = None if final else (
+            now_utc() + timedelta(hours=RETRY_BACKOFF_HOURS[attempts - 1])
+        ).isoformat()
+        await db.execute(
+            "UPDATE media_queue SET status=?, attempts=?, last_error=?, next_retry_at=? WHERE id=?",
+            (STATUS_ERROR, attempts, (error or "")[:_LAST_ERROR_MAX], next_retry, item_id),
+        )
+        await db.commit()
+    return {"attempts": attempts, "final": final}
 
 
 async def get_last_job_run(job_type: str) -> Optional[dict]:
@@ -130,10 +177,19 @@ async def mark_notified_detected(emby_id: str) -> None:
 async def update_queue_status(item_id: int, status: str) -> None:
     """Update status and record a 'now' notification only for deletion statuses."""
     async with get_db() as db:
-        await db.execute(
-            "UPDATE media_queue SET status=? WHERE id=?",
-            (status, item_id),
-        )
+        if status == "deleted":
+            # torrent_hash is spent once deleted; a "torrents kept" note stays visible.
+            await db.execute(
+                "UPDATE media_queue SET status=?, attempts=0, torrent_hash='', "
+                "last_error=CASE WHEN last_error LIKE ? THEN last_error ELSE NULL END, "
+                "next_retry_at=NULL WHERE id=?",
+                (status, KEPT_NOTE_PREFIX + "%", item_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE media_queue SET status=? WHERE id=?",
+                (status, item_id),
+            )
         if status in ("deleted", "deleting"):
             await db.execute(
                 "INSERT OR IGNORE INTO notifications (media_id, threshold) VALUES (?,?)",
@@ -162,7 +218,10 @@ def _parse_condition_groups(raw_json: str, legacy_operator: str = "AND") -> list
         except Exception as exc:
             logger.warning("Failed to upgrade flat conditions: %s", exc)
             return []
-    # New groups format: list of group dicts with 'conditions' key
+    # New groups format: list of group dicts with 'conditions' key.
+    # Fail closed: one unparsable group invalidates the WHOLE rule. Dropping
+    # just that group would widen the rule (an AND loses a restriction, so
+    # more media match) in a feature that deletes files.
     groups = []
     for g in raw:
         try:
@@ -171,8 +230,30 @@ def _parse_condition_groups(raw_json: str, legacy_operator: str = "AND") -> list
                 operator=RuleOperator(g.get("operator", "AND")),
             ))
         except Exception as exc:
-            logger.warning("Failed to parse condition group: %s", exc)
+            logger.error("Unparsable condition group — whole rule ignored: %s", exc)
+            return []
     return groups
+
+
+_INVALID = object()
+
+
+def _parse_library_ids(raw_lids, rule_id) -> object:
+    """Parse expert_rules.library_ids. None = unrestricted (column empty).
+
+    Returns _INVALID when the stored value is not a JSON list: the caller must
+    ignore the rule rather than silently apply it to every library.
+    """
+    if not raw_lids:
+        return None
+    try:
+        parsed = json.loads(raw_lids)
+    except Exception:
+        parsed = _INVALID
+    if parsed is _INVALID or not isinstance(parsed, list):
+        logger.error("Rule id=%s has invalid library_ids %r — rule ignored", rule_id, raw_lids)
+        return _INVALID
+    return parsed
 
 
 async def save_expert_rule(rule: _ExpertRule) -> int:
@@ -214,15 +295,11 @@ async def get_expert_rules(*, enabled_only: bool = False) -> list:
             d.get("conditions") or "[]", d.get("operator", "AND")
         )
         if not condition_groups:
-            logger.warning("Rule id=%s has no valid conditions, skipping", d.get("id"))
+            logger.error("Rule id=%s has no valid conditions, skipping", d.get("id"))
             continue
-        library_ids = None
-        raw_lids = d.get("library_ids")
-        if raw_lids:
-            try:
-                library_ids = json.loads(raw_lids)
-            except Exception:
-                pass
+        library_ids = _parse_library_ids(d.get("library_ids"), d.get("id"))
+        if library_ids is _INVALID:
+            continue
         result.append(_ExpertRule(
             id=d["id"], name=d["name"], library_id=d.get("library_id"),
             library_ids=library_ids,
@@ -251,13 +328,9 @@ async def get_expert_rule_by_id(rule_id: int):
     if not condition_groups:
         logger.warning("Rule id=%s has no valid conditions", d.get("id"))
         return None
-    library_ids = None
-    raw_lids = d.get("library_ids")
-    if raw_lids:
-        try:
-            library_ids = json.loads(raw_lids)
-        except Exception:
-            pass
+    library_ids = _parse_library_ids(d.get("library_ids"), d.get("id"))
+    if library_ids is _INVALID:
+        return None
     return _ExpertRule(
         id=d["id"], name=d["name"], library_id=d.get("library_id"),
         library_ids=library_ids,
@@ -424,32 +497,112 @@ async def get_poster_url_by_emby_id(emby_id: str) -> Optional[str]:
 # ─── media_queue updates ──────────────────────────────────────────────────────
 
 async def reset_deleting_to_pending() -> int:
-    """Recover items stuck in 'deleting' after a crash. Returns the row count recovered."""
+    """Recover items stuck in 'deleting' after a crash. Returns the row count recovered.
+
+    ``attempts`` is bumped (capped below the definitive threshold): the crashed
+    run may already have removed the media, so the retry must tolerate
+    "already absent" answers.
+    """
     async with get_db() as db:
         n = await db.execute_write(
-            "UPDATE media_queue SET status=? WHERE status=?",
+            f"UPDATE media_queue SET status=?, attempts={_BUMP_ATTEMPTS_SQL} WHERE status=?",  # nosec B608 - module-level constant SQL fragment, no user input
             (STATUS_PENDING, STATUS_DELETING),
         )
         await db.commit()
     return n
 
 
-async def claim_for_deletion(item_id: int) -> bool:
-    """Atomically transition a pending item to 'deleting'. Returns False if already claimed."""
+async def claim_for_deletion(item_id: int, *, scheduled: bool = False) -> bool:
+    """Atomically transition a queue item to 'deleting'.
+
+    ``scheduled=False`` (manual routes): a pending OR error row can be claimed,
+    so an operator may explicitly retry a failed item.
+    ``scheduled=True`` (the job): an error row is claimable only when it is
+    really due, i.e. ``attempts < MAX_DELETION_ATTEMPTS`` and ``next_retry_at``
+    has passed; a final/backing-off row is left alone.
+
+    Returns False if already claimed or in any other status.
+    """
     async with get_db() as db:
-        claimed = await db.execute_write(
-            "UPDATE media_queue SET status=? WHERE id=? AND status=?",
-            (STATUS_DELETING, item_id, STATUS_PENDING),
-        )
+        if scheduled:
+            claimed = await db.execute_write(
+                "UPDATE media_queue SET status=? WHERE id=? AND (status=? OR "
+                "(status=? AND attempts < ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?))",
+                (STATUS_DELETING, item_id, STATUS_PENDING, STATUS_ERROR,
+                 MAX_DELETION_ATTEMPTS, now_utc().isoformat()),
+            )
+        else:
+            claimed = await db.execute_write(
+                "UPDATE media_queue SET status=? WHERE id=? AND status IN (?, ?)",
+                (STATUS_DELETING, item_id, STATUS_PENDING, STATUS_ERROR),
+            )
         await db.commit()
     return bool(claimed)
 
 
-async def update_last_played_scrobble(emby_id: str, last_played_iso: str) -> None:
-    """Update last_played and reset status to 'pending' (Plex scrobble webhook)."""
+async def get_queue_torrent_hash(item_id: int) -> str:
+    """Persisted torrent hash(es) of a queue row ('' when none), comma-joined."""
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT torrent_hash FROM media_queue WHERE id=?", (item_id,))
+    return ((row or {}).get("torrent_hash") or "").strip()
+
+
+async def set_queue_torrent_hash(item_id: int, torrent_hash: str) -> None:
+    """Persist the resolved torrent hash(es) (comma-joined) on a queue row.
+
+    Written BEFORE any destructive step so a retry after an interruption can
+    still act on the torrent once Radarr/Sonarr history has disappeared.
+    Deletes nothing; callers never write an empty value.
+    """
     async with get_db() as db:
         await db.execute_write(
-            "UPDATE media_queue SET last_played=?, status='pending' WHERE emby_id=?",
+            "UPDATE media_queue SET torrent_hash=? WHERE id=?", (torrent_hash, item_id),
+        )
+        await db.commit()
+
+
+async def set_queue_note(item_id: int, text: str) -> None:
+    """Store a visible note in ``last_error`` (truncated), status untouched.
+
+    Used to flag an incomplete deletion (torrents kept on purpose).
+    """
+    async with get_db() as db:
+        await db.execute_write(
+            "UPDATE media_queue SET last_error=? WHERE id=?",
+            ((text or "")[:_LAST_ERROR_MAX], item_id),
+        )
+        await db.commit()
+
+
+async def release_claim(item_id: int) -> bool:
+    """Give a claimed item back to the queue (deleting -> pending).
+
+    Used when a deletion attempt is interrupted before its outcome could be
+    recorded; only touches a row still in 'deleting'. ``attempts`` is
+    incremented (capped below the definitive threshold): the interrupted run
+    may have removed the media already, so the next run must treat "already
+    absent" answers as success — yet interruptions alone never make it final.
+    """
+    async with get_db() as db:
+        n = await db.execute_write(
+            f"UPDATE media_queue SET status=?, attempts={_BUMP_ATTEMPTS_SQL} "  # nosec B608 - module-level constant SQL fragment, no user input
+            "WHERE id=? AND status=?",
+            (STATUS_PENDING, item_id, STATUS_DELETING),
+        )
+        await db.commit()
+    return bool(n)
+
+
+async def update_last_played_scrobble(emby_id: str, last_played_iso: str) -> None:
+    """Update last_played and reset status to 'pending' (Plex scrobble webhook).
+
+    Only touches 'pending'/'error' rows: a 'deleted' or in-flight 'deleting'
+    row is never resurrected by a late scrobble.
+    """
+    async with get_db() as db:
+        await db.execute_write(
+            "UPDATE media_queue SET last_played=?, status='pending' "
+            "WHERE emby_id=? AND status IN ('pending', 'error')",
             (last_played_iso, emby_id),
         )
         await db.commit()

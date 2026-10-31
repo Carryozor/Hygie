@@ -249,7 +249,18 @@
         "applyTag": "Tag op torrent toepassen"
       },
       "tagDefault": "hygie-deleted",
-      "orLabel": "EN/OF"
+      "orLabel": "EN/OF",
+      "health": {
+        "check": "Status controleren",
+        "checking": "Controleren…",
+        "torrents": "{n} torrents",
+        "missing": "{n} zonder bestanden ({size})",
+        "errored": "{n} met fout",
+        "unreachable": "qBittorrent is onbereikbaar",
+        "firewalled": "Luisterpoort is geblokkeerd (firewalled): delen is beperkt",
+        "none": "Geen defecte torrents",
+        "problemsTitle": "Te controleren torrents"
+      }
     },
     "discord": {
       "title": "Discord-meldingen",

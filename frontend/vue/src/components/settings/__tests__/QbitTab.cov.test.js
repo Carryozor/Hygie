@@ -136,4 +136,61 @@ describe('QbitTab', () => {
       expect(form.qbit_delete_linked_crossseeds).toBe(true)
     })
   })
+
+  describe('health check', () => {
+    const healthy = { reachable: true, total: 5109, missing_files: 0, missing_files_bytes: 0,
+                      errored: 0, problems: [], connection_status: 'connected' }
+
+    it('does not call the API until the button is pressed', async () => {
+      mountTab()
+      await flushPromises()
+      expect(api.get).not.toHaveBeenCalledWith('/qbit/health')
+    })
+
+    it('shows the torrent count and a clean state', async () => {
+      api.get.mockResolvedValueOnce({ data: healthy })
+      const wrapper = mountTab()
+      await wrapper.find('[data-test="qbit-health-btn"]').trigger('click')
+      await flushPromises()
+      expect(api.get).toHaveBeenCalledWith('/qbit/health')
+      const box = wrapper.find('[data-test="qbit-health"]')
+      expect(box.text()).toContain('5109')
+      expect(wrapper.find('[data-test="qbit-health-problems"]').exists()).toBe(false)
+    })
+
+    it('lists missingFiles torrents with their size', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...healthy, missing_files: 1, missing_files_bytes: 6.6 * 1024 ** 3,
+        problems: [{ hash: 'h1', name: 'Movie.2026-GRP', state: 'missingFiles', size: 6.6 * 1024 ** 3 }] } })
+      const wrapper = mountTab()
+      await wrapper.find('[data-test="qbit-health-btn"]').trigger('click')
+      await flushPromises()
+      const list = wrapper.find('[data-test="qbit-health-problems"]')
+      expect(list.text()).toContain('Movie.2026-GRP')
+      expect(wrapper.find('[data-test="qbit-health"]').text()).toContain('6.6 GiB')
+    })
+
+    it('warns when the listening port is firewalled', async () => {
+      api.get.mockResolvedValueOnce({ data: { ...healthy, connection_status: 'firewalled' } })
+      const wrapper = mountTab()
+      await wrapper.find('[data-test="qbit-health-btn"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="qbit-health-port-warning"]').exists()).toBe(true)
+    })
+
+    it('says qBittorrent is unreachable instead of showing zeros', async () => {
+      api.get.mockResolvedValueOnce({ data: { reachable: false, total: 0, problems: [] } })
+      const wrapper = mountTab()
+      await wrapper.find('[data-test="qbit-health-btn"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="qbit-health-unreachable"]').exists()).toBe(true)
+    })
+
+    it('shows an error when the request itself fails', async () => {
+      api.get.mockRejectedValueOnce(new Error('500'))
+      const wrapper = mountTab()
+      await wrapper.find('[data-test="qbit-health-btn"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="qbit-health-unreachable"]').exists()).toBe(true)
+    })
+  })
 })

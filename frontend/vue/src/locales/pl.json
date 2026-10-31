@@ -249,7 +249,18 @@
         "applyTag": "Zastosuj tag do torrenta"
       },
       "tagDefault": "hygie-deleted",
-      "orLabel": "I/LUB"
+      "orLabel": "I/LUB",
+      "health": {
+        "check": "Sprawdź stan",
+        "checking": "Sprawdzanie…",
+        "torrents": "{n} torrentów",
+        "missing": "{n} bez plików ({size})",
+        "errored": "{n} z błędem",
+        "unreachable": "qBittorrent jest niedostępny",
+        "firewalled": "Port nasłuchu zablokowany (firewalled): udostępnianie ograniczone",
+        "none": "Brak wadliwych torrentów",
+        "problemsTitle": "Torrenty do sprawdzenia"
+      }
     },
     "discord": {
       "title": "Powiadomienia Discord",

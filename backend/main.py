@@ -46,6 +46,7 @@ from .routers import (
     logs,
     media,
     metrics,
+    qbit as qbit_router,
     public as public_router,
     scheduler as scheduler_router,
     seerr_rules,
@@ -379,6 +380,7 @@ app.include_router(calendar.router)
 app.include_router(unmonitored.router)
 app.include_router(metrics.router)
 app.include_router(backup.router)
+app.include_router(qbit_router.router)
 app.include_router(proxy.router)
 app.include_router(public_router.router)
 app.include_router(database_router.router)

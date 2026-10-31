@@ -9,6 +9,8 @@ All notable changes to Hygie are documented here.
 ### Added
 - **Prometheus: backup and job freshness.** `/metrics` now exposes `hygie_backup_ok` / `hygie_backup_age_seconds` (from the newest valid dump on disk, absent when backups are off) and, per job type, `hygie_job_last_finished_timestamp_seconds` / `hygie_job_last_success`. A silent backup or scan failure can now be alerted on from Grafana.
 
+- **qBittorrent health check** (Settings → qBittorrent → "Check status", `GET /api/qbit/health`, read-only). Shows whether qBittorrent answers, how many torrents it holds, how many are in `missingFiles` (with the space they declare) or `error` (listed by name, 50 max), and warns when the listening port is firewalled. It runs only on demand: listing ~5 000 torrents on every Settings visit would be wasteful.
+
 ### Security
 - **A password change (or "log out everywhere") now kills the access tokens already issued.** They used to stay valid for up to one hour. Access tokens carry the user's `token_version`; the check costs one primary-key read per request and a database failure answers 503 (not 401, so a blip does not log anyone out). Tokens minted before this release have no version and stay valid until the first invalidation.
 - **Refresh-token replay is detected.** A refresh token presented again after its 60 s rotation grace window revokes every session of that user (migration `m019`: `users.token_version`, `refresh_tokens.rotated_at`). Trade-off: a client that loses the response of a refresh and retries more than 60 s later is treated like a replay and signed out everywhere.

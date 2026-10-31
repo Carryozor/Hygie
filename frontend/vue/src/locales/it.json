@@ -249,7 +249,18 @@
         "applyTag": "Applica tag al torrent"
       },
       "tagDefault": "hygie-deleted",
-      "orLabel": "E/O"
+      "orLabel": "E/O",
+      "health": {
+        "check": "Controlla stato",
+        "checking": "Controllo…",
+        "torrents": "{n} torrent",
+        "missing": "{n} senza file ({size})",
+        "errored": "{n} in errore",
+        "unreachable": "qBittorrent non è raggiungibile",
+        "firewalled": "Porta di ascolto bloccata (firewalled): condivisione degradata",
+        "none": "Nessun torrent difettoso",
+        "problemsTitle": "Torrent da verificare"
+      }
     },
     "discord": {
       "title": "Notifiche Discord",

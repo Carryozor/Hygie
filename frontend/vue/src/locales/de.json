@@ -249,7 +249,18 @@
         "applyTag": "Tag auf Torrent anwenden"
       },
       "tagDefault": "hygie-deleted",
-      "orLabel": "UND/ODER"
+      "orLabel": "UND/ODER",
+      "health": {
+        "check": "Status prüfen",
+        "checking": "Prüfe…",
+        "torrents": "{n} Torrents",
+        "missing": "{n} ohne Dateien ({size})",
+        "errored": "{n} fehlerhaft",
+        "unreachable": "qBittorrent ist nicht erreichbar",
+        "firewalled": "Listening-Port ist gesperrt (firewalled): Seeding eingeschränkt",
+        "none": "Keine fehlerhaften Torrents",
+        "problemsTitle": "Zu prüfende Torrents"
+      }
     },
     "discord": {
       "title": "Discord-Benachrichtigungen",

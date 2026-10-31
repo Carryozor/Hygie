@@ -43,7 +43,7 @@
   "emby.consolidated_not_found": "Emby: no matching library entry found for {title} (skipped)",
   "plex.deleted": "Plex: item deleted {key}",
   "notif.sent": "{days}d notification sent for {n} media item(s)",
-  "backup.done": "Backup created: hygie_{ts}.db",
+  "backup.done": "Backup created: {filename}",
   "backup.error": "Backup failed: {detail}",
   "system.started": "Hygie {version} started",
   "library.created": "Library created: {name}",

@@ -43,7 +43,7 @@
   "emby.consolidated_not_found": "Emby: nessuna voce corrispondente trovata per {title} (ignorato)",
   "plex.deleted": "Plex: elemento eliminato {key}",
   "notif.sent": "Notifica {days}g inviata per {n} elemento/i",
-  "backup.done": "Backup creato: hygie_{ts}.db",
+  "backup.done": "Backup creato: {filename}",
   "backup.error": "Backup fallito: {detail}",
   "system.started": "Hygie {version} avviato",
   "library.created": "Libreria creata: {name}",

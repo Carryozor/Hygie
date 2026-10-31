@@ -43,7 +43,7 @@
   "emby.consolidated_not_found": "Emby: geen overeenkomend bibliotheekitem gevonden voor {title} (overgeslagen)",
   "plex.deleted": "Plex: item verwijderd {key}",
   "notif.sent": "{days}d-melding verzonden voor {n} media-item(s)",
-  "backup.done": "Back-up gemaakt: hygie_{ts}.db",
+  "backup.done": "Back-up gemaakt: {filename}",
   "backup.error": "Back-up mislukt: {detail}",
   "system.started": "Hygie {version} gestart",
   "library.created": "Bibliotheek aangemaakt: {name}",

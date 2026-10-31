@@ -43,7 +43,7 @@
   "emby.consolidated_not_found": "Emby: no se encontró ninguna entrada coincidente para {title} (omitido)",
   "plex.deleted": "Plex: elemento eliminado {key}",
   "notif.sent": "Notificación de {days}d enviada para {n} elemento(s)",
-  "backup.done": "Copia de seguridad creada: hygie_{ts}.db",
+  "backup.done": "Copia de seguridad creada: {filename}",
   "backup.error": "Copia de seguridad fallida: {detail}",
   "system.started": "Hygie {version} iniciado",
   "library.created": "Biblioteca creada: {name}",

@@ -43,7 +43,7 @@
   "emby.consolidated_not_found": "Emby: nenhuma entrada correspondente encontrada para {title} (ignorado)",
   "plex.deleted": "Plex: item excluído {key}",
   "notif.sent": "Notificação de {days}d enviada para {n} item(ns)",
-  "backup.done": "Backup criado: hygie_{ts}.db",
+  "backup.done": "Backup criado: {filename}",
   "backup.error": "Backup falhou: {detail}",
   "system.started": "Hygie {version} iniciado",
   "library.created": "Biblioteca criada: {name}",

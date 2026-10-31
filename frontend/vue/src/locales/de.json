@@ -244,6 +244,8 @@
         "pause": "Torrent pausieren",
         "deleteNoFiles": "Torrent löschen (ohne Dateien)",
         "deleteWithFiles": "Torrent + Dateien löschen",
+        "linkedCrossseeds": "Verknüpfte Cross-Seed-Kopien ebenfalls entfernen",
+        "linkedCrossseedsHelp": "Nur Torrents mit exakt gleicher Dateiliste werden entfernt; von anderen Torrents genutzte Dateien werden nie gelöscht.",
         "applyTag": "Tag auf Torrent anwenden"
       },
       "tagDefault": "hygie-deleted",

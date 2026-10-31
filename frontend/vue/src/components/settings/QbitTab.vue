@@ -67,6 +67,13 @@
           <span class="text-sm">{{ t('settings.qbit.actions.deleteWithFiles') }}</span>
           <ToggleSlider :model-value="form.qbit_action === 'delete_files'" @update:model-value="form.qbit_action = $event ? 'delete_files' : ''" />
         </div>
+        <div v-if="form.qbit_action === 'delete_files'" data-test="linked-crossseeds" class="py-2 px-3 bg-[var(--bg3)] rounded-lg">
+          <div class="flex items-center justify-between">
+            <span class="text-sm">{{ t('settings.qbit.actions.linkedCrossseeds') }}</span>
+            <ToggleSlider v-model="form.qbit_delete_linked_crossseeds" />
+          </div>
+          <p class="text-xs text-[var(--muted)] mt-1">{{ t('settings.qbit.actions.linkedCrossseedsHelp') }}</p>
+        </div>
       </div>
     </div>
 

@@ -41,6 +41,7 @@ class SettingsUpdate(BaseModel):
     qbit_user: Optional[str] = None
     qbit_password: Optional[str] = None
     qbit_action: Optional[str] = None
+    qbit_delete_linked_crossseeds: Optional[str] = None
     qbit_tag: Optional[str] = None
     discord_webhook: Optional[str] = None
     discord_webhook_alerts: Optional[str] = None

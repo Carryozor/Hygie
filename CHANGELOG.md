@@ -8,6 +8,17 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.4.5] — 2026-10-31
+
+### Added
+- **Linked cross-seed cleanup** (`qbit_delete_linked_crossseeds`, off by default, offered when the action is "delete torrent + files"). When a media is deleted with its files, the torrents whose file list is *strictly identical* (every relative path and size) are removed with it, so no torrent is left in `missingFiles`. Names are never compared.
+
+### Fixed
+- **Files still used by another torrent are no longer erased.** Before deleting with files, Hygie re-reads the qBittorrent listing; if a surviving torrent's `content_path` is identical to, inside or containing the path, the torrent is removed *without* its files and the reason is logged and surfaced as a step warning. If the listing is unavailable the previous behaviour applies.
+- The post-delete verification now waits up to ~20 s (was 6.5 s): qBittorrent answers 200 and removes the torrent 1–4 s later, up to longer on a 5 000-torrent instance.
+
+---
+
 ## [4.4.4] — 2026-10-31
 
 ### Added

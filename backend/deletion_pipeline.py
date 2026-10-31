@@ -426,10 +426,13 @@ class QbitStep(DeletionStep):
             )
             ctx.step_warnings.append("Qbit: torrent hash not found")
             return
-        kept = 0
-        for torrent_hash in hashes:
-            if not await self._apply(ctx, torrent_hash):
-                kept += 1
+        if ctx.qbit_action == "delete_files":
+            kept = await self._delete_files(ctx, hashes)
+        else:
+            kept = 0
+            for torrent_hash in hashes:
+                if not await self._apply(ctx, torrent_hash):
+                    kept += 1
         if kept:
             await self._record_kept(ctx, kept)
 
@@ -448,19 +451,69 @@ class QbitStep(DeletionStep):
             ctx.step_warnings.append(f"Qbit: note de conservation non enregistrée: {e}")
 
     @staticmethod
-    async def _apply(ctx: DeletionContext, torrent_hash: str) -> bool:
-        """Tag/pause/delete one torrent, unless deleting its files could hit
-        episodes that are still in the library (shared season pack).
-        Returns False when the torrent was deliberately kept."""
+    async def _delete_files(ctx: DeletionContext, hashes: list) -> int:
+        """delete_files: remove the torrents together with the linked cross-seed
+        copies (identical file list), and erase files only where no surviving
+        torrent still points at them. Returns how many torrents were kept."""
         from .db.logs import add_log
+        from .db.settings_store import get_bool_setting
         from .deletion_helpers import _handle_qbit, _shared_pack_blocker
+        from .qbit_siblings import build_plan, still_exclusive
 
-        if ctx.qbit_action == "delete_files" and ctx.media_type != "Movie":
-            blocker = await _shared_pack_blocker(ctx.item, torrent_hash)
+        kept, deletable, blocked = 0, [], set()
+        for torrent_hash in hashes:
+            blocker = await _shared_pack_blocker(ctx.item, torrent_hash) if ctx.media_type != "Movie" else None
             if blocker:
                 ctx.step_warnings.append(f"Qbit: {blocker}")
                 await add_log("WARN", f"{ctx.log_prefix}{ctx.title} : {blocker}", "deletion")
-                return False
+                blocked.add(torrent_hash)
+                kept += 1
+            else:
+                deletable.append(torrent_hash)
+        if not deletable:
+            return kept
+
+        twins = await get_bool_setting("qbit_delete_linked_crossseeds")
+        try:
+            plan = await build_plan(set(deletable), include_twins=twins, protected=frozenset(blocked))
+        except Exception as e:
+            # Ownership cannot be established: keep everything rather than guess.
+            logger.warning("QbitStep: removal plan failed for '%s': %s", ctx.title, e)
+            ctx.step_warnings.append(f"Qbit: plan de suppression impossible ({e}) — torrents conservés")
+            return kept + len(deletable)
+        if plan is None:
+            # Listing unavailable: the delete itself will fail too and is reported.
+            for torrent_hash in deletable:
+                await _handle_qbit(torrent_hash, ctx.title, "delete_files", ctx.qbit_tag, ctx.step_warnings)
+            return kept
+
+        planned = {r.hash.lower() for r in plan}
+        for torrent_hash in deletable:
+            if torrent_hash.lower() not in planned:
+                await add_log("INFO", f"{ctx.log_prefix}{ctx.title} : torrent {torrent_hash[:8]} déjà absent de qBittorrent", "deletion")
+
+        for r in plan:
+            label = f"{ctx.title} (copie cross-seed liée)" if r.twin else ctx.title
+            reason, erase = r.reason, r.delete_files
+            if erase and not await still_exclusive(r.path, planned):
+                # A torrent appeared on this path since the plan was made.
+                erase, reason = False, "chemin devenu utilisé par un autre torrent : fichiers conservés"
+            if not erase:
+                ctx.step_warnings.append(f"Qbit {r.hash}: {reason}")
+                await add_log("WARN", f"{ctx.log_prefix}{label} : {reason}", "deletion")
+            ok = await _handle_qbit(
+                r.hash, label, "delete_files" if erase else "delete_torrent",
+                ctx.qbit_tag, ctx.step_warnings)
+            if not ok:
+                kept += 1
+        return kept
+
+    @staticmethod
+    async def _apply(ctx: DeletionContext, torrent_hash: str) -> bool:
+        """Tag, pause or delete (without files) one torrent. delete_files goes
+        through _delete_files, which plans removals across linked torrents."""
+        from .deletion_helpers import _handle_qbit
+
         await _handle_qbit(
             torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag, ctx.step_warnings)
         return True

@@ -80,6 +80,7 @@ DEFAULT_SETTINGS = {
     "qbit_password": "",
     "qbit_action": "tag_only",  # tag_only | delete_torrent
     "qbit_tag": "Supprimé-Hygie",
+    "qbit_delete_linked_crossseeds": "false",  # delete_files only: also remove twin torrents (identical file list)
     "discord_webhook": "",
     "discord_webhook_alerts": "",
     "discord_notif_thresholds": "7,1",

@@ -252,7 +252,35 @@ async def qbit_add_tag(torrent_hash: str, tag: str) -> bool:
 
 # Waits (seconds) before each re-check of /torrents/info after a delete: the
 # first check is immediate, then 5 attempts in total with growing pauses.
-_VERIFY_DELAYS = (0.5, 1, 2, 3)
+# qBittorrent answers 200 then removes the torrent 1-4 s later (measured on prod
+# with ~5 000 torrents); the margin absorbs a busy instance.
+_VERIFY_DELAYS = (0.5, 1, 2, 3, 5, 8)
+
+
+async def qbit_list_torrents() -> Optional[list]:
+    """Every torrent known to qBittorrent, or None when the listing failed."""
+    r = await _request("GET", "/api/v2/torrents/info")
+    if r is None or r.status_code != 200:
+        return None
+    try:
+        data = r.json()
+    except Exception:
+        return None
+    if not isinstance(data, list):
+        return None
+    return [t for t in data if isinstance(t, dict) and isinstance(t.get("hash"), str)]
+
+
+async def qbit_torrent_files(torrent_hash: str) -> Optional[list]:
+    """File list ({name, size, ...}) of one torrent, or None when unavailable."""
+    r = await _request("GET", "/api/v2/torrents/files", params={"hash": torrent_hash})
+    if r is None or r.status_code != 200:
+        return None
+    try:
+        data = r.json()
+    except Exception:
+        return None
+    return data if isinstance(data, list) else None
 
 
 async def _torrent_exists(torrent_hash: str) -> Optional[bool]:

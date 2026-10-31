@@ -33,7 +33,7 @@ def _req_factory(info_payloads):
 
 # ── B4 ───────────────────────────────────────────────────────────────────────
 
-async def test_b4_five_attempts_with_growing_waits_then_false(monkeypatch):
+async def test_b4_every_attempt_with_growing_waits_then_false(monkeypatch):
     slept = []
 
     async def _sleep(d):
@@ -42,8 +42,8 @@ async def test_b4_five_attempts_with_growing_waits_then_false(monkeypatch):
     req, calls = _req_factory([[{"hash": "deadbeef"}]])
     monkeypatch.setattr(qbit, "_request", req)
     assert await qbit.qbit_delete_torrent("DEADBEEF") is False
-    assert calls["info"] == 5
-    assert slept == [0.5, 1, 2, 3]
+    assert calls["info"] == 1 + len(qbit._VERIFY_DELAYS)
+    assert slept == list(qbit._VERIFY_DELAYS)
 
 
 async def test_b4_true_as_soon_as_hash_disappears(monkeypatch):

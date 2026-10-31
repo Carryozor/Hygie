@@ -118,4 +118,22 @@ describe('QbitTab', () => {
     expect(form.qbit_url).toBe('http://qbt:8080')
     expect(form.qbit_user).toBe('admin')
   })
+
+  describe('linked cross-seed option', () => {
+    it('is only offered when the action deletes files', () => {
+      expect(mountTab({ qbit_action: 'delete_torrent' }).find('[data-test="linked-crossseeds"]').exists()).toBe(false)
+      expect(mountTab({ qbit_action: 'pause' }).find('[data-test="linked-crossseeds"]').exists()).toBe(false)
+      expect(mountTab({ qbit_action: 'delete_files' }).find('[data-test="linked-crossseeds"]').exists()).toBe(true)
+    })
+
+    it('explains the safety rule and writes the choice into the form', async () => {
+      const form = { qbit_url: '', qbit_user: '', qbit_password: '', qbit_proxy_url: '',
+        qbit_action: 'delete_files', qbit_tag: '', qbit_delete_linked_crossseeds: false }
+      const wrapper = mount(QbitTab, { props: { form }, global: { plugins: [i18n] } })
+      const box = wrapper.find('[data-test="linked-crossseeds"]')
+      expect(box.text()).toContain(i18n.global.t('settings.qbit.actions.linkedCrossseedsHelp'))
+      await box.findComponent({ name: 'ToggleSlider' }).vm.$emit('update:modelValue', true)
+      expect(form.qbit_delete_linked_crossseeds).toBe(true)
+    })
+  })
 })

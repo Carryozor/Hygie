@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1793454873417" clover="3.2.0">
-  <project timestamp="1793454873417" name="All files">
-    <metrics statements="2662" coveredstatements="2572" conditionals="2498" coveredconditionals="2215" methods="800" coveredmethods="726" elements="5960" coveredelements="5513" complexity="0" loc="2662" ncloc="2662" packages="13" files="63" classes="63"/>
+<coverage generated="1793477488611" clover="3.2.0">
+  <project timestamp="1793477488611" name="All files">
+    <metrics statements="2666" coveredstatements="2576" conditionals="2501" coveredconditionals="2218" methods="801" coveredmethods="727" elements="5968" coveredelements="5521" complexity="0" loc="2666" ncloc="2666" packages="13" files="63" classes="63"/>
     <package name="src">
       <metrics statements="36" coveredstatements="31" conditionals="12" coveredconditionals="12" methods="8" coveredmethods="8"/>
       <file name="App.vue" path="/opt/claude/hygie/frontend/vue/src/App.vue">
@@ -683,7 +683,7 @@
       </file>
     </package>
     <package name="src.components.settings">
-      <metrics statements="748" coveredstatements="695" conditionals="731" coveredconditionals="641" methods="215" coveredmethods="165"/>
+      <metrics statements="752" coveredstatements="699" conditionals="734" coveredconditionals="644" methods="216" coveredmethods="166"/>
       <file name="AlertRow.vue" path="/opt/claude/hygie/frontend/vue/src/components/settings/AlertRow.vue">
         <metrics statements="10" coveredstatements="10" conditionals="7" coveredconditionals="7" methods="4" coveredmethods="4"/>
         <line num="2" count="43" type="stmt"/>
@@ -1031,8 +1031,8 @@
         <line num="271" count="12" type="stmt"/>
       </file>
       <file name="QbitTab.vue" path="/opt/claude/hygie/frontend/vue/src/components/settings/QbitTab.vue">
-        <metrics statements="49" coveredstatements="45" conditionals="50" coveredconditionals="46" methods="12" coveredmethods="8"/>
-        <line num="2" count="22" type="stmt"/>
+        <metrics statements="53" coveredstatements="49" conditionals="53" coveredconditionals="49" methods="13" coveredmethods="9"/>
+        <line num="2" count="27" type="stmt"/>
         <line num="3" count="2" type="stmt"/>
         <line num="4" count="2" type="stmt"/>
         <line num="11" count="2" type="stmt"/>
@@ -1061,26 +1061,30 @@
         <line num="66" count="2" type="stmt"/>
         <line num="67" count="2" type="stmt"/>
         <line num="68" count="1" type="cond" truecount="3" falsecount="1"/>
-        <line num="74" count="2" type="stmt"/>
+        <line num="71" count="2" type="stmt"/>
+        <line num="72" count="2" type="stmt"/>
+        <line num="73" count="1" type="cond" truecount="2" falsecount="0"/>
         <line num="75" count="2" type="stmt"/>
-        <line num="79" count="0" type="cond" truecount="2" falsecount="0"/>
-        <line num="93" count="12" type="stmt"/>
-        <line num="94" count="12" type="stmt"/>
-        <line num="95" count="12" type="stmt"/>
-        <line num="96" count="12" type="stmt"/>
-        <line num="97" count="12" type="stmt"/>
-        <line num="100" count="2" type="cond" truecount="4" falsecount="0"/>
-        <line num="101" count="1" type="stmt"/>
-        <line num="103" count="2" type="stmt"/>
-        <line num="107" count="1" type="cond" truecount="3" falsecount="1"/>
+        <line num="81" count="2" type="stmt"/>
+        <line num="82" count="2" type="stmt"/>
+        <line num="86" count="0" type="cond" truecount="2" falsecount="0"/>
+        <line num="100" count="16" type="stmt"/>
+        <line num="101" count="16" type="stmt"/>
+        <line num="102" count="16" type="stmt"/>
+        <line num="103" count="16" type="stmt"/>
+        <line num="104" count="16" type="stmt"/>
+        <line num="107" count="2" type="cond" truecount="4" falsecount="0"/>
         <line num="108" count="1" type="stmt"/>
-        <line num="110" count="1" type="stmt"/>
-        <line num="113" count="14" type="stmt"/>
-        <line num="116" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="110" count="2" type="stmt"/>
+        <line num="114" count="1" type="cond" truecount="3" falsecount="1"/>
+        <line num="115" count="1" type="stmt"/>
         <line num="117" count="1" type="stmt"/>
-        <line num="119" count="1" type="cond" truecount="2" falsecount="0"/>
-        <line num="120" count="1" type="stmt"/>
-        <line num="121" count="1" type="stmt"/>
+        <line num="120" count="18" type="stmt"/>
+        <line num="123" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="124" count="1" type="stmt"/>
+        <line num="126" count="1" type="cond" truecount="2" falsecount="0"/>
+        <line num="127" count="1" type="stmt"/>
+        <line num="128" count="1" type="stmt"/>
       </file>
       <file name="RadarrTab.vue" path="/opt/claude/hygie/frontend/vue/src/components/settings/RadarrTab.vue">
         <metrics statements="59" coveredstatements="56" conditionals="50" coveredconditionals="41" methods="25" coveredmethods="21"/>
@@ -1512,12 +1516,12 @@
       </file>
       <file name="ServiceIcon.vue" path="/opt/claude/hygie/frontend/vue/src/components/ui/ServiceIcon.vue">
         <metrics statements="6" coveredstatements="6" conditionals="6" coveredconditionals="6" methods="2" coveredmethods="2"/>
-        <line num="3" count="169" type="stmt"/>
-        <line num="19" count="168" type="stmt"/>
-        <line num="25" count="168" type="stmt"/>
-        <line num="81" count="168" type="stmt"/>
-        <line num="87" count="169" type="cond" truecount="2" falsecount="0"/>
-        <line num="88" count="169" type="cond" truecount="2" falsecount="0"/>
+        <line num="3" count="177" type="stmt"/>
+        <line num="19" count="176" type="stmt"/>
+        <line num="25" count="176" type="stmt"/>
+        <line num="81" count="176" type="stmt"/>
+        <line num="87" count="177" type="cond" truecount="2" falsecount="0"/>
+        <line num="88" count="177" type="cond" truecount="2" falsecount="0"/>
       </file>
       <file name="SortHeader.vue" path="/opt/claude/hygie/frontend/vue/src/components/ui/SortHeader.vue">
         <metrics statements="2" coveredstatements="2" conditionals="5" coveredconditionals="5" methods="1" coveredmethods="1"/>
@@ -1546,10 +1550,10 @@
       </file>
       <file name="TestBtn.vue" path="/opt/claude/hygie/frontend/vue/src/components/ui/TestBtn.vue">
         <metrics statements="13" coveredstatements="13" conditionals="16" coveredconditionals="16" methods="2" coveredmethods="2"/>
-        <line num="2" count="60" type="stmt"/>
-        <line num="20" count="49" type="stmt"/>
-        <line num="21" count="49" type="stmt"/>
-        <line num="22" count="49" type="stmt"/>
+        <line num="2" count="64" type="stmt"/>
+        <line num="20" count="53" type="stmt"/>
+        <line num="21" count="53" type="stmt"/>
+        <line num="22" count="53" type="stmt"/>
         <line num="25" count="5" type="stmt"/>
         <line num="26" count="5" type="stmt"/>
         <line num="27" count="5" type="stmt"/>
@@ -1593,12 +1597,12 @@
       </file>
       <file name="ToggleSlider.vue" path="/opt/claude/hygie/frontend/vue/src/components/ui/ToggleSlider.vue">
         <metrics statements="6" coveredstatements="6" conditionals="6" coveredconditionals="6" methods="3" coveredmethods="3"/>
-        <line num="3" count="194" type="stmt"/>
+        <line num="3" count="214" type="stmt"/>
         <line num="4" count="11" type="cond" truecount="2" falsecount="0"/>
-        <line num="12" count="186" type="stmt"/>
-        <line num="16" count="186" type="stmt"/>
-        <line num="17" count="186" type="stmt"/>
-        <line num="18" count="194" type="stmt"/>
+        <line num="12" count="205" type="stmt"/>
+        <line num="16" count="205" type="stmt"/>
+        <line num="17" count="205" type="stmt"/>
+        <line num="18" count="214" type="stmt"/>
       </file>
     </package>
     <package name="src.composables">
@@ -2848,22 +2852,22 @@
         <line num="65" count="11" type="stmt"/>
         <line num="67" count="33" type="stmt"/>
         <line num="79" count="22" type="stmt"/>
-        <line num="80" count="110" type="cond" truecount="2" falsecount="0"/>
+        <line num="80" count="132" type="cond" truecount="2" falsecount="0"/>
         <line num="81" count="22" type="stmt"/>
-        <line num="122" count="25" type="cond" truecount="2" falsecount="0"/>
-        <line num="125" count="5" type="stmt"/>
+        <line num="123" count="25" type="cond" truecount="2" falsecount="0"/>
         <line num="126" count="5" type="stmt"/>
         <line num="127" count="5" type="stmt"/>
         <line num="128" count="5" type="stmt"/>
-        <line num="167" count="3" type="stmt"/>
-        <line num="168" count="3" type="stmt"/>
-        <line num="170" count="2" type="cond" truecount="2" falsecount="1"/>
-        <line num="171" count="2" type="stmt"/>
-        <line num="172" count="2" type="stmt"/>
-        <line num="173" count="5" type="stmt"/>
-        <line num="176" count="11" type="stmt"/>
-        <line num="177" count="11" type="stmt"/>
+        <line num="129" count="5" type="stmt"/>
+        <line num="169" count="3" type="stmt"/>
+        <line num="170" count="3" type="stmt"/>
+        <line num="172" count="2" type="cond" truecount="2" falsecount="1"/>
+        <line num="173" count="2" type="stmt"/>
+        <line num="174" count="2" type="stmt"/>
+        <line num="175" count="5" type="stmt"/>
         <line num="178" count="11" type="stmt"/>
+        <line num="179" count="11" type="stmt"/>
+        <line num="180" count="11" type="stmt"/>
       </file>
       <file name="SetupView.vue" path="/opt/claude/hygie/frontend/vue/src/views/SetupView.vue">
         <metrics statements="23" coveredstatements="23" conditionals="9" coveredconditionals="9" methods="3" coveredmethods="3"/>

@@ -135,7 +135,10 @@
         "created": "Sauvegarde créée",
         "failed": "Sauvegarde échouée",
         "stale": "Aucune sauvegarde valide depuis {hours} h — vérifiez les logs et le dossier de sauvegarde.",
-        "never": "Aucune sauvegarde n'existe encore dans le dossier."
+        "never": "Aucune sauvegarde n'existe encore dans le dossier.",
+        "verify": "Vérifier que cette sauvegarde est restaurable",
+        "verifyOk": "Restaurable",
+        "verifyFailed": "Vérification impossible"
       },
       "publicDashboard": {
         "title": "Dashboard public",
@@ -469,7 +472,9 @@
       "torrents": "Torrents concernés ({n})",
       "twin": "copie cross-seed",
       "filesKept": "fichiers conservés",
-      "packNote": "Un pack de saison partagé avec d'autres épisodes peut encore être conservé à la suppression."
+      "packNote": "Un pack de saison partagé avec d'autres épisodes peut encore être conservé à la suppression.",
+      "loading": "Analyse de l'impact…",
+      "unavailable": "Aperçu indisponible : l'étendue de la suppression n'a pas pu être vérifiée."
     }
   },
   "ignored": {

@@ -115,3 +115,13 @@ def test_client(tmp_path_factory):
     _sched_router.scheduler = mock_sched
 
     return TestClient(main_mod.app)
+
+
+@pytest.fixture
+def trust_backup_content(monkeypatch):
+    """For tests of the backup plumbing (retention, locking, naming) whose fake
+    dumps carry placeholder bytes: skip the restorability check, which has its
+    own tests in test_backup_verify.py."""
+    import backend.backup as backup_mod
+    monkeypatch.setattr(backup_mod, "verify_backup_content",
+                        lambda path: {"ok": True, "format": "test", "reason": None})

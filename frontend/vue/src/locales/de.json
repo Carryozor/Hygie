@@ -135,7 +135,10 @@
         "created": "Sicherung erstellt",
         "failed": "Sicherung fehlgeschlagen",
         "stale": "Seit {hours} h keine gültige Sicherung — Logs und Sicherungsordner prüfen.",
-        "never": "Im Ordner existiert noch keine Sicherung."
+        "never": "Im Ordner existiert noch keine Sicherung.",
+        "verify": "Prüfen, ob dieses Backup wiederherstellbar ist",
+        "verifyOk": "Wiederherstellbar",
+        "verifyFailed": "Prüfung fehlgeschlagen"
       },
       "publicDashboard": {
         "title": "Öffentliches Dashboard",
@@ -469,7 +472,9 @@
       "torrents": "Betroffene Torrents ({n})",
       "twin": "Cross-Seed-Kopie",
       "filesKept": "Dateien bleiben erhalten",
-      "packNote": "Ein mit anderen Episoden geteiltes Staffelpaket kann beim Löschen noch behalten werden."
+      "packNote": "Ein mit anderen Episoden geteiltes Staffelpaket kann beim Löschen noch behalten werden.",
+      "loading": "Auswirkung wird analysiert…",
+      "unavailable": "Vorschau nicht verfügbar: Der Umfang der Löschung konnte nicht geprüft werden."
     }
   },
   "ignored": {

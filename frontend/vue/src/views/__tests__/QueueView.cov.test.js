@@ -159,6 +159,30 @@ describe('QueueView', () => {
       expect(document.body.querySelector('[data-test="delete-preview"]').textContent).toContain('qBittorrent injoignable')
     })
 
+    it('says the preview is unavailable when the request fails', async () => {
+      mockWithPreview(new Error('500'))
+      await open()
+      expect(document.body.querySelector('[data-test="delete-preview-unavailable"]')).not.toBeNull()
+    })
+
+    it('shows an analysing line while the preview is loading', async () => {
+      api.get.mockImplementation(url => {
+        if (url === '/settings') return Promise.resolve({ data: {} })
+        if (url === '/media') return Promise.resolve(mediaResponse([SERIES]))
+        if (url === '/media/42/deletion-preview') return new Promise(() => {})
+        return Promise.resolve({ data: {} })
+      })
+      await open()
+      expect(document.body.querySelector('[data-test="delete-preview-loading"]')).not.toBeNull()
+    })
+
+    it('never prints 0 B when Sonarr could not give the size', async () => {
+      mockWithPreview({ ...PREVIEW, files: { count: 12, bytes: null }, torrents: null, warning: 'inconnu' })
+      await open()
+      const txt = document.body.querySelector('[data-test="delete-preview"]').textContent
+      expect(txt).not.toContain('0 B')
+    })
+
     it('shows nothing extra for items without a series/season scope', async () => {
       mockWithPreview({ scope: 'movie', files: null, torrents: null, torrents_total: 0 })
       await open()

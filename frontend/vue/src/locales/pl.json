@@ -135,7 +135,10 @@
         "created": "Kopia utworzona",
         "failed": "Kopia nie powiodła się",
         "stale": "Brak prawidłowej kopii od {hours} godz. — sprawdź logi i folder kopii.",
-        "never": "W folderze nie ma jeszcze żadnej kopii."
+        "never": "W folderze nie ma jeszcze żadnej kopii.",
+        "verify": "Sprawdź, czy ta kopia da się przywrócić",
+        "verifyOk": "Do przywrócenia",
+        "verifyFailed": "Sprawdzenie nie powiodło się"
       },
       "publicDashboard": {
         "title": "Publiczny panel",
@@ -469,7 +472,9 @@
       "torrents": "Dotyczące torrenty ({n})",
       "twin": "kopia cross-seed",
       "filesKept": "pliki zachowane",
-      "packNote": "Paczka sezonu współdzielona z innymi odcinkami może zostać zachowana podczas usuwania."
+      "packNote": "Paczka sezonu współdzielona z innymi odcinkami może zostać zachowana podczas usuwania.",
+      "loading": "Analiza skutków…",
+      "unavailable": "Podgląd niedostępny: nie udało się sprawdzić zakresu usunięcia."
     }
   },
   "ignored": {

@@ -135,7 +135,10 @@
         "created": "Backup created",
         "failed": "Backup failed",
         "stale": "No valid backup for {hours} h — check the logs and the backup folder.",
-        "never": "No backup exists in the folder yet."
+        "never": "No backup exists in the folder yet.",
+        "verify": "Check that this backup is restorable",
+        "verifyOk": "Restorable",
+        "verifyFailed": "Check failed"
       },
       "publicDashboard": {
         "title": "Public dashboard",
@@ -469,7 +472,9 @@
       "torrents": "Torrents involved ({n})",
       "twin": "cross-seed copy",
       "filesKept": "files kept",
-      "packNote": "A season pack shared with other episodes may still be kept at deletion time."
+      "packNote": "A season pack shared with other episodes may still be kept at deletion time.",
+      "loading": "Analysing impact…",
+      "unavailable": "Preview unavailable: the scope of the deletion could not be checked."
     }
   },
   "ignored": {

@@ -135,7 +135,10 @@
         "created": "Copia creada",
         "failed": "Copia fallida",
         "stale": "Sin copia válida desde hace {hours} h — revise los logs y la carpeta de copias.",
-        "never": "Todavía no existe ninguna copia en la carpeta."
+        "never": "Todavía no existe ninguna copia en la carpeta.",
+        "verify": "Comprobar que esta copia es restaurable",
+        "verifyOk": "Restaurable",
+        "verifyFailed": "Comprobación fallida"
       },
       "publicDashboard": {
         "title": "Panel público",
@@ -469,7 +472,9 @@
       "torrents": "Torrents afectados ({n})",
       "twin": "copia cross-seed",
       "filesKept": "archivos conservados",
-      "packNote": "Un pack de temporada compartido con otros episodios aún puede conservarse al eliminar."
+      "packNote": "Un pack de temporada compartido con otros episodios aún puede conservarse al eliminar.",
+      "loading": "Analizando el impacto…",
+      "unavailable": "Vista previa no disponible: no se pudo comprobar el alcance de la eliminación."
     }
   },
   "ignored": {

@@ -80,10 +80,25 @@ async def test_other_qbit_actions_do_not_plan_file_erasure(stubs):
     dp.build_plan.assert_not_awaited()
 
 
-async def test_unknown_when_sonarr_cannot_answer(stubs):
-    stubs["size"], stubs["count"] = None, None
+async def test_unknown_when_sonarr_cannot_answer_is_a_warning_not_zero(stubs):
+    stubs["size"], stubs["count"], stubs["hashes"] = None, None, set()
     out = await dp.build_preview(row())
-    assert out["files"] == {"count": None, "bytes": None}
+    assert out["files"] is None
+    assert out["warning"] and "Sonarr" in out["warning"]
+    assert out["torrents"] is None                      # unknown, not "nothing to remove"
+
+
+async def test_known_files_but_no_torrent_found_is_flagged(stubs):
+    stubs["hashes"] = set()
+    out = await dp.build_preview(row())
+    assert out["files"]["bytes"] == 5 * 1024 ** 3
+    assert out["torrents"] is None and out["warning"] and "torrent" in out["warning"].lower()
+
+
+async def test_size_unknown_but_count_known_keeps_the_count(stubs):
+    stubs["size"] = None
+    out = await dp.build_preview(row())
+    assert out["files"] == {"count": 12, "bytes": None}
 
 
 async def test_plan_failure_is_reported_not_raised(stubs):

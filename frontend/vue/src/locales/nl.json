@@ -135,7 +135,10 @@
         "created": "Back-up aangemaakt",
         "failed": "Back-up mislukt",
         "stale": "Al {hours} u geen geldige back-up — controleer de logs en de back-upmap.",
-        "never": "Er bestaat nog geen back-up in de map."
+        "never": "Er bestaat nog geen back-up in de map.",
+        "verify": "Controleer of deze back-up herstelbaar is",
+        "verifyOk": "Herstelbaar",
+        "verifyFailed": "Controle mislukt"
       },
       "publicDashboard": {
         "title": "Openbaar dashboard",
@@ -469,7 +472,9 @@
       "torrents": "Betrokken torrents ({n})",
       "twin": "cross-seed-kopie",
       "filesKept": "bestanden behouden",
-      "packNote": "Een seizoenspakket dat met andere afleveringen gedeeld wordt, kan bij het verwijderen nog behouden blijven."
+      "packNote": "Een seizoenspakket dat met andere afleveringen gedeeld wordt, kan bij het verwijderen nog behouden blijven.",
+      "loading": "Impact wordt geanalyseerd…",
+      "unavailable": "Voorbeeld niet beschikbaar: de omvang van de verwijdering kon niet worden gecontroleerd."
     }
   },
   "ignored": {

@@ -18,6 +18,8 @@ os.environ.setdefault("DB_PATH", ":memory:")
 
 import backend.backup as backup_mod
 
+pytestmark = pytest.mark.usefixtures("trust_backup_content")
+
 
 # ─── _validate_backup_path() ───────────────────────────────────────────────────
 

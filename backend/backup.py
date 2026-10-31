@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from .backup_verify import verify_backup_content
 from ._lock_backend import LockNotAvailable, MariaDBAdvisoryLockBackend
 from .db.engine import DIALECT, SQLITE_PATH, get_db
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
@@ -403,6 +404,16 @@ async def _create_backup(backup_dir: str, retention: int) -> Optional[str]:
         logger.error("Backup verification failed: %s missing, empty or unreadable", filename)
         _remove_quietly(os.path.join(backup_dir, filename))
         await add_log("ERROR", lm("backup.error", detail=f"{filename}: fichier absent, vide ou illisible"), "system")
+        return None
+
+    verdict = await asyncio.get_running_loop().run_in_executor(
+        None, verify_backup_content, os.path.join(backup_dir, filename))
+    if not verdict["ok"]:
+        # Kept on disk it would count as a valid backup (and push a good one out
+        # through retention), which is exactly how the 2026-10 incident stayed silent.
+        logger.error("Backup content check failed: %s: %s", filename, verdict["reason"])
+        _remove_quietly(os.path.join(backup_dir, filename))
+        await add_log("ERROR", lm("backup.error", detail=f"{filename}: sauvegarde non restaurable ({verdict['reason']})"), "system")
         return None
 
     await add_log("INFO", lm("backup.done", filename=filename), "system")

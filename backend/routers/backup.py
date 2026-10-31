@@ -1,10 +1,12 @@
 """Backup — manual trigger + list endpoint."""
+import asyncio
 import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import require_auth
+from ..backup_verify import verify_backup_content
 from ..backup import _DEFAULT_PATH, backup_status, list_backups, run_backup
 from ..db.settings_store import get_setting
 
@@ -31,6 +33,18 @@ async def get_backups(user: str = Depends(require_auth)):
     """List existing backup files."""
     backup_dir = (await get_setting("backup_path") or _DEFAULT_PATH).rstrip("/")
     return list_backups(backup_dir)
+
+
+@router.post("/{filename}/verify")
+async def verify_backup(filename: str, user: str = Depends(require_auth)):
+    """Read a whole backup and check that it looks restorable (read-only)."""
+    if "/" in filename or "\\" in filename or not filename.startswith("hygie_"):
+        raise HTTPException(400, "Nom de fichier invalide")
+    backup_dir = (await get_setting("backup_path") or _DEFAULT_PATH).rstrip("/")
+    path = Path(backup_dir) / filename
+    if not path.is_file():
+        raise HTTPException(404, "Fichier introuvable")
+    return await asyncio.to_thread(verify_backup_content, str(path))
 
 
 @router.delete("/{filename}")

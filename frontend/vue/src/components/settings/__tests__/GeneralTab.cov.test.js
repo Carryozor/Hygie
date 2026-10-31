@@ -62,7 +62,7 @@ describe('GeneralTab', () => {
     const wrapper = mountTab()
     await flushPromises()
     api.delete.mockResolvedValueOnce({ data: {} })
-    const delBtn = wrapper.find('button[title]') // delete button has a title attr
+    const delBtn = wrapper.find('[data-test="backup-delete"]')
     await delBtn.trigger('click')
     await flushPromises()
     expect(api.delete).toHaveBeenCalledWith('/backup/old.sql')
@@ -74,7 +74,7 @@ describe('GeneralTab', () => {
     const wrapper = mountTab()
     await flushPromises()
     api.delete.mockResolvedValueOnce({ data: {} })
-    const delBtn = wrapper.find('button[title]')
+    const delBtn = wrapper.find('[data-test="backup-delete"]')
     await delBtn.trigger('click')
     await flushPromises()
     expect(api.delete).toHaveBeenCalledWith(`/backup/${encodeURIComponent('backup 2026-01-01.sql')}`)
@@ -85,7 +85,7 @@ describe('GeneralTab', () => {
     const wrapper = mountTab()
     await flushPromises()
     api.delete.mockRejectedValueOnce(new Error('locked'))
-    const delBtn = wrapper.find('button[title]')
+    const delBtn = wrapper.find('[data-test="backup-delete"]')
     await delBtn.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('old.sql')
@@ -144,6 +144,49 @@ describe('GeneralTab', () => {
     const eyeBtn = wrapper.findAll('button').find(b => b.find('.fa-eye').exists())
     await eyeBtn.trigger('click')
     expect(pwdInput.attributes('type')).toBe('text')
+  })
+
+  describe('backup restore check', () => {
+    function withBackups() {
+      api.get.mockImplementation(async (url) => {
+        if (url === '/backup') return { data: [{ filename: 'hygie_20261031_205800.sql.gz', size_mb: 1 }] }
+        return { data: { state: 'ok' } }
+      })
+    }
+
+    it('posts to the verify endpoint of the clicked backup and shows a success', async () => {
+      withBackups()
+      api.post.mockResolvedValueOnce({ data: { ok: true, format: 'sql', reason: null } })
+      const wrapper = mountTab()
+      await flushPromises()
+      await wrapper.find('[data-test="backup-verify"]').trigger('click')
+      await flushPromises()
+      expect(api.post).toHaveBeenCalledWith('/backup/hygie_20261031_205800.sql.gz/verify')
+      expect(wrapper.find('[data-test="backup-verify-ok"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="backup-verify-bad"]').exists()).toBe(false)
+    })
+
+    it('shows the reason when the backup does not look restorable', async () => {
+      withBackups()
+      api.post.mockResolvedValueOnce({ data: { ok: false, format: 'sql', reason: 'dump incomplet' } })
+      const wrapper = mountTab()
+      await flushPromises()
+      await wrapper.find('[data-test="backup-verify"]').trigger('click')
+      await flushPromises()
+      const bad = wrapper.find('[data-test="backup-verify-bad"]')
+      expect(bad.exists()).toBe(true)
+      expect(bad.text()).toContain('dump incomplet')
+    })
+
+    it('reports a failed request instead of staying silent', async () => {
+      withBackups()
+      api.post.mockRejectedValueOnce(new Error('500'))
+      const wrapper = mountTab()
+      await flushPromises()
+      await wrapper.find('[data-test="backup-verify"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="backup-verify-bad"]').exists()).toBe(true)
+    })
   })
 
   describe('backup health banner', () => {

@@ -106,8 +106,25 @@
         <div v-for="b in backups" :key="b.filename" class="flex items-center justify-between text-xs px-3 py-1.5 bg-[var(--bg3)] rounded-lg group">
           <span class="font-mono flex-1 truncate">{{ b.filename }}</span>
           <span class="text-[var(--muted)] mr-3">{{ b.size_mb ? b.size_mb + ' MB' : '' }}</span>
+          <span v-if="verifyResults[b.filename]?.ok" data-test="backup-verify-ok" class="text-green-400 mr-2">
+            <i class="fas fa-circle-check" /> {{ t('settings.general.backup.verifyOk') }}
+          </span>
+          <span v-else-if="verifyResults[b.filename]" data-test="backup-verify-bad" class="text-red-400 mr-2 truncate max-w-[50%]" :title="verifyResults[b.filename].reason">
+            <i class="fas fa-triangle-exclamation" /> {{ verifyResults[b.filename].reason }}
+          </span>
           <button
             type="button"
+            data-test="backup-verify"
+            class="text-[var(--muted)] hover:text-[var(--text)] w-6 h-6 mr-1 flex items-center justify-center rounded disabled:opacity-50"
+            :title="t('settings.general.backup.verify')"
+            :disabled="verifying === b.filename"
+            @click.stop="verifyBackup(b.filename)"
+          >
+            <i :class="['fas', verifying === b.filename ? 'fa-spinner fa-spin' : 'fa-shield-halved', 'text-[10px]']" />
+          </button>
+          <button
+            type="button"
+            data-test="backup-delete"
             class="opacity-0 group-hover:opacity-100 transition-opacity text-red-400/70 hover:text-red-400 w-6 h-6 flex items-center justify-center rounded"
             :title="t('common.delete')"
             @click.stop="deleteBackup(b.filename)"
@@ -205,6 +222,21 @@ async function loadBackups() {
 
 async function loadBackupStatus() {
   try { const { data } = await api.get('/backup/status'); backupStatus.value = data || { state: 'ok' } } catch { /* silent */ }
+}
+
+const verifyResults = ref({})
+const verifying = ref('')
+
+async function verifyBackup(filename) {
+  verifying.value = filename
+  try {
+    const { data } = await api.post(`/backup/${encodeURIComponent(filename)}/verify`)
+    verifyResults.value = { ...verifyResults.value, [filename]: data }
+  } catch {
+    verifyResults.value = { ...verifyResults.value, [filename]: { ok: false, reason: t('settings.general.backup.verifyFailed') } }
+  } finally {
+    verifying.value = ''
+  }
 }
 
 async function deleteBackup(filename) {

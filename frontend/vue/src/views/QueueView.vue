@@ -159,11 +159,13 @@
       @cancel="deleteTarget = null"
     >
       <p class="text-sm">{{ deleteTarget ? `${t('queue.confirmDelete').replace('?', '')} ${deleteTarget.title} ?` : '' }}</p>
+      <p v-if="previewLoading" data-test="delete-preview-loading" class="text-xs text-[var(--muted)]">{{ t('queue.preview.loading') }}</p>
+      <p v-else-if="previewFailed" data-test="delete-preview-unavailable" class="text-xs text-amber-400">{{ t('queue.preview.unavailable') }}</p>
       <div v-if="showPreview" data-test="delete-preview" class="space-y-2 text-xs">
         <p v-if="deletePreview.files" class="text-[var(--muted)]">
           {{ deletePreview.scope === 'series'
-            ? t('queue.preview.series', { count: deletePreview.files.count ?? '?', size: formatBytes(deletePreview.files.bytes) })
-            : t('queue.preview.season', { size: formatBytes(deletePreview.files.bytes) }) }}
+            ? t('queue.preview.series', { count: deletePreview.files.count ?? '?', size: sizeLabel(deletePreview.files.bytes) })
+            : t('queue.preview.season', { size: sizeLabel(deletePreview.files.bytes) }) }}
         </p>
         <p v-if="deletePreview.warning" class="text-amber-400">{{ deletePreview.warning }}</p>
         <div v-if="deletePreview.torrents && deletePreview.torrents.length">
@@ -272,6 +274,9 @@ async function doIgnore() {
 }
 
 const deletePreview = ref(null)
+const previewLoading = ref(false)
+const previewFailed = ref(false)
+const sizeLabel = bytes => (bytes == null ? '?' : formatBytes(bytes))
 const showPreview = computed(() => {
   const p = deletePreview.value
   return !!p && (p.scope === 'series' || p.scope === 'season') && !!(p.files || p.warning || p.torrents?.length)
@@ -280,11 +285,18 @@ const showPreview = computed(() => {
 async function triggerDelete(item) {
   deleteTarget.value = item
   deletePreview.value = null
+  previewFailed.value = false
+  previewLoading.value = true
   try {
     const { data } = await api.get(`/media/${item.id}/deletion-preview`)
     // The dialog may have been closed or reopened on another item meanwhile.
     if (deleteTarget.value?.id === item.id) deletePreview.value = data
-  } catch { /* the preview is informative only: never block the deletion */ }
+  } catch {
+    // Informative only: never block the deletion, but say the safety net is missing.
+    if (deleteTarget.value?.id === item.id) previewFailed.value = true
+  } finally {
+    if (deleteTarget.value?.id === item.id) previewLoading.value = false
+  }
 }
 async function doDelete() {
   if (!deleteTarget.value) return

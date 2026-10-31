@@ -135,7 +135,10 @@
         "created": "Backup creato",
         "failed": "Backup fallito",
         "stale": "Nessun backup valido da {hours} h — controlla i log e la cartella dei backup.",
-        "never": "Nessun backup presente nella cartella."
+        "never": "Nessun backup presente nella cartella.",
+        "verify": "Verifica che questo backup sia ripristinabile",
+        "verifyOk": "Ripristinabile",
+        "verifyFailed": "Verifica non riuscita"
       },
       "publicDashboard": {
         "title": "Dashboard pubblico",
@@ -469,7 +472,9 @@
       "torrents": "Torrent coinvolti ({n})",
       "twin": "copia cross-seed",
       "filesKept": "file conservati",
-      "packNote": "Un pack di stagione condiviso con altri episodi può ancora essere conservato all'eliminazione."
+      "packNote": "Un pack di stagione condiviso con altri episodi può ancora essere conservato all'eliminazione.",
+      "loading": "Analisi dell'impatto…",
+      "unavailable": "Anteprima non disponibile: impossibile verificare l'estensione dell'eliminazione."
     }
   },
   "ignored": {

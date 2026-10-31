@@ -34,6 +34,8 @@ async def _files(row: dict, scope: str) -> Optional[dict]:
     size = await sonarr_get_files_size(
         series_id, season_number=row.get("season_number") if scope == "season" else None, **srv)
     count = await sonarr_series_file_count(series_id, **srv) if scope == "series" else None
+    if size is None and count is None:
+        return None          # Sonarr silent: say "unknown", never "0 B"
     return {"count": count, "bytes": size}
 
 
@@ -41,7 +43,9 @@ async def _torrents(row: dict) -> tuple[Optional[list], int, Optional[str]]:
     """(entries, total, warning). entries is None when no plan could be made."""
     hashes = await _find_torrent_hashes_consolidated(row)
     if not hashes:
-        return [], 0, None
+        # The lookup swallows Sonarr errors and answers "no hash": it cannot tell
+        # "nothing to remove" from "could not look", so never present it as safe.
+        return None, 0, "Aucun torrent associé trouvé (Sonarr n'a peut-être pas répondu) : l'effet sur qBittorrent est inconnu"
     twins = await get_bool_setting("qbit_delete_linked_crossseeds")
     try:
         plan = await build_plan(set(hashes), include_twins=twins)
@@ -66,6 +70,10 @@ async def build_preview(row: dict) -> dict:
            "torrents": None, "torrents_total": 0, "warning": None}
     if scope in ("series", "season"):
         out["files"] = await _files(row, scope)
+        if out["files"] is None:
+            out["warning"] = "Sonarr n'a pas répondu : étendue de la suppression inconnue"
         if action == "delete_files":
-            out["torrents"], out["torrents_total"], out["warning"] = await _torrents(row)
+            torrents, out["torrents_total"], torrent_warning = await _torrents(row)
+            out["torrents"] = torrents
+            out["warning"] = out["warning"] or torrent_warning
     return out

@@ -16,6 +16,8 @@ os.environ.setdefault("DB_PATH", ":memory:")
 
 import backend.backup as backup_mod
 
+pytestmark = pytest.mark.usefixtures("trust_backup_content")
+
 FAKE_DUMP = b"-- fake mysqldump\n" + b"INSERT INTO t VALUES (1);\n" * 400
 
 

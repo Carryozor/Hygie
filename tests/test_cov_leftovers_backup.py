@@ -21,6 +21,10 @@ os.environ.setdefault("DB_PATH", ":memory:")
 
 import backend.backup as backup_mod
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("trust_backup_content")
+
 
 # ─── _remove_quietly() ──────────────────────────────────────────────────────
 

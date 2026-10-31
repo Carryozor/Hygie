@@ -462,6 +462,14 @@
       "status": "Status",
       "deletion": "Löschung",
       "server": "Server"
+    },
+    "preview": {
+      "series": "Ganze Serie: {count} Dateien, {size}",
+      "season": "Ganze Staffel: {size}",
+      "torrents": "Betroffene Torrents ({n})",
+      "twin": "Cross-Seed-Kopie",
+      "filesKept": "Dateien bleiben erhalten",
+      "packNote": "Ein mit anderen Episoden geteiltes Staffelpaket kann beim Löschen noch behalten werden."
     }
   },
   "ignored": {

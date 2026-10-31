@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">94.73% </span>
+                <span class="strong">94.2% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>72/76</span>
+                <span class='fraction'>65/69</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">90.54% </span>
+                <span class="strong">92.64% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>67/74</span>
+                <span class='fraction'>63/68</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">75% </span>
+                <span class="strong">73.33% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>12/16</span>
+                <span class='fraction'>11/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">94.44% </span>
+                <span class="strong">94.02% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>68/72</span>
+                <span class='fraction'>63/67</span>
             </div>
         
             
@@ -250,14 +250,7 @@
 <a name='L185'></a><a href='#L185'>185</a>
 <a name='L186'></a><a href='#L186'>186</a>
 <a name='L187'></a><a href='#L187'>187</a>
-<a name='L188'></a><a href='#L188'>188</a>
-<a name='L189'></a><a href='#L189'>189</a>
-<a name='L190'></a><a href='#L190'>190</a>
-<a name='L191'></a><a href='#L191'>191</a>
-<a name='L192'></a><a href='#L192'>192</a>
-<a name='L193'></a><a href='#L193'>193</a>
-<a name='L194'></a><a href='#L194'>194</a>
-<a name='L195'></a><a href='#L195'>195</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L188'></a><a href='#L188'>188</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">43x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
@@ -391,6 +384,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-yes">22x</span>
@@ -411,14 +405,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -555,7 +541,7 @@
       &lt;div v-else-if="health" data-test="qbit-health" class="mt-2 space-y-1 text-sm"&gt;
         &lt;p&gt;{{ t('settings.qbit.health.torrents', { n: health.total }) }}&lt;/p&gt;
         &lt;p v-if="health.missing_files" class="text-amber-400"&gt;
-          {{ t('settings.qbit.health.missing', { n: health.missing_files, size: fmtSize(health.missing_files_bytes) }) }}
+          {{ t('settings.qbit.health.missing', { n: health.missing_files, size: formatBytes(health.missing_files_bytes) }) }}
         &lt;/p&gt;
 <span class="branch-0 cbranch-no" title="branch not covered" >        &lt;p v-if="health.errored" class="text-red-400"&gt;{{ t('settings.qbit.health.errored', { n: health.errored }) }}&lt;/p&gt;</span>
         &lt;p v-if="health.connection_status === 'firewalled'" data-test="qbit-health-port-warning" class="text-amber-400"&gt;
@@ -567,7 +553,7 @@
           &lt;ul class="max-h-48 overflow-y-auto space-y-1"&gt;
             &lt;li v-for="p in health.problems" :key="p.hash" class="flex justify-between gap-3 text-xs bg-[var(--bg3)] rounded px-2 py-1"&gt;
               &lt;span class="truncate font-mono" :title="p.name"&gt;{{ p.name }}&lt;/span&gt;
-              &lt;span class="shrink-0 text-[var(--muted)]"&gt;{{ p.state }} · {{ fmtSize(p.size) }}&lt;/span&gt;
+              &lt;span class="shrink-0 text-[var(--muted)]"&gt;{{ p.state }} · {{ formatBytes(p.size) }}&lt;/span&gt;
             &lt;/li&gt;
           &lt;/ul&gt;
         &lt;/div&gt;
@@ -584,6 +570,7 @@ import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 import api from '@/api/client'
+import { formatBytes } from '@/utils/formatBytes'
 &nbsp;
 const { t } = useI18n()
 const props    = defineProps({ form: { type: Object, required: true } })
@@ -605,14 +592,6 @@ async function checkHealth() {
   } finally {
     healthLoading.value = false
   }
-}
-&nbsp;
-function fmtSize(bytes) {
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-  let v = Number(bytes) || <span class="branch-1 cbranch-no" title="branch not covered" >0</span>
-  let i = 0
-  while (v &gt;= 1024 &amp;&amp; i &lt; units.length - 1) { v /= 1024; i++ }
-  return `${i ? v.toFixed(1) : <span class="branch-1 cbranch-no" title="branch not covered" >v}</span> ${units[i]}`
 }
 &nbsp;
 async function togglePwd() {
@@ -652,7 +631,7 @@ async function onTagToggle(enabled) {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-31T22:37:35.700Z
+                at 2026-10-31T22:40:51.928Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

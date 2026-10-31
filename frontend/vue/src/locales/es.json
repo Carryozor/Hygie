@@ -462,6 +462,14 @@
       "status": "Estado",
       "deletion": "Eliminación",
       "server": "Servidor"
+    },
+    "preview": {
+      "series": "Serie completa: {count} archivos, {size}",
+      "season": "Temporada completa: {size}",
+      "torrents": "Torrents afectados ({n})",
+      "twin": "copia cross-seed",
+      "filesKept": "archivos conservados",
+      "packNote": "Un pack de temporada compartido con otros episodios aún puede conservarse al eliminar."
     }
   },
   "ignored": {

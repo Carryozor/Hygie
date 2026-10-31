@@ -24,6 +24,7 @@ from ..deletion import (
 )
 from ..rules.legacy_conditions import _get_poster_url
 from ..arr_clients import build_seerr_request_cache
+from ..deletion_preview import build_preview
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 logger = logging.getLogger(__name__)
@@ -144,6 +145,15 @@ async def _delete_claimed(media_id: int, row: dict) -> bool:
                 await asyncio.shield(release_claim(media_id))
             except Exception as e:
                 logger.error("Could not release claim on queue item %s: %s", media_id, e)
+
+
+@router.get("/{media_id}/deletion-preview")
+async def deletion_preview(media_id: int, user: str = Depends(require_auth)):
+    """What deleting this item would touch (files, torrents). Read-only."""
+    row = await get_by_id(media_id)
+    if not row or row["status"] not in (STATUS_PENDING, STATUS_ERROR):
+        raise HTTPException(404, "Média introuvable ou déjà supprimé")
+    return await build_preview(dict(row))
 
 
 @router.post("/{media_id}/delete-now")

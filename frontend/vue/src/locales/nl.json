@@ -462,6 +462,14 @@
       "status": "Status",
       "deletion": "Verwijdering",
       "server": "Server"
+    },
+    "preview": {
+      "series": "Hele serie: {count} bestanden, {size}",
+      "season": "Heel seizoen: {size}",
+      "torrents": "Betrokken torrents ({n})",
+      "twin": "cross-seed-kopie",
+      "filesKept": "bestanden behouden",
+      "packNote": "Een seizoenspakket dat met andere afleveringen gedeeld wordt, kan bij het verwijderen nog behouden blijven."
     }
   },
   "ignored": {

@@ -102,7 +102,7 @@
       <div v-else-if="health" data-test="qbit-health" class="mt-2 space-y-1 text-sm">
         <p>{{ t('settings.qbit.health.torrents', { n: health.total }) }}</p>
         <p v-if="health.missing_files" class="text-amber-400">
-          {{ t('settings.qbit.health.missing', { n: health.missing_files, size: fmtSize(health.missing_files_bytes) }) }}
+          {{ t('settings.qbit.health.missing', { n: health.missing_files, size: formatBytes(health.missing_files_bytes) }) }}
         </p>
         <p v-if="health.errored" class="text-red-400">{{ t('settings.qbit.health.errored', { n: health.errored }) }}</p>
         <p v-if="health.connection_status === 'firewalled'" data-test="qbit-health-port-warning" class="text-amber-400">
@@ -114,7 +114,7 @@
           <ul class="max-h-48 overflow-y-auto space-y-1">
             <li v-for="p in health.problems" :key="p.hash" class="flex justify-between gap-3 text-xs bg-[var(--bg3)] rounded px-2 py-1">
               <span class="truncate font-mono" :title="p.name">{{ p.name }}</span>
-              <span class="shrink-0 text-[var(--muted)]">{{ p.state }} · {{ fmtSize(p.size) }}</span>
+              <span class="shrink-0 text-[var(--muted)]">{{ p.state }} · {{ formatBytes(p.size) }}</span>
             </li>
           </ul>
         </div>
@@ -131,6 +131,7 @@ import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 import api from '@/api/client'
+import { formatBytes } from '@/utils/formatBytes'
 
 const { t } = useI18n()
 const props    = defineProps({ form: { type: Object, required: true } })
@@ -152,14 +153,6 @@ async function checkHealth() {
   } finally {
     healthLoading.value = false
   }
-}
-
-function fmtSize(bytes) {
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-  let v = Number(bytes) || 0
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${i ? v.toFixed(1) : v} ${units[i]}`
 }
 
 async function togglePwd() {

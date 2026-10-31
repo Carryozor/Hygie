@@ -154,11 +154,31 @@
     <!-- Delete confirm modal -->
     <ConfirmModal
       :show="!!deleteTarget"
-      :message="deleteTarget ? `${t('queue.confirmDelete').replace('?', '')} ${deleteTarget.title} ?` : ''"
       :confirm-label="t('common.delete')"
       @confirm="doDelete"
       @cancel="deleteTarget = null"
-    />
+    >
+      <p class="text-sm">{{ deleteTarget ? `${t('queue.confirmDelete').replace('?', '')} ${deleteTarget.title} ?` : '' }}</p>
+      <div v-if="showPreview" data-test="delete-preview" class="space-y-2 text-xs">
+        <p v-if="deletePreview.files" class="text-[var(--muted)]">
+          {{ deletePreview.scope === 'series'
+            ? t('queue.preview.series', { count: deletePreview.files.count ?? '?', size: formatBytes(deletePreview.files.bytes) })
+            : t('queue.preview.season', { size: formatBytes(deletePreview.files.bytes) }) }}
+        </p>
+        <p v-if="deletePreview.warning" class="text-amber-400">{{ deletePreview.warning }}</p>
+        <div v-if="deletePreview.torrents && deletePreview.torrents.length">
+          <p class="text-[var(--muted)] mb-1">{{ t('queue.preview.torrents', { n: deletePreview.torrents_total }) }}</p>
+          <ul class="max-h-40 overflow-y-auto space-y-1">
+            <li v-for="tor in deletePreview.torrents" :key="tor.hash" class="bg-[var(--bg3)] rounded px-2 py-1">
+              <span class="font-mono break-all">{{ tor.name || tor.hash }}</span>
+              <span v-if="tor.twin" data-test="preview-twin" class="ml-1 text-[var(--accent)]">{{ t('queue.preview.twin') }}</span>
+              <span v-if="!tor.erase_files" class="block text-amber-400">{{ t('queue.preview.filesKept') }}{{ tor.reason ? ` — ${tor.reason}` : '' }}</span>
+            </li>
+          </ul>
+          <p class="text-[var(--muted)] mt-1">{{ t('queue.preview.packNote') }}</p>
+        </div>
+      </div>
+    </ConfirmModal>
 
     <!-- Purge confirm modal -->
     <ConfirmModal
@@ -175,6 +195,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@/api/client'
+import { formatBytes } from '@/utils/formatBytes'
 import { useSettingsStore } from '@/stores/settings'
 import { useServersStore } from '@/stores/servers'
 import { useQueueItems } from '@/composables/useQueueItems'
@@ -250,7 +271,21 @@ async function doIgnore() {
   })
 }
 
-function triggerDelete(item) { deleteTarget.value = item }
+const deletePreview = ref(null)
+const showPreview = computed(() => {
+  const p = deletePreview.value
+  return !!p && (p.scope === 'series' || p.scope === 'season') && !!(p.files || p.warning || p.torrents?.length)
+})
+
+async function triggerDelete(item) {
+  deleteTarget.value = item
+  deletePreview.value = null
+  try {
+    const { data } = await api.get(`/media/${item.id}/deletion-preview`)
+    // The dialog may have been closed or reopened on another item meanwhile.
+    if (deleteTarget.value?.id === item.id) deletePreview.value = data
+  } catch { /* the preview is informative only: never block the deletion */ }
+}
 async function doDelete() {
   if (!deleteTarget.value) return
   const target = deleteTarget.value

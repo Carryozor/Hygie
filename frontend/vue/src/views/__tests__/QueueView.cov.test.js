@@ -103,6 +103,86 @@ describe('QueueView', () => {
     expect(document.body.querySelector('.fixed.inset-0')).toBeNull()
   })
 
+  describe('deletion preview', () => {
+    const SERIES = { id: 42, title: 'Call of the Night', media_type: 'Series', status: 'pending',
+      delete_at: '2099-01-01T00:00:00Z', library_id: 1 }
+    const PREVIEW = {
+      scope: 'series', files: { count: 12, bytes: 5 * 1024 ** 3 }, qbit_action: 'delete_files',
+      torrents_total: 2, warning: null,
+      torrents: [
+        { hash: 'h1', name: 'Show.S01', twin: false, erase_files: true, reason: '' },
+        { hash: 'x9', name: 'Show.S01.crossseed', twin: true, erase_files: false, reason: 'autre torrent' },
+      ],
+    }
+
+    function mockWithPreview(preview) {
+      api.get.mockImplementation(url => {
+        if (url === '/settings') return Promise.resolve({ data: {} })
+        if (url === '/media') return Promise.resolve(mediaResponse([SERIES]))
+        if (url === '/media/42/deletion-preview') return preview instanceof Error ? Promise.reject(preview) : Promise.resolve({ data: preview })
+        return Promise.resolve({ data: {} })
+      })
+    }
+    const open = async () => {
+      const { wrapper } = await mountView(QueueView, { path: '/queue' })
+      await wrapper.find('button[title="Supprimer maintenant"]').trigger('click')
+      await flushAll()
+    }
+
+    it('shows what a whole-series deletion will touch before confirming', async () => {
+      mockWithPreview(PREVIEW)
+      await open()
+      expect(api.get).toHaveBeenCalledWith('/media/42/deletion-preview')
+      const box = document.body.querySelector('[data-test="delete-preview"]')
+      expect(box.textContent).toContain('12')
+      expect(box.textContent).toContain('5.0 GiB')
+      expect(box.textContent).toContain('Show.S01')
+      expect(box.textContent).toContain('Show.S01.crossseed')
+      expect(box.querySelector('[data-test="preview-twin"]')).not.toBeNull()
+      expect(box.textContent).toContain('autre torrent')
+    })
+
+    it('still lets the user delete when the preview request fails', async () => {
+      mockWithPreview(new Error('500'))
+      api.post.mockResolvedValue({ data: {} })
+      await open()
+      expect(document.body.querySelector('[data-test="delete-preview"]')).toBeNull()
+      const confirmBtn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Supprimer')
+      confirmBtn.click()
+      await flushAll()
+      expect(api.post).toHaveBeenCalledWith('/media/42/delete-now')
+    })
+
+    it('shows the backend warning when the qBittorrent plan is unavailable', async () => {
+      mockWithPreview({ ...PREVIEW, torrents: null, warning: 'qBittorrent injoignable' })
+      await open()
+      expect(document.body.querySelector('[data-test="delete-preview"]').textContent).toContain('qBittorrent injoignable')
+    })
+
+    it('shows nothing extra for items without a series/season scope', async () => {
+      mockWithPreview({ scope: 'movie', files: null, torrents: null, torrents_total: 0 })
+      await open()
+      expect(document.body.querySelector('[data-test="delete-preview"]')).toBeNull()
+    })
+
+    it('ignores a late preview answer once the dialog was cancelled', async () => {
+      let resolve
+      api.get.mockImplementation(url => {
+        if (url === '/settings') return Promise.resolve({ data: {} })
+        if (url === '/media') return Promise.resolve(mediaResponse([SERIES]))
+        if (url === '/media/42/deletion-preview') return new Promise(r => { resolve = r })
+        return Promise.resolve({ data: {} })
+      })
+      await open()
+      const cancelBtn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Annuler')
+      cancelBtn.click()
+      await flushAll()
+      resolve({ data: PREVIEW })
+      await flushAll()
+      expect(document.body.querySelector('[data-test="delete-preview"]')).toBeNull()
+    })
+  })
+
   it('calls delete-now with the clicked item id on confirm, and reloads the list', async () => {
     mockDefaultGets()
     api.post.mockResolvedValue({ data: {} })

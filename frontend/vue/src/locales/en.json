@@ -462,6 +462,14 @@
       "status": "Status",
       "deletion": "Deletion",
       "server": "Server"
+    },
+    "preview": {
+      "series": "Whole series: {count} files, {size}",
+      "season": "Whole season: {size}",
+      "torrents": "Torrents involved ({n})",
+      "twin": "cross-seed copy",
+      "filesKept": "files kept",
+      "packNote": "A season pack shared with other episodes may still be kept at deletion time."
     }
   },
   "ignored": {

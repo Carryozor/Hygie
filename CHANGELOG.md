@@ -6,9 +6,47 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+---
+
+## [4.4.3] — 2026-10-31
+
+Patch release from a three-role review (developer / architect / pentester) of v4.4.2,
+each finding re-verified against the code and production logs.
+
 ### Fixed
 
-- **Sidebar version (and clock) stayed blank after a page reload until a manual logout/login.** On reload the access token is in-memory only, so `router/index.js` re-mints it from the httpOnly refresh cookie before the first navigation resolves — but `AppSidebar` is already mounted by then. Its `onMounted` bailed out on `!auth.isLoggedIn` and never ran again, so `GET /api/version` was never called. Hydration is now driven by a `watch` on `auth.isLoggedIn` (immediate), which also re-runs on logout → login and keeps a single clock timer.
+- **Database backups silently produced no file since 2026-10-04.** `run_backup()` ran on every uvicorn worker at the same instant with no lock; both wrote the same `hygie_<ts>.sql`, one deleted it while the other was compressing, and the error cleanup removed the `.sql.gz` — yet both logged "Backup créé". Reproduced with two real processes against MariaDB 11 (old code: two "success" results and an empty folder). Backups now take a cross-worker lock (`GET_LOCK`), write to unique temp files, publish atomically, verify the file (exists, non-empty, readable gzip) **before** reporting success, and never prune the file just written. The log line now shows the real file name (it hard-coded `.db`). `_validate_backup_path` also rejects `//etc/…`, relative paths, `..` and symlinks to forbidden directories.
+- **Sidebar version (and clock) stayed blank after a page reload until a manual logout/login.** The sidebar mounts before the silent refresh restores the in-memory token; its `onMounted` bailed out and never ran again. Hydration is now driven by a `watch` on `auth.isLoggedIn`.
+- **qBittorrent hash of a single episode was the first `downloadId` of the whole series** (`sonarr_get_torrent_hash`). With `delete_files` this could delete another episode's torrent. It is now matched on the episode's own `episodeId`, and a season pack still shared with episodes that remain in the library is **kept** (warning logged) instead of deleted.
+- **"Delete torrent (without files)" deleted the files.** `delete_torrent` now keeps them, `delete_files` removes them; the `pause` action (listed in the UI) is implemented. A qBittorrent action that fails or leaves the hash listed is now logged as a warning in the Logs page.
+- **A retry after an interrupted deletion could never finish.** A 404 from Emby/Plex/Radarr/Sonarr ("already removed") is now accepted on a retry only (`attempts > 0`), never on a first attempt; qBittorrent hashes are persisted in `media_queue.torrent_hash` before any destructive step, since the Radarr/Sonarr history disappears with the media.
+- **`error` was a dead end.** Failed deletions are retried with back-off (1 h, 4 h, 12 h, 24 h, 24 h) and become final after 5 attempts; the Discord failure alert is sent on the first failure and on the final one only (migration `m018`: `attempts`, `last_error`, `next_retry_at`). Rows left in `deleting` by a timeout/cancellation are put back to `pending`.
+- **`POST /api/media/bulk` (delete)** now follows `delete-now`: pending rows only, atomic claim, watch guard, per-row error isolation, and **dry-run no longer marks items `deleted`**. `delete-now` also resolves the right media server.
+- **Expert rules fail closed**: a condition group or `library_ids` that cannot be parsed now disables the whole rule (it used to be silently widened).
+- **Plex scrobble** no longer resurrects `deleted`/`deleting` rows.
+- Size accounting uses the episode/season files instead of the whole series; `arr_server_url` is honoured when looking up hashes and sizes.
+
+### Security
+
+- `/api/auth/logout` is authenticated by the refresh cookie alone: it now revokes and clears the cookie even when the access token has expired. Concurrent `POST /auth/refresh` calls on page load are merged into one (single-flight). Only a 401/403 ends the session; a 502/429/network blip no longer logs the user out.
+- Client IP behind a proxy (`HYGIE_TRUST_PROXY=1`) uses `CF-Connecting-IP`, then the right-most `X-Forwarded-For` entry (the client controls the left-most). Login rate-limit is per IP **and** per (accent/case-folded) username; `/auth/refresh` without a cookie no longer consumes the budget; `change-password` is rate-limited.
+- One SSRF guard (`assert_public_or_lan`) blocks loopback, link-local/metadata, `0.0.0.0`/`::`, multicast and IPv4-mapped forms, and fails closed on resolution errors. It applies when saving **changed** URL settings and on the test endpoints (LAN/RFC1918 addresses stay allowed). Webhook URLs must be http(s) to a non-internal host.
+- `public_dashboard_password` and `prometheus_bearer_token` are encrypted at rest (existing plaintext values are encrypted at the next MariaDB start, which previously never happened); `/openapi.json` is no longer served; the public dashboard strips tokens from poster URLs and only shows requester names when protected by a slug or password; `grace_days` is bounded.
+- **Pillow 12.3.0 → 13.0.0** (39 published advisories; `pip-audit` is clean again). Used only by the Plex overlay code; full test suite unchanged.
+- **Frontend dependencies**: `vue` 3.5.35 → 3.5.44 (`@vue/server-renderer` XSS advisory), `@intlify/*` / `vue-i18n`, `follow-redirects`, `source-map-js` updated within their semver ranges: `npm audit --omit=dev` goes from 9 high advisories to 0.
+- Image proxy: concurrency cap, and a per-IP budget when `HYGIE_TRUST_PROXY` is on (inactive otherwise, since all visitors then share the tunnel's IP).
+
+### Changed — please read
+
+- **qBittorrent action `delete_torrent` no longer frees disk space** (it keeps the files, as its label always said). Use `delete_files` for the previous behaviour. Production uses `delete_files`: unchanged.
+- Manual deletions (`delete-now`, bulk) that fail now enter the retry/back-off cycle instead of going back to `pending`.
+- The public dashboard (no slug, no password) no longer shows requester names.
+
+### Not changed / follow-ups
+
+- Cross-seed copies (other info-hash, private trackers) and `missingFiles` torrents are still not removed by Hygie: that needs a product decision.
+- Refresh-token reuse detection (token families) and access-token invalidation after a password change need a schema change: planned for 4.5.
+- Plex posters still persist `X-Plex-Token` in `poster_url` (needs a Plex branch in the image proxy); the public API strips it.
 
 ---
 

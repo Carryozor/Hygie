@@ -9,5 +9,5 @@ PyJWT==2.15.1
 cryptography==50.0.0
 argon2-cffi==23.1.0
 pydantic==2.10.4
-Pillow==12.3.0
+Pillow==13.0.0
 websockets==14.1

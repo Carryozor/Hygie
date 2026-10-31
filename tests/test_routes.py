@@ -246,7 +246,13 @@ async def test_me_returns_username(registered_client):
 # ─── auth — password change ───────────────────────────────────────────────────
 
 async def test_change_password_with_correct_current(registered_client):
-    c, token = registered_client
+    # Dedicated user: a password change now invalidates that user's access
+    # tokens, which must not kill the token shared by the rest of the module.
+    from backend.auth import create_user
+    c, _ = registered_client
+    await create_user("pwchanger", "strongpass123")
+    login = await c.post("/api/auth/login", json={"username": "pwchanger", "password": "strongpass123"})
+    token = login.json()["access_token"]
     r = await c.post("/api/auth/change-password",
                      json={"current_password": "strongpass123", "new_password": "newstrongpass456"},
                      headers={"Authorization": f"Bearer {token}"})
@@ -254,7 +260,7 @@ async def test_change_password_with_correct_current(registered_client):
 
     # Can login with new password
     r2 = await c.post("/api/auth/login",
-                      json={"username": "admin", "password": "newstrongpass456"})
+                      json={"username": "pwchanger", "password": "newstrongpass456"})
     assert r2.status_code == 200
 
 

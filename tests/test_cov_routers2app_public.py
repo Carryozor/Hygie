@@ -7,7 +7,7 @@ delete_at grouping logic (including the "unparseable date" skip).
 Standalone app (same pattern as test_public_dashboard_url_leak.py) — public.py
 is a no-auth router so no dependency override is needed, only DB isolation.
 """
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest_asyncio
 import os
@@ -109,7 +109,7 @@ async def test_upcoming_accepts_correct_password(public_client):
 async def test_upcoming_admin_token_bypasses_password_requirement(public_client):
     from backend.db.settings_store import set_setting
     await set_setting("public_dashboard_password", "s3cret")
-    with patch("backend.routers.public.verify_token", return_value="admin-user"):
+    with patch("backend.routers.public.verify_token_current", new=AsyncMock(return_value="admin-user")):
         r = await public_client.get(
             "/api/public/upcoming", headers={"Authorization": "Bearer faketoken"}
         )
@@ -119,7 +119,7 @@ async def test_upcoming_admin_token_bypasses_password_requirement(public_client)
 async def test_upcoming_invalid_bearer_token_still_requires_password(public_client):
     from backend.db.settings_store import set_setting
     await set_setting("public_dashboard_password", "s3cret")
-    with patch("backend.routers.public.verify_token", return_value=None):
+    with patch("backend.routers.public.verify_token_current", new=AsyncMock(return_value=None)):
         r = await public_client.get(
             "/api/public/upcoming", headers={"Authorization": "Bearer invalid"}
         )

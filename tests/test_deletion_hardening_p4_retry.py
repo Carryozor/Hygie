@@ -106,7 +106,7 @@ async def test_m018_mariadb_emits_three_alters(monkeypatch):
 
 def test_m018_is_last_migration():
     from backend.db.migrations import _MIGRATIONS
-    assert _MIGRATIONS[-1][0] == "m018"
+    assert _MIGRATIONS[-1][0] == "m019"
 
 
 # ── repository ───────────────────────────────────────────────────────────────

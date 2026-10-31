@@ -188,9 +188,10 @@ async def test_require_auth_raises_401_for_invalid_token():
     assert "invalide" in exc_info.value.detail
 
 
-async def test_require_auth_returns_username_for_valid_token():
+async def test_require_auth_returns_username_for_valid_token(db_path):
     from fastapi.security import HTTPAuthorizationCredentials
-    token = auth_mod.create_access_token("alice")
+    await auth_mod.create_user("alice", "s3cret")
+    token = await auth_mod.issue_access_token("alice")
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     assert await auth_mod.require_auth(credentials=creds) == "alice"
 

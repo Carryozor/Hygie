@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth import (
-    create_access_token,
+    issue_access_token,
     create_refresh_token,
     create_user,
     get_client_ip,
@@ -115,7 +115,7 @@ async def setup(body: SetupRequest, request: Request, response: Response):
     if await asyncio.to_thread(rate_limit, f"setup:{ip}"):
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     await create_user(body.username, body.password)
-    access_token  = create_access_token(body.username)
+    access_token  = await issue_access_token(body.username)
     refresh_token = await create_refresh_token(body.username)
     _set_refresh_cookie(response, request, refresh_token)
     return {
@@ -159,7 +159,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
     if not user or not password_ok:
         raise HTTPException(401, "Identifiants invalides")
     await asyncio.to_thread(release_attempt, rl_key, rl_token)
-    access_token  = create_access_token(user["username"])
+    access_token  = await issue_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
     _set_refresh_cookie(response, request, refresh_token)
     return {
@@ -193,7 +193,7 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     if not username:
         raise HTTPException(401, "Refresh token invalide ou expiré")
     await asyncio.to_thread(release_attempt, f"refresh:{ip}", rl_token)
-    access_token = create_access_token(username)
+    access_token = await issue_access_token(username)
 
     new_refresh = await create_refresh_token(username)
     # Grace window: concurrent tabs may still hold the old cookie value.
@@ -244,7 +244,7 @@ async def change_password(
     await asyncio.to_thread(release_attempt, rl_key, rl_token)
     await update_password(username, body.new_password)
     await revoke_all_refresh_tokens(username)
-    access_token  = create_access_token(username)
+    access_token  = await issue_access_token(username)
     refresh_token = await create_refresh_token(username)
     _set_refresh_cookie(response, request, refresh_token)
     return {

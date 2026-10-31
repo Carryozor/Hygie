@@ -24,6 +24,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             username      VARCHAR(255) NOT NULL,
             password_hash TEXT         NOT NULL,
             created_at    VARCHAR(32)  NOT NULL,
+            token_version BIGINT  NOT NULL DEFAULT 0,
             PRIMARY KEY (id),
             UNIQUE KEY uq_users_username (username)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
@@ -37,6 +38,7 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             expires_at VARCHAR(32)  NOT NULL,
             created_at VARCHAR(32)  NOT NULL,
             revoked    TINYINT      NOT NULL DEFAULT 0,
+            rotated_at VARCHAR(32)  DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY uq_rt_token (token_hash),
             CONSTRAINT fk_rt_user FOREIGN KEY (user_id)

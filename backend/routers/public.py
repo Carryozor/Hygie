@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
-from ..auth import verify_token, rate_limit_attempt, release_attempt, get_client_ip
+from ..auth import verify_token_current, rate_limit_attempt, release_attempt, get_client_ip
 from ..db.settings_store import get_setting
 from ..db.engine import get_db
 from ..db.media_servers import get_media_servers
@@ -81,7 +81,7 @@ async def public_upcoming(
     # Admins with a valid token bypass the public password requirement
     is_admin = False
     if authorization and authorization.startswith("Bearer "):
-        is_admin = bool(verify_token(authorization[7:]))
+        is_admin = bool(await verify_token_current(authorization[7:]))
 
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
     # Requester names are only exposed when the dashboard is gated by a slug or

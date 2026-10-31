@@ -69,6 +69,7 @@ SECRET_KEY = _load_or_create_secret()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60   # 1 hour
 REFRESH_TOKEN_EXPIRE_DAYS   = 30   # 30 days
+REFRESH_ROTATION_GRACE_SECONDS = 60   # an already-rotated token stays usable this long (concurrent tabs)
 
 # Whether to trust the X-Forwarded-For header for rate limiting.
 # Only enable when a trusted reverse proxy is guaranteed to be in front.
@@ -96,10 +97,15 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
-def create_access_token(username: str) -> str:
-    """Create a short-lived JWT access token (1 hour)."""
+def create_access_token(username: str, version: int = 0) -> str:
+    """Create a short-lived JWT access token (1 hour).
+
+    `version` is the user's token_version at issue time; bumping it in the DB
+    (password change, logout-all, refresh reuse) kills every older token.
+    """
     payload = {
         "sub":  username,
+        "ver":  version,
         "type": "access",
         "exp":  datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "iat":  datetime.now(timezone.utc),
@@ -145,11 +151,16 @@ async def create_refresh_token(username: str) -> str:
 
 
 async def verify_refresh_token(raw: str) -> Optional[str]:
-    """Returns username if token is valid, not expired, not revoked. Else None."""
+    """Returns username if token is valid, not expired, not revoked. Else None.
+
+    A token that was already rotated and is presented again after its grace
+    window has been replayed (stolen cookie, or a client that kept an old one):
+    every session of that user is revoked, not just this token.
+    """
     hashed = _hash_token(raw)
     async with get_db() as db:
         row = await db.fetch_one(
-            """SELECT u.username, rt.expires_at, rt.revoked
+            """SELECT u.username, rt.expires_at, rt.revoked, rt.rotated_at
                FROM refresh_tokens rt
                JOIN users u ON u.id = rt.user_id
                WHERE rt.token_hash = ?""",
@@ -157,13 +168,25 @@ async def verify_refresh_token(raw: str) -> Optional[str]:
         )
     if not row or row["revoked"]:
         return None
+    if row["rotated_at"] and _past_rotation_grace(row["rotated_at"]):
+        logger.warning("Refresh token reuse detected for %r — revoking all sessions", row["username"])
+        await revoke_all_refresh_tokens(row["username"])
+        return None
     expires = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
     if datetime.now(timezone.utc) > expires:
         return None
     return row["username"]
 
 
-async def retire_refresh_token(raw: str, grace_seconds: int = 60) -> None:
+def _past_rotation_grace(rotated_at: str) -> bool:
+    try:
+        when = datetime.fromisoformat(rotated_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) > when + timedelta(seconds=REFRESH_ROTATION_GRACE_SECONDS)
+
+
+async def retire_refresh_token(raw: str, grace_seconds: int = REFRESH_ROTATION_GRACE_SECONDS) -> None:
     """Shorten a refresh token's lifetime to a small grace window.
 
     Used for rotation: the old token must survive a few seconds so that
@@ -171,12 +194,13 @@ async def retire_refresh_token(raw: str, grace_seconds: int = 60) -> None:
     user out, but it must not remain valid for its full 30 days.
     """
     hashed = _hash_token(raw)
-    cutoff = (datetime.now(timezone.utc) + timedelta(seconds=grace_seconds)).isoformat()
+    now = datetime.now(timezone.utc)
+    cutoff = (now + timedelta(seconds=grace_seconds)).isoformat()
     async with get_db() as db:
         await db.execute(
-            "UPDATE refresh_tokens SET expires_at=? "
+            "UPDATE refresh_tokens SET expires_at=?, rotated_at=COALESCE(rotated_at, ?) "
             "WHERE token_hash=? AND expires_at > ?",
-            (cutoff, hashed, cutoff),
+            (cutoff, now.isoformat(), hashed, cutoff),
         )
         await db.commit()
 
@@ -192,7 +216,7 @@ async def revoke_refresh_token(raw: str) -> None:
 
 
 async def revoke_all_refresh_tokens(username: str) -> None:
-    """Revoke all active refresh tokens for a user (e.g., on password change)."""
+    """Revoke all active refresh tokens AND outstanding access tokens of a user."""
     async with get_db() as db:
         user = await db.fetch_one("SELECT id FROM users WHERE username=?", (username,))
         if user:
@@ -201,6 +225,39 @@ async def revoke_all_refresh_tokens(username: str) -> None:
                 (user["id"],),
             )
             await db.commit()
+    await invalidate_access_tokens(username)
+
+
+async def invalidate_access_tokens(username: str) -> None:
+    """Reject every access token issued so far for this user."""
+    async with get_db() as db:
+        await db.execute("UPDATE users SET token_version = token_version + 1 WHERE username=?", (username,))
+        await db.commit()
+
+
+async def issue_access_token(username: str) -> str:
+    """Access token carrying the user's current token_version."""
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT token_version FROM users WHERE username=?", (username,))
+    return create_access_token(username, (row["token_version"] if row else 0) or 0)
+
+
+async def verify_token_current(token: str) -> Optional[str]:
+    """verify_token + the user still exists and the token's version is the current one."""
+    try:
+        payload = _pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") not in (None, "access"):
+        return None
+    username = payload.get("sub")
+    if not username:
+        return None
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT token_version FROM users WHERE username=?", (username,))
+    if not row or (payload.get("ver") or 0) != (row["token_version"] or 0):
+        return None
+    return username
 
 
 # ─── FastAPI dependency ───────────────────────────────────────────────────────
@@ -211,7 +268,13 @@ async def require_auth(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token requis"
         )
-    username = verify_token(credentials.credentials)
+    try:
+        username = await verify_token_current(credentials.credentials)
+    except Exception:
+        logger.exception("Access token check failed (database unavailable)")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Service indisponible"
+        )
     if not username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"

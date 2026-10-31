@@ -692,6 +692,21 @@ async def _m018_add_deletion_retry_columns():
         await db.commit()
 
 
+async def _m019_session_hardening_columns():
+    """users.token_version (bumped to kill every issued access token) and
+    refresh_tokens.rotated_at (reuse detection after the rotation grace window)."""
+    maria = DIALECT == "mariadb"
+    wanted = (
+        ("users", "token_version", "BIGINT NOT NULL DEFAULT 0" if maria else "INTEGER NOT NULL DEFAULT 0"),
+        ("refresh_tokens", "rotated_at", "VARCHAR(32) DEFAULT NULL" if maria else "TEXT DEFAULT NULL"),
+    )
+    async with get_db() as db:
+        for table, col, col_type in wanted:
+            if col not in await db.table_columns(table):
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+        await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -711,4 +726,5 @@ _MIGRATIONS = [
     ("m016", "Add media_queue.arr_server_url (multi-Radarr/Sonarr deletion routing)", _m016_add_arr_server_url_to_media_queue),
     ("m017", "Ensure plex_overlays table (persist Plex overlay tracking)", _m017_ensure_plex_overlays_table),
     ("m018", "Add media_queue attempts/last_error/next_retry_at (error replay with backoff)", _m018_add_deletion_retry_columns),
+    ("m019", "Add users.token_version + refresh_tokens.rotated_at (session hardening)", _m019_session_hardening_columns),
 ]

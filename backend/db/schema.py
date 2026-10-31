@@ -31,9 +31,10 @@ _TABLES = [
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            token_version INTEGER NOT NULL DEFAULT 0
         )""",
-        [],
+        [("token_version", "INTEGER NOT NULL DEFAULT 0")],
     ),
     (
         "refresh_tokens",
@@ -43,9 +44,10 @@ _TABLES = [
             token_hash TEXT    NOT NULL UNIQUE,
             expires_at TEXT    NOT NULL,
             created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-            revoked    INTEGER NOT NULL DEFAULT 0
+            revoked    INTEGER NOT NULL DEFAULT 0,
+            rotated_at TEXT DEFAULT NULL
         )""",
-        [],
+        [("rotated_at", "TEXT DEFAULT NULL")],
     ),
     (
         "libraries",
@@ -324,7 +326,7 @@ _SQLITE_INDEXES = [
 ]
 
 _KNOWN_TABLES = frozenset({
-    "settings", "users", "libraries", "media_queue",
+    "settings", "users", "refresh_tokens", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
     "rate_limit", "expert_rules", "notifications", "plex_overlays",
     # Legacy names used during migration

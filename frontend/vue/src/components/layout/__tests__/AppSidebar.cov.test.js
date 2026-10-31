@@ -1,6 +1,7 @@
 // src/components/layout/__tests__/AppSidebar.cov.test.js
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { i18n } from '@/i18n'
 
@@ -57,6 +58,40 @@ describe('AppSidebar', () => {
     const wrapper = await mountSidebar()
     expect(settingsFetch).toHaveBeenCalled()
     expect(wrapper.text()).toContain('4.3.6')
+  })
+
+  it('loads settings and the version once the session is restored after mount (silent refresh on page reload)', async () => {
+    // The sidebar mounts before router/index.js finishes re-minting the access
+    // token from the httpOnly cookie, so isLoggedIn flips to true AFTER onMounted.
+    authState = reactive({ isLoggedIn: false })
+    const wrapper = await mountSidebar()
+    expect(api.get).not.toHaveBeenCalled()
+
+    authState.isLoggedIn = true
+    await flushPromises()
+
+    expect(settingsFetch).toHaveBeenCalledTimes(1)
+    expect(api.get).toHaveBeenCalledWith('/version')
+    expect(wrapper.text()).toContain('4.3.6')
+  })
+
+  it('refetches the version after a logout then login cycle, and keeps a single clock timer', async () => {
+    vi.useFakeTimers()
+    authState = reactive({ isLoggedIn: true })
+    const wrapper = await mountSidebar()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(1)
+
+    authState.isLoggedIn = false
+    await flushPromises()
+    authState.isLoggedIn = true
+    await flushPromises()
+
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(1)
+
+    wrapper.unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('does not crash when the version fetch fails', async () => {

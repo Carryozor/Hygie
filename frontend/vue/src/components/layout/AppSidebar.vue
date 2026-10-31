@@ -111,7 +111,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
@@ -202,11 +202,13 @@ const deletionIntervalMin = computed(() => Number(settings.settings.deletion_che
 const scanProgress        = computed(() => progressPercent(scanNext.value, scanIntervalMin.value))
 const deletionProgress    = computed(() => progressPercent(deletionNext.value, deletionIntervalMin.value))
 
-onMounted(async () => {
-  // Ne rien faire si pas connecté — évite les 401 en boucle sur la page login.
-  // The access token lives in memory only (tokenStore.js), never in
-  // localStorage, so gate on the real auth state, not a legacy key.
-  if (!auth.isLoggedIn) return
+// Hydrate when the session becomes available, not only at mount: on a page
+// reload the sidebar mounts BEFORE router/index.js has re-minted the in-memory
+// access token from the httpOnly refresh cookie, so isLoggedIn is still false
+// here and flips to true a few hundred ms later (version stayed blank until a
+// manual logout/login). Gate on the real auth state, never a legacy key.
+watch(() => auth.isLoggedIn, async (loggedIn) => {
+  if (!loggedIn) return
 
   await settings.fetch()
 
@@ -215,8 +217,9 @@ onMounted(async () => {
     version.value = data.version || ''
   } catch { /* silent */ }
 
+  clearInterval(clockInterval)
   clockInterval = setInterval(() => { now.value = new Date() }, 10000)
-})
+}, { immediate: true })
 
 onUnmounted(() => {
   clearInterval(clockInterval)

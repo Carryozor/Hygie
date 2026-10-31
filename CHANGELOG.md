@@ -6,6 +6,10 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sidebar version (and clock) stayed blank after a page reload until a manual logout/login.** On reload the access token is in-memory only, so `router/index.js` re-mints it from the httpOnly refresh cookie before the first navigation resolves — but `AppSidebar` is already mounted by then. Its `onMounted` bailed out on `!auth.isLoggedIn` and never ran again, so `GET /api/version` was never called. Hydration is now driven by a `watch` on `auth.isLoggedIn` (immediate), which also re-runs on logout → login and keeps a single clock timer.
+
 ---
 
 ## [4.4.2] — 2026-10-04

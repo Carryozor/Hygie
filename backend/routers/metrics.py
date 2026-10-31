@@ -1,5 +1,6 @@
 """Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
 import hmac
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -7,12 +8,57 @@ from fastapi import APIRouter, Depends, Header
 from fastapi.responses import PlainTextResponse, Response
 
 from ..auth import require_auth
+from ..backup import backup_status
 from ..db.engine import get_db
 from ..db.repositories import get_status_counts
 from ..db.settings_store import get_setting
 from ..db.utils import STATUS_PENDING, STATUS_DELETED, STATUS_ERROR
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["metrics"])
+
+
+async def _backup_lines() -> list:
+    """Gauges for the newest valid dump; nothing when backups are off or unreadable."""
+    try:
+        st = await backup_status()
+    except Exception:
+        logger.warning("backup_status unavailable for /metrics", exc_info=True)
+        return []
+    if st["state"] == "disabled":
+        return []
+    lines = ["# HELP hygie_backup_ok 1 when the newest valid dump is within the expected interval",
+             "# TYPE hygie_backup_ok gauge",
+             f"hygie_backup_ok {1 if st['state'] == 'ok' else 0}"]
+    if st["age_hours"] is not None:
+        lines += ["# HELP hygie_backup_age_seconds Age of the newest valid dump on disk",
+                  "# TYPE hygie_backup_age_seconds gauge",
+                  f"hygie_backup_age_seconds {st['age_hours'] * 3600}"]
+    return lines
+
+
+async def _job_lines() -> list:
+    """Last finished run of each job type: when it ended and whether it succeeded."""
+    async with get_db() as db:
+        rows = await db.fetch_all(
+            "SELECT job_type, finished_at, status FROM job_history WHERE id IN ("
+            "SELECT MAX(id) FROM job_history WHERE finished_at IS NOT NULL GROUP BY job_type)"
+        )
+    ts, ok = [], []
+    for r in sorted(rows, key=lambda r: r["job_type"]):
+        try:
+            finished = datetime.fromisoformat(r["finished_at"].replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        label = f'job="{r["job_type"]}"'
+        ts.append(f"hygie_job_last_finished_timestamp_seconds{{{label}}} {int(finished.timestamp())}")
+        ok.append(f"hygie_job_last_success{{{label}}} {1 if r['status'] == 'success' else 0}")
+    if not ts:
+        return []
+    return (["# HELP hygie_job_last_finished_timestamp_seconds When the last finished run of a job ended",
+             "# TYPE hygie_job_last_finished_timestamp_seconds gauge", *ts,
+             "# HELP hygie_job_last_success 1 when the last finished run of a job succeeded",
+             "# TYPE hygie_job_last_success gauge", *ok])
 
 
 @router.get("/metrics", response_class=PlainTextResponse)
@@ -60,8 +106,9 @@ async def prometheus_metrics(authorization: Optional[str] = Header(default=None)
         "# HELP hygie_deletion_checks_total Deletion condition checks performed (lifetime)",
         "# TYPE hygie_deletion_checks_total counter",
         f"hygie_deletion_checks_total {checks}",
-        "",
     ]
+    lines += await _job_lines() + await _backup_lines()
+    lines.append("")
     return "\n".join(lines)
 
 

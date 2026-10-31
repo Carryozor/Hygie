@@ -104,3 +104,69 @@ async def test_prometheus_metrics_accepts_correct_token(test_client):
     r = test_client.get("/metrics", headers={"Authorization": "Bearer sekrit"})
     assert r.status_code == 200
     assert "hygie_media_pending" in r.text
+
+
+# ─── 4.5: backup + job freshness gauges ─────────────────────────────────────
+
+def _insert_job(job_type, finished_at, status):
+    async def _go():
+        from backend.db.engine import get_db
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO job_history (job_type, started_at, finished_at, status) VALUES (?,?,?,?)",
+                (job_type, finished_at, finished_at, status),
+            )
+            await db.commit()
+    return _go()
+
+
+async def test_metrics_expose_last_finished_job_per_type(test_client):
+    await _insert_job("scan", "2026-01-01T00:00:00+00:00", "error")
+    await _insert_job("scan", "2026-01-02T00:00:00+00:00", "success")
+    await _insert_job("deletion_check", "2026-01-03T00:00:00+00:00", "error")
+    text = test_client.get("/metrics").text
+    # newest finished run wins, its outcome is a 0/1 gauge
+    assert 'hygie_job_last_finished_timestamp_seconds{job="scan"} 1767312000' in text
+    assert 'hygie_job_last_success{job="scan"} 1' in text
+    assert 'hygie_job_last_success{job="deletion_check"} 0' in text
+
+
+async def test_metrics_job_series_absent_when_job_never_finished(test_client):
+    text = test_client.get("/metrics").text
+    assert "hygie_job_last_finished_timestamp_seconds{" not in text
+
+
+async def test_metrics_backup_gauges_reflect_backup_status(test_client, monkeypatch):
+    import backend.routers.metrics as m
+
+    async def fake():
+        return {"state": "stale", "interval_hours": 24, "last_backup_at": "x", "age_hours": 700.0}
+    monkeypatch.setattr(m, "backup_status", fake)
+    text = test_client.get("/metrics").text
+    assert "hygie_backup_age_seconds 2520000.0" in text
+    assert "hygie_backup_ok 0" in text
+
+
+async def test_metrics_backup_ok_when_recent_and_unknown_when_disabled(test_client, monkeypatch):
+    import backend.routers.metrics as m
+
+    async def ok():
+        return {"state": "ok", "interval_hours": 24, "last_backup_at": "x", "age_hours": 1.0}
+    monkeypatch.setattr(m, "backup_status", ok)
+    assert "hygie_backup_ok 1" in test_client.get("/metrics").text
+
+    async def off():
+        return {"state": "disabled", "interval_hours": 24, "last_backup_at": None, "age_hours": None}
+    monkeypatch.setattr(m, "backup_status", off)
+    text = test_client.get("/metrics").text
+    assert "hygie_backup_ok" not in text and "hygie_backup_age_seconds" not in text
+
+
+async def test_metrics_survive_backup_status_failure(test_client, monkeypatch):
+    import backend.routers.metrics as m
+
+    async def boom():
+        raise RuntimeError("disk")
+    monkeypatch.setattr(m, "backup_status", boom)
+    r = test_client.get("/metrics")
+    assert r.status_code == 200 and "hygie_media_pending" in r.text

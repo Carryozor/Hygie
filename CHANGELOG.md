@@ -6,6 +6,9 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Prometheus: backup and job freshness.** `/metrics` now exposes `hygie_backup_ok` / `hygie_backup_age_seconds` (from the newest valid dump on disk, absent when backups are off) and, per job type, `hygie_job_last_finished_timestamp_seconds` / `hygie_job_last_success`. A silent backup or scan failure can now be alerted on from Grafana.
+
 ### Security
 - **A password change (or "log out everywhere") now kills the access tokens already issued.** They used to stay valid for up to one hour. Access tokens carry the user's `token_version`; the check costs one primary-key read per request and a database failure answers 503 (not 401, so a blip does not log anyone out). Tokens minted before this release have no version and stay valid until the first invalidation.
 - **Refresh-token replay is detected.** A refresh token presented again after its 60 s rotation grace window revokes every session of that user (migration `m019`: `users.token_version`, `refresh_tokens.rotated_at`).

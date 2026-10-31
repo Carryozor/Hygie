@@ -12,13 +12,15 @@ This module turns "skipped again" into "has not run in N intervals", which is
 a claim that can actually fail.
 """
 import logging
+import time
 from typing import Optional
 
 from .db.logs import add_log
 from .db.repositories import get_last_job_run
-from .db.settings_store import get_setting
+from .db.settings_store import get_setting, set_setting
 from .db.utils import now_utc, parse_iso_dt
 from .discord_client import send_alert
+from ._lock_backend import LockNotAvailable
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +75,51 @@ async def warn_if_job_starved(
     except Exception as e:
         logger.warning("warn_if_job_starved(%s): alert failed: %s", job_type, e)
     return age_minutes
+
+
+_BACKUP_ALERT_KEY = "backup_stale_alert_ts"
+_BACKUP_ALERT_EVERY_S = 24 * 3600
+
+
+async def warn_if_backup_stale() -> bool:
+    """Alert (at most once a day) when the newest valid dump is too old.
+
+    Returns True when an alert was raised. `never` (fresh install, first dump
+    not yet due) stays silent; so does a disabled backup. The throttle lives in
+    the settings table and the check runs under the backup guard, so the two
+    uvicorn workers cannot both alert.
+    """
+    from . import backup
+
+    try:
+        async with backup._backup_lock():
+            status = await backup.backup_status()
+            if status["state"] != "stale":
+                return False
+            try:
+                last = float(await get_setting(_BACKUP_ALERT_KEY) or 0)
+            except ValueError:
+                last = 0.0
+            if time.time() - last < _BACKUP_ALERT_EVERY_S:
+                return False
+            await set_setting(_BACKUP_ALERT_KEY, str(time.time()))
+    except LockNotAvailable:
+        return False
+    except Exception as e:
+        logger.warning("warn_if_backup_stale: %s", e)
+        return False
+
+    detail = (
+        f"Dernière sauvegarde valide : {status['last_backup_at']} "
+        f"({status['age_hours']:.0f} h, intervalle configuré : {status['interval_hours']} h). "
+        "Vérifier les logs « Backup » et le dossier de sauvegarde."
+    )
+    await add_log("ERROR", f"Sauvegarde périmée — {detail}", "system")
+    try:
+        await send_alert(
+            "💾 Sauvegarde de la base périmée", detail, "error",
+            template_vars={"detail": detail},
+        )
+    except Exception as e:
+        logger.warning("warn_if_backup_stale: alert failed: %s", e)
+    return True

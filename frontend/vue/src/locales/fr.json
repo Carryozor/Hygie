@@ -133,7 +133,9 @@
         "manual": "Sauvegarde manuelle",
         "existing": "Sauvegardes existantes",
         "created": "Sauvegarde créée",
-        "failed": "Sauvegarde échouée"
+        "failed": "Sauvegarde échouée",
+        "stale": "Aucune sauvegarde valide depuis {hours} h — vérifiez les logs et le dossier de sauvegarde.",
+        "never": "Aucune sauvegarde n'existe encore dans le dossier."
       },
       "publicDashboard": {
         "title": "Dashboard public",

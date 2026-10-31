@@ -133,7 +133,9 @@
         "manual": "Backup manuale",
         "existing": "Backup esistenti",
         "created": "Backup creato",
-        "failed": "Backup fallito"
+        "failed": "Backup fallito",
+        "stale": "Nessun backup valido da {hours} h — controlla i log e la cartella dei backup.",
+        "never": "Nessun backup presente nella cartella."
       },
       "publicDashboard": {
         "title": "Dashboard pubblico",

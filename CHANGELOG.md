@@ -8,6 +8,14 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.4.4] — 2026-10-31
+
+### Added
+- **Backup watchdog**: a job (every 6 h, independent of the backup job) compares the newest non-empty dump on disk with the configured interval. Past 2 intervals + 1 h the state is `stale`: an ERROR log and one Discord alert per 24 h (throttled in settings, run under the backup guard so the two workers never alert twice). A fresh install (`never`) or disabled backups stay silent. Backups had been broken for 27 days while the logs kept saying "Backup créé"; only the file on disk is evidence.
+- `GET /api/backup/status` (`disabled | never | ok | stale`, age of the last valid dump) and a banner in Settings → General.
+
+---
+
 ## [4.4.3] — 2026-10-31
 
 Patch release from a three-role review (developer / architect / pentester) of v4.4.2,

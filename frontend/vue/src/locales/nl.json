@@ -133,7 +133,9 @@
         "manual": "Handmatige back-up",
         "existing": "Bestaande back-ups",
         "created": "Back-up aangemaakt",
-        "failed": "Back-up mislukt"
+        "failed": "Back-up mislukt",
+        "stale": "Al {hours} u geen geldige back-up — controleer de logs en de back-upmap.",
+        "never": "Er bestaat nog geen back-up in de map."
       },
       "publicDashboard": {
         "title": "Openbaar dashboard",

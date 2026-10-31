@@ -133,7 +133,9 @@
         "manual": "Ręczna kopia",
         "existing": "Istniejące kopie",
         "created": "Kopia utworzona",
-        "failed": "Kopia nie powiodła się"
+        "failed": "Kopia nie powiodła się",
+        "stale": "Brak prawidłowej kopii od {hours} godz. — sprawdź logi i folder kopii.",
+        "never": "W folderze nie ma jeszcze żadnej kopii."
       },
       "publicDashboard": {
         "title": "Publiczny panel",

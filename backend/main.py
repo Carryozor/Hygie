@@ -225,6 +225,12 @@ async def _schedule_recurring_jobs() -> tuple[int, int]:
     except Exception as e:
         logger.warning(f"backup job setup: {e}")
 
+    # Watchdog independent of the backup job itself: it must still fire when
+    # that job is silently producing nothing.
+    from ._job_health import warn_if_backup_stale
+    scheduler.add_job(warn_if_backup_stale, "interval", hours=6,
+                      id="backup_watchdog", replace_existing=True)
+
     return scan_min, del_min
 
 

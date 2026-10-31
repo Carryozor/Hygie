@@ -133,7 +133,9 @@
         "manual": "Manuelle Sicherung",
         "existing": "Vorhandene Sicherungen",
         "created": "Sicherung erstellt",
-        "failed": "Sicherung fehlgeschlagen"
+        "failed": "Sicherung fehlgeschlagen",
+        "stale": "Seit {hours} h keine gültige Sicherung — Logs und Sicherungsordner prüfen.",
+        "never": "Im Ordner existiert noch keine Sicherung."
       },
       "publicDashboard": {
         "title": "Öffentliches Dashboard",

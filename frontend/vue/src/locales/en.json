@@ -133,7 +133,9 @@
         "manual": "Manual backup",
         "existing": "Existing backups",
         "created": "Backup created",
-        "failed": "Backup failed"
+        "failed": "Backup failed",
+        "stale": "No valid backup for {hours} h — check the logs and the backup folder.",
+        "never": "No backup exists in the folder yet."
       },
       "publicDashboard": {
         "title": "Public dashboard",

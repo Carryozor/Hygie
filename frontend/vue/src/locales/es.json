@@ -133,7 +133,9 @@
         "manual": "Copia manual",
         "existing": "Copias existentes",
         "created": "Copia creada",
-        "failed": "Copia fallida"
+        "failed": "Copia fallida",
+        "stale": "Sin copia válida desde hace {hours} h — revise los logs y la carpeta de copias.",
+        "never": "Todavía no existe ninguna copia en la carpeta."
       },
       "publicDashboard": {
         "title": "Panel público",

@@ -145,4 +145,61 @@ describe('GeneralTab', () => {
     await eyeBtn.trigger('click')
     expect(pwdInput.attributes('type')).toBe('text')
   })
+
+  describe('backup health banner', () => {
+    function routeGet(status) {
+      api.get.mockImplementation(async (url) => {
+        if (url === '/backup/status') return { data: status }
+        return { data: [] }
+      })
+    }
+
+    it('warns with the age of the last dump when the backup chain is stale', async () => {
+      routeGet({ state: 'stale', age_hours: 648, interval_hours: 24, last_backup_at: '2026-10-04T20:58:00+00:00' })
+      const wrapper = mountTab()
+      await flushPromises()
+      const banner = wrapper.find('[data-test="backup-stale"]')
+      expect(banner.exists()).toBe(true)
+      expect(banner.text()).toContain('648')
+    })
+
+    it('stays hidden when the last dump is recent', async () => {
+      routeGet({ state: 'ok', age_hours: 3, interval_hours: 24, last_backup_at: '2026-10-31T20:58:00+00:00' })
+      const wrapper = mountTab()
+      await flushPromises()
+      expect(wrapper.find('[data-test="backup-stale"]').exists()).toBe(false)
+    })
+
+    it('states that no dump exists yet when the folder is empty', async () => {
+      routeGet({ state: 'never', age_hours: null, interval_hours: 24, last_backup_at: null })
+      const wrapper = mountTab()
+      await flushPromises()
+      expect(wrapper.find('[data-test="backup-never"]').exists()).toBe(true)
+    })
+
+    it('does not break the tab when the status endpoint fails', async () => {
+      api.get.mockImplementation(async (url) => {
+        if (url === '/backup/status') throw new Error('500')
+        return { data: [{ filename: 'b.sql', size_mb: 1 }] }
+      })
+      const wrapper = mountTab()
+      await flushPromises()
+      expect(wrapper.text()).toContain('b.sql')
+      expect(wrapper.find('[data-test="backup-stale"]').exists()).toBe(false)
+    })
+
+    it('refreshes the status after a manual backup', async () => {
+      let state = { state: 'stale', age_hours: 700, interval_hours: 24 }
+      api.get.mockImplementation(async (url) => (url === '/backup/status' ? { data: state } : { data: [] }))
+      api.post.mockResolvedValueOnce({ data: { filename: 'hygie_new.sql.gz' } })
+      const wrapper = mountTab()
+      await flushPromises()
+      expect(wrapper.find('[data-test="backup-stale"]').exists()).toBe(true)
+      state = { state: 'ok', age_hours: 0, interval_hours: 24 }
+      const btn = wrapper.findAll('button').find(b => b.text().includes(i18n.global.t('settings.general.backup.manual')))
+      await btn.trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-test="backup-stale"]').exists()).toBe(false)
+    })
+  })
 })

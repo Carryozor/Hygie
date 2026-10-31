@@ -53,6 +53,22 @@
         <i :class="['fas', form.backup_enabled ? 'fa-shield-halved text-green-400' : 'fa-triangle-exclamation text-red-400']" />
         <h2 class="font-semibold">{{ t('settings.general.backup.title') }}</h2>
       </div>
+      <div
+        v-if="backupStatus.state === 'stale'"
+        data-test="backup-stale"
+        class="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/30 text-red-400"
+      >
+        <i class="fas fa-triangle-exclamation" />
+        {{ t('settings.general.backup.stale', { hours: Math.round(backupStatus.age_hours) }) }}
+      </div>
+      <div
+        v-else-if="backupStatus.state === 'never'"
+        data-test="backup-never"
+        class="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400"
+      >
+        <i class="fas fa-circle-info" />
+        {{ t('settings.general.backup.never') }}
+      </div>
       <div class="flex items-center justify-between">
         <div>
           <div class="text-sm font-medium">{{ t('settings.general.backup.auto') }}</div>
@@ -163,6 +179,7 @@ const backingUp = ref(false)
 const backupMsg = ref('')
 const backupOk  = ref(false)
 const backups   = ref([])
+const backupStatus = ref({ state: 'ok' })
 const showPwd   = ref(false)
 
 const origin    = window.location.origin
@@ -177,13 +194,17 @@ async function triggerBackup() {
     const { data } = await api.post('/backup')
     backupMsg.value = `${t('settings.general.backup.created')} : ${data.filename}`
     backupOk.value  = true
-    await loadBackups()
+    await Promise.all([loadBackups(), loadBackupStatus()])
   } catch { backupMsg.value = t('settings.general.backup.failed'); backupOk.value = false }
   finally { backingUp.value = false }
 }
 
 async function loadBackups() {
   try { const { data } = await api.get('/backup'); backups.value = data || [] } catch { /* silent */ }
+}
+
+async function loadBackupStatus() {
+  try { const { data } = await api.get('/backup/status'); backupStatus.value = data || { state: 'ok' } } catch { /* silent */ }
 }
 
 async function deleteBackup(filename) {
@@ -193,7 +214,7 @@ async function deleteBackup(filename) {
   } catch { /* silent */ }
 }
 
-onMounted(loadBackups)
+onMounted(() => { loadBackups(); loadBackupStatus() })
 </script>
 
 <style scoped>

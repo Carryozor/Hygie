@@ -4,6 +4,7 @@ Hygie backup — SQLite (online copy) and MariaDB (mysqldump).
 Public API:
   run_backup()      — create a timestamped backup, prune old ones
   list_backups()    — list existing backup files (newest first)
+  backup_status()   — is the newest valid dump recent enough? (watchdog / UI)
 """
 import asyncio
 import errno
@@ -462,3 +463,41 @@ def list_backups(backup_dir: Optional[str] = None) -> list[dict]:
             "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         })
     return result
+
+
+# A dump is expected every `interval` hours; one missed cycle is tolerated
+# (restart, long run) and the grace covers scheduling jitter. Past that the
+# backup chain is considered broken.
+_STALE_INTERVALS = 2
+_STALE_GRACE_HOURS = 1
+
+
+async def backup_status() -> dict:
+    """Compare what was promised (a recent dump) with what is on disk.
+
+    The log line "Backup créé" is not evidence: from 2026-10-04 to 2026-10-31
+    it was emitted daily while no usable file existed. Only a non-empty dump
+    on disk counts. `state` is one of disabled | never | ok | stale.
+    """
+    backup_dir, interval, _ = await _backup_settings()
+    base = {"state": "disabled", "interval_hours": interval, "last_backup_at": None, "age_hours": None}
+    if SQLITE_PATH == ":memory:" or not await get_bool_setting("backup_enabled") or interval == 0:
+        return base
+
+    newest = max(
+        (b for b in list_backups(backup_dir) if b["size_bytes"] > 0),
+        key=lambda b: b["created_at"],
+        default=None,
+    )
+    if newest is None:
+        return {**base, "state": "never"}
+
+    created = datetime.fromisoformat(newest["created_at"])
+    age_hours = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+    stale = age_hours > interval * _STALE_INTERVALS + _STALE_GRACE_HOURS
+    return {
+        **base,
+        "state": "stale" if stale else "ok",
+        "last_backup_at": newest["created_at"],
+        "age_hours": round(age_hours, 1),
+    }

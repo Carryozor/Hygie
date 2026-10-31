@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import require_auth
-from ..backup import _DEFAULT_PATH, list_backups, run_backup
+from ..backup import _DEFAULT_PATH, backup_status, list_backups, run_backup
 from ..db.settings_store import get_setting
 
 router = APIRouter(prefix="/api/backup", tags=["backup"])
@@ -18,6 +18,12 @@ async def trigger_backup(user: str = Depends(require_auth)):
     if filename is None:
         raise HTTPException(500, "Backup échoué")
     return {"filename": filename}
+
+
+@router.get("/status")
+async def get_backup_status(user: str = Depends(require_auth)):
+    """Backup health: disabled | never | ok | stale, with the age of the newest valid dump."""
+    return await backup_status()
 
 
 @router.get("")

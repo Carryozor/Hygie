@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 
 from ..auth import (
     issue_access_token,
+    create_access_token,
+    current_token_version,
     create_refresh_token,
     create_user,
     get_client_ip,
@@ -193,9 +195,15 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     if not username:
         raise HTTPException(401, "Refresh token invalide ou expiré")
     await asyncio.to_thread(release_attempt, f"refresh:{ip}", rl_token)
-    access_token = await issue_access_token(username)
+    version = await current_token_version(username)
+    access_token = create_access_token(username, version)
 
     new_refresh = await create_refresh_token(username)
+    if await current_token_version(username) != version:
+        # A logout-all / password change landed while we were minting: its
+        # revoke pass could not see this brand-new row, so kill it here.
+        await revoke_refresh_token(new_refresh)
+        raise HTTPException(401, "Session révoquée")
     # Grace window: concurrent tabs may still hold the old cookie value.
     await retire_refresh_token(raw, grace_seconds=60)
     _set_refresh_cookie(response, request, new_refresh)

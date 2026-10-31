@@ -234,3 +234,39 @@ def test_ddl_parity_for_session_columns():
         s = next(d for n, d, *_ in _TABLES if n == table)
         m = next(d for n, d, *_ in MARIADB_TABLES if n == table)
         assert col in s and col in m
+
+
+# ── review follow-ups ───────────────────────────────────────────────────────
+
+async def test_refresh_racing_a_logout_all_does_not_leave_a_live_session(env, monkeypatch):
+    """logout-all landing between the version read and the new refresh token."""
+    from fastapi import FastAPI
+    from httpx import AsyncClient, ASGITransport
+    from backend.routers import auth as auth_router
+    auth, path = env
+    real_create = auth.create_refresh_token
+
+    async def create_then_logout_all(username):
+        await auth.invalidate_access_tokens(username)      # the racing logout-all
+        return await real_create(username)
+    monkeypatch.setattr(auth_router, "create_refresh_token", create_then_logout_all)
+
+    app = FastAPI()
+    app.include_router(auth_router.router)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        raw = await real_create("alice")
+        c.cookies.set(COOKIE, raw, path="/api/auth")
+        r = await c.post("/api/auth/refresh", json={})
+        assert r.status_code == 401
+    async with aiosqlite.connect(path) as db:
+        async with db.execute("SELECT COUNT(*) FROM refresh_tokens WHERE revoked=0 AND token_hash!=?",
+                              (auth._hash_token(raw),)) as cur:
+            assert (await cur.fetchone())[0] == 0           # the freshly minted token was revoked
+
+
+async def test_public_upcoming_survives_token_check_failure(monkeypatch):
+    from unittest.mock import AsyncMock
+    import backend.routers.public as pub
+    monkeypatch.setattr(pub, "verify_token_current", AsyncMock(side_effect=RuntimeError("db down")))
+    assert await pub._is_admin("Bearer abc") is False
+    assert await pub._is_admin(None) is False

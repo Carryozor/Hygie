@@ -235,11 +235,15 @@ async def invalidate_access_tokens(username: str) -> None:
         await db.commit()
 
 
-async def issue_access_token(username: str) -> str:
-    """Access token carrying the user's current token_version."""
+async def current_token_version(username: str) -> int:
     async with get_db() as db:
         row = await db.fetch_one("SELECT token_version FROM users WHERE username=?", (username,))
-    return create_access_token(username, (row["token_version"] if row else 0) or 0)
+    return ((row["token_version"] if row else 0) or 0)
+
+
+async def issue_access_token(username: str) -> str:
+    """Access token carrying the user's current token_version."""
+    return create_access_token(username, await current_token_version(username))
 
 
 async def verify_token_current(token: str) -> Optional[str]:

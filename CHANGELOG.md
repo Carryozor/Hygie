@@ -11,7 +11,8 @@ All notable changes to Hygie are documented here.
 
 ### Security
 - **A password change (or "log out everywhere") now kills the access tokens already issued.** They used to stay valid for up to one hour. Access tokens carry the user's `token_version`; the check costs one primary-key read per request and a database failure answers 503 (not 401, so a blip does not log anyone out). Tokens minted before this release have no version and stay valid until the first invalidation.
-- **Refresh-token replay is detected.** A refresh token presented again after its 60 s rotation grace window revokes every session of that user (migration `m019`: `users.token_version`, `refresh_tokens.rotated_at`).
+- **Refresh-token replay is detected.** A refresh token presented again after its 60 s rotation grace window revokes every session of that user (migration `m019`: `users.token_version`, `refresh_tokens.rotated_at`). Trade-off: a client that loses the response of a refresh and retries more than 60 s later is treated like a replay and signed out everywhere.
+- A refresh racing a logout-all / password change can no longer leave a live session behind (the freshly minted refresh token is revoked and the call answers 401). The public `upcoming` route degrades to "not admin" instead of a 500 when the token check fails.
 
 ---
 

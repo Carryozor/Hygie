@@ -1,6 +1,7 @@
 """Public no-auth endpoint — upcoming deletions calendar."""
 import asyncio
 import hmac
+import logging
 from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
@@ -15,6 +16,8 @@ from ..db.engine import get_db
 from ..db.media_servers import get_media_servers
 from ..db.encryption import _decrypt_value
 from ..db.utils import now_utc, parse_iso_dt
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["public"])
 
@@ -39,6 +42,17 @@ def _strip_secret_params(url: Optional[str]) -> Optional[str]:
     kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
             if k.lower() not in _SECRET_QUERY_PARAMS]
     return urlunsplit(parts._replace(query=urlencode(kept)))
+
+
+async def _is_admin(authorization: Optional[str]) -> bool:
+    """A broken token check must degrade to "not admin", never to a 500."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    try:
+        return bool(await verify_token_current(authorization[7:]))
+    except Exception:
+        logger.warning("Admin token check failed on public route", exc_info=True)
+        return False
 
 
 @router.get("/api/public/upcoming")
@@ -79,9 +93,7 @@ async def public_upcoming(
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     # Admins with a valid token bypass the public password requirement
-    is_admin = False
-    if authorization and authorization.startswith("Bearer "):
-        is_admin = bool(await verify_token_current(authorization[7:]))
+    is_admin = await _is_admin(authorization)
 
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
     # Requester names are only exposed when the dashboard is gated by a slug or

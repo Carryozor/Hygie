@@ -6,6 +6,10 @@ All notable changes to Hygie are documented here.
 
 ## [Unreleased]
 
+---
+
+## [4.5.0] — 2026-10-31
+
 ### Added
 - **Prometheus: backup and job freshness.** `/metrics` now exposes `hygie_backup_ok` / `hygie_backup_age_seconds` (from the newest valid dump on disk, absent when backups are off) and, per job type, `hygie_job_last_finished_timestamp_seconds` / `hygie_job_last_success`. A silent backup or scan failure can now be alerted on from Grafana.
 
@@ -22,6 +26,11 @@ All notable changes to Hygie are documented here.
 - **A password change (or "log out everywhere") now kills the access tokens already issued.** They used to stay valid for up to one hour. Access tokens carry the user's `token_version`; the check costs one primary-key read per request and a database failure answers 503 (not 401, so a blip does not log anyone out). Tokens minted before this release have no version and stay valid until the first invalidation.
 - **Refresh-token replay is detected.** A refresh token presented again after its 60 s rotation grace window revokes every session of that user (migration `m019`: `users.token_version`, `refresh_tokens.rotated_at`). Trade-off: a client that loses the response of a refresh and retries more than 60 s later is treated like a replay and signed out everywhere.
 - A refresh racing a logout-all / password change can no longer leave a live session behind (the freshly minted refresh token is revoked and the call answers 401). The public `upcoming` route degrades to "not admin" instead of a 500 when the token check fails.
+- **Plex tokens no longer travel in poster URLs.** The Plex client stored `…?X-Plex-Token=…` in `poster_url` (database and API responses). The URL is now token-free and the image proxy adds the token as a header, only toward the Plex server it belongs to and never on a redirect hop. Rows written before this release keep working.
+
+### Upgrade notes
+- Migration `m019` runs at startup (two columns). Existing sessions stay valid until the first password change or "log out everywhere".
+- `qbit_delete_linked_crossseeds` (4.4.5) is still off by default.
 
 ---
 

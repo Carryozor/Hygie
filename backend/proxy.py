@@ -46,6 +46,27 @@ def _add_url_to_whitelist(allowed: set, url: str) -> None:
         pass
 
 
+def _plex_headers(url: str, servers: list) -> dict:
+    """X-Plex-Token header for a URL that targets a configured Plex server, else {}.
+
+    Matched on (host, port) of the exact URL being requested, so the token is
+    never attached to a redirect hop that leaves the Plex server.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        for srv in servers:
+            if (srv.get("type") or "").lower() != "plex" or not srv.get("api_key"):
+                continue
+            sp = urlparse(srv.get("url") or "")
+            if (sp.hostname or "").lower() == host and (sp.port or (443 if sp.scheme == "https" else 80)) == port:
+                return {"X-Plex-Token": srv["api_key"]}
+    except Exception:
+        pass
+    return {}
+
+
 def _is_url_allowed(url: str, allowed: set) -> bool:
     """True if url targets a whitelisted (host, port) over http(s)."""
     try:
@@ -181,9 +202,10 @@ async def _fetch_proxied_image(request: Request):
         # the whitelist — follow_redirects=True would let a whitelisted host
         # redirect the proxy to an internal/arbitrary target (SSRF).
         url = target_url
+        servers = await get_media_servers()
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             for _ in range(_PROXY_MAX_REDIRECTS + 1):
-                async with client.stream("GET", url) as r:
+                async with client.stream("GET", url, headers=_plex_headers(url, servers)) as r:
                     if r.status_code in (301, 302, 303, 307, 308):
                         from urllib.parse import urljoin
                         url = urljoin(url, r.headers.get("location", ""))

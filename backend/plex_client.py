@@ -67,7 +67,9 @@ class PlexClient:
             guids = [guids]
 
         thumb = m.get("thumb", "")
-        poster_url = f"{self._url}{thumb}?X-Plex-Token={self._token}" if thumb else ""
+        # No token in the URL: it is stored and returned by the API. The image
+        # proxy adds it as a header toward this server only (proxy._plex_headers).
+        poster_url = f"{self._url}{thumb}" if thumb else ""
 
         media_type = m.get("type", "movie")
         if media_type == "show":

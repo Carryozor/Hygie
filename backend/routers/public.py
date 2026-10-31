@@ -4,6 +4,7 @@ import hmac
 from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
@@ -21,6 +22,23 @@ router = APIRouter(tags=["public"])
 def _clean_url(raw: str) -> str:
     v = (raw or "").strip().rstrip("/")
     return _decrypt_value(v) if v.startswith("enc:") else v
+
+
+_SECRET_QUERY_PARAMS = frozenset({"x-plex-token", "x-emby-token", "api_key", "apikey", "token"})
+
+
+def _strip_secret_params(url: Optional[str]) -> Optional[str]:
+    """Remove credential-bearing query params (X-Plex-Token, api_key…) from a URL.
+
+    Defensive: poster URLs come from media-server metadata and this endpoint
+    is reachable by unauthenticated visitors.
+    """
+    if not url or "?" not in url:
+        return url
+    parts = urlsplit(url)
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in _SECRET_QUERY_PARAMS]
+    return urlunsplit(parts._replace(query=urlencode(kept)))
 
 
 @router.get("/api/public/upcoming")
@@ -66,6 +84,9 @@ async def public_upcoming(
         is_admin = bool(verify_token(authorization[7:]))
 
     cfg_pwd = (await get_setting("public_dashboard_password") or "").strip()
+    # Requester names are only exposed when the dashboard is gated by a slug or
+    # a password (or the caller is an admin); an open dashboard never shows them.
+    show_usernames = bool(cfg_slug or cfg_pwd or is_admin)
     if cfg_pwd and not is_admin:
         provided = x_dashboard_password or ""
         if not provided:
@@ -111,6 +132,9 @@ async def public_upcoming(
     grouped: dict = defaultdict(list)
     for d in rows:
         d = dict(d)
+        d["poster_url"] = _strip_secret_params(d.get("poster_url"))
+        if not show_usernames:
+            d["seerr_username"] = ""
         dt = parse_iso_dt(d.get("delete_at"))
         if not dt:
             continue

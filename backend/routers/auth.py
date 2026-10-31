@@ -1,5 +1,7 @@
 """Auth routes — login, setup, password change."""
 import asyncio
+import hashlib
+import unicodedata
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -51,8 +53,29 @@ def _set_refresh_cookie(response: Response, request: Request, raw_token: str) ->
     )
 
 
-def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
+def _clear_refresh_cookie(response: Response, request: Request) -> None:
+    """Expire the refresh cookie with the same attributes it was set with."""
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        path=_REFRESH_COOKIE_PATH,
+        httponly=True,
+        samesite="strict",
+        secure=(request.url.scheme == "https"),
+    )
+
+
+def _fold_username(username: str) -> str:
+    """Case/accent/width-insensitive form: MariaDB's default collation treats
+    'admin', 'Admin', 'admín' and 'ａdmin' as the same account, so they must
+    share one rate-limit budget instead of getting one each."""
+    decomposed = unicodedata.normalize("NFKD", username.strip())
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+
+
+def _rl_key(prefix: str, ip: str, username: str) -> str:
+    """Rate-limit key scoped to IP + username (username hashed: bounded size)."""
+    digest = hashlib.sha256(_fold_username(username).encode()).hexdigest()[:16]
+    return f"{prefix}:{ip}:{digest}"
 
 
 class LoginRequest(BaseModel):
@@ -120,7 +143,8 @@ async def login(body: LoginRequest, request: Request, response: Response):
     # of concurrent guesses can't bypass the limit by all reading a
     # pre-record count before any of them records (see rate_limit_attempt's
     # docstring). Never released == counted as a failure.
-    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, f"login:{ip}")
+    rl_key = _rl_key("login", ip, body.username)
+    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, rl_key)
     if blocked:
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(body.username)
@@ -134,7 +158,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
     )
     if not user or not password_ok:
         raise HTTPException(401, "Identifiants invalides")
-    await asyncio.to_thread(release_attempt, f"login:{ip}", rl_token)
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
     access_token  = create_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
     _set_refresh_cookie(response, request, refresh_token)
@@ -156,13 +180,15 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     retires the old token after a short grace window — a stolen cookie stops
     working at the next legitimate refresh instead of lasting 30 days.
     """
+    raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
+    if not raw:
+        # No credential presented (e.g. the login page probing on load):
+        # must not consume the per-IP budget shared with real refreshes.
+        raise HTTPException(401, "Refresh token requis")
     ip = get_client_ip(request)
     blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, f"refresh:{ip}")
     if blocked:
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
-    raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
-    if not raw:
-        raise HTTPException(401, "Refresh token requis")
     username = await verify_refresh_token(raw)
     if not username:
         raise HTTPException(401, "Refresh token invalide ou expiré")
@@ -178,20 +204,17 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
 
 
 @router.post("/logout")
-async def logout(
-    body: LogoutRequest,
-    request: Request,
-    response: Response,
-    username: str = Depends(require_auth),
-):
-    """Revoke the refresh token and clear the cookie.
+async def logout(body: LogoutRequest, request: Request, response: Response):
+    """Revoke the presented refresh token (if any) and ALWAYS clear the cookie.
 
-    Cookie-first, like /refresh — the body field only serves legacy clients.
+    Authenticated by the refresh cookie alone, not by the access token: the
+    access token is short-lived, and a logout after its expiry must still
+    end the session. Idempotent — returns 200 in every case.
     """
     raw = request.cookies.get(REFRESH_COOKIE, "") or body.refresh_token
     if raw:
         await revoke_refresh_token(raw)
-    _clear_refresh_cookie(response)
+    _clear_refresh_cookie(response, request)
     return {"status": "logged_out"}
 
 
@@ -209,11 +232,16 @@ async def change_password(
     response: Response,
     username: str = Depends(require_auth),
 ):
+    rl_key = _rl_key("chpw", get_client_ip(request), username)
+    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, rl_key)
+    if blocked:
+        raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(username)
     if not user or not await asyncio.to_thread(
         verify_password, body.current_password, user["password_hash"]
     ):
         raise HTTPException(401, "Mot de passe actuel incorrect")
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
     await update_password(username, body.new_password)
     await revoke_all_refresh_tokens(username)
     access_token  = create_access_token(username)

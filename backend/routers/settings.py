@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 from ..db.settings_store import get_all_settings, set_setting, get_setting, parse_thresholds
 from ..db.media_servers import get_media_servers, save_media_servers
 from ..db.encryption import SENSITIVE_KEYS
-from ..db.utils import is_loopback_or_link_local
+from ..db.utils import is_loopback_or_link_local, assert_public_or_lan, UnsafeUrlError
 from ..emby_client import test_connection as test_emby
 from ..db.media_servers import is_plex
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit, test_qui
-from ..discord_client import test_discord, test_discord_alerts
+from ..discord_client import test_discord, test_discord_alerts, is_valid_discord_webhook
 from ..services.arr_service import test_arr_instance as _test_arr, sync_arr_from_seerr as _sync_arr
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -75,6 +75,7 @@ class SettingsUpdate(BaseModel):
     public_dashboard_enabled: Optional[str] = None
     public_dashboard_slug:    Optional[str] = None
     public_dashboard_password: Optional[str] = None
+    prometheus_bearer_token: Optional[str] = None
 
 
 _TESTERS = {
@@ -119,6 +120,26 @@ _URL_SETTINGS = frozenset({
 })
 
 
+_WEBHOOK_SETTINGS = ("discord_webhook", "discord_webhook_alerts")
+
+# Settings holding the URL(s) each tester connects to — re-validated at use time.
+_SERVICE_URL_KEYS = {
+    "radarr": ("radarr_url",),
+    "sonarr": ("sonarr_url",),
+    "seerr": ("seerr_url",),
+    "qbit": ("qbit_url",),
+    "qui": ("qbit_proxy_url",),
+}
+
+
+async def _assert_safe_url(value: str, field: str) -> None:
+    """422 unless `value` passes the SSRF guard (loopback/link-local/etc. refused)."""
+    try:
+        await assert_public_or_lan(value)
+    except UnsafeUrlError as e:
+        raise HTTPException(status_code=422, detail=f"{field}: {e}")
+
+
 @router.post("")
 async def update_settings(body: SettingsUpdate, request: Request, user: str = Depends(require_auth)):
     """Update settings. Only sends non-None fields."""
@@ -130,8 +151,26 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
         value = incoming.get(key, "") or ""
         if not value or (key in SENSITIVE_KEYS and value == _MASK):
             continue
+        # The UI echoes every field on each save: only validate what changed, so
+        # a service that is down (DNS silent) cannot block unrelated settings.
+        if value == (await get_setting(key) or ""):
+            continue
         if urlparse(value).scheme.lower() not in ("http", "https"):
             raise HTTPException(status_code=422, detail=f"{key}: le schéma doit être http ou https")
+        await _assert_safe_url(value, key)
+
+    for key in _WEBHOOK_SETTINGS:
+        value = (incoming.get(key) or "").strip()
+        if not value or value == _MASK:
+            continue
+        if value == (await get_setting(key) or ""):
+            continue  # unchanged: already accepted when it was saved
+        if not is_valid_discord_webhook(value):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{key}: l'URL doit être un webhook http(s) vers un hôte public ou du LAN (pas de localhost ni d'IP interne)",
+            )
+        await _assert_safe_url(value, key)
 
     # Reject thresholds that would silently disable pre-deletion alerts (empty = disabled, allowed)
     if "discord_notif_thresholds" in incoming:
@@ -298,6 +337,7 @@ async def list_media_servers(user: str = Depends(require_auth)):
 async def add_media_server(body: MediaServerBody, user: str = Depends(require_auth)):
     # POST requires a non-empty URL — treat None (field absent) as empty string
     url = _validate_server_url(body.url or "", "url")
+    await _assert_safe_url(url, "url")
     ext_url = _validate_server_url(body.ext_url, "ext_url")
     servers = await get_media_servers()
     existing_ids = []
@@ -329,6 +369,7 @@ async def update_media_server(server_id: str, body: MediaServerBody, user: str =
                 s["name"] = body.name
             if body.url is not None:
                 s["url"] = _validate_server_url(body.url, "url")
+                await _assert_safe_url(s["url"], "url")
             if body.api_key is not None and body.api_key != _MASK:
                 s["api_key"] = body.api_key
             if body.ext_url is not None:
@@ -435,6 +476,13 @@ async def test_service(service: str, user: str = Depends(require_auth)):
     tester = _TESTERS.get(service)
     if not tester:
         raise HTTPException(404, "Service inconnu")
+    for key in _SERVICE_URL_KEYS.get(service, ()):
+        url = await get_setting(key)
+        if url:
+            try:
+                await assert_public_or_lan(url)
+            except UnsafeUrlError as e:
+                return {"ok": False, "message": f"URL non autorisée ({key}) : {e}"}
     result = await tester()
     # test_connection returns (bool, str, str); others return (bool, str)
     ok, message = result[0], result[1]
@@ -450,7 +498,7 @@ class ArrTestRequest(BaseModel):
 @router.post("/test-arr")
 async def test_arr_instance(body: ArrTestRequest, user: str = Depends(require_auth)):
     """Test a specific Radarr/Sonarr instance by URL and API key."""
-    _validate_server_url(body.url or "", "url")
+    await _assert_safe_url(_validate_server_url(body.url or "", "url"), "url")
     return await _test_arr(body.type, body.url, body.api_key)
 
 
@@ -462,7 +510,7 @@ class SeerrSyncRequest(BaseModel):
 @router.post("/sync-arr-from-seerr")
 async def sync_arr_from_seerr(body: SeerrSyncRequest, user: str = Depends(require_auth)):
     """Import Radarr/Sonarr instances from Seerr configuration and merge with existing ones."""
-    _validate_server_url(body.seerr_url or "", "seerr_url")
+    await _assert_safe_url(_validate_server_url(body.seerr_url or "", "seerr_url"), "seerr_url")
     try:
         return await _sync_arr(body.seerr_url, body.seerr_api_key)
     except ValueError as e:

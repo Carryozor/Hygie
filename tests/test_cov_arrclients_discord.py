@@ -493,4 +493,4 @@ async def test_webhook_test_returns_false_on_exception(isolated_db):
     finally:
         cm.stop()
     assert ok is False
-    assert "down" in msg
+    assert "Impossible de joindre" in msg  # generic message: no raw exception text

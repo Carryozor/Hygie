@@ -33,6 +33,41 @@ _DISCORD_ALERT_MIN_INTERVAL = 0.22  # seconds
 _discord_alert_last_ts: float = 0.0
 _discord_alert_lock = asyncio.Lock()
 
+def is_valid_discord_webhook(url: str) -> bool:
+    """Structural check for a Discord-compatible webhook URL (no DNS lookup).
+
+    Runs before EVERY send, so it must never depend on the network: a DNS blip
+    would otherwise silence deletion alerts. Accepts http(s) URLs with a host
+    and no userinfo (self-hosted Discord-compatible chats are legitimate), and
+    refuses the SSRF primitives that need no resolution: localhost and literal
+    loopback / link-local / unspecified / multicast / reserved IPs. Resolution
+    against loopback/metadata names is enforced once, at registration time
+    (routers/settings.py via assert_public_or_lan).
+    """
+    import ipaddress
+    from urllib.parse import urlparse
+    try:
+        p = urlparse((url or "").strip())
+        host = (p.hostname or "").lower().rstrip(".")
+        if p.scheme not in ("http", "https") or not host:
+            return False
+        if p.username is not None or p.password is not None:
+            return False
+        if host == "localhost" or host.endswith(".localhost"):
+            return False
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return True  # a hostname: resolved and checked at registration
+        mapped = getattr(ip, "ipv4_mapped", None) or ip
+        return not (
+            mapped.is_loopback or mapped.is_link_local or mapped.is_unspecified
+            or mapped.is_multicast or mapped.is_reserved
+        )
+    except ValueError:
+        return False
+
+
 _KIND_COLORS = {
     "detected": 0x57F287,
     "1d":       0xFF4500,
@@ -189,6 +224,9 @@ async def send_notification(media_list: List[dict], kind: str, dry_run: bool = F
     if not webhook:
         logger.info("Discord: webhook non configuré — notification ignorée")
         return False
+    if not is_valid_discord_webhook(webhook):
+        logger.error("Discord: webhook refusé (hôte non Discord ou schéma non https)")
+        return False
 
     footer_label, color = _get_kind_meta(kind)
     single = len(media_list) == 1
@@ -274,6 +312,9 @@ async def send_alert(
     webhook = await _get_alert_webhook()
     if not webhook:
         return False
+    if not is_valid_discord_webhook(webhook):
+        logger.error("Discord: webhook d'alerte refusé (hôte non Discord ou schéma non https)")
+        return False
 
     colors = {"error": 0xFF0000, "warning": 0xF0A500, "info": 0x6366F1}
     icons  = {"error": "🚨", "warning": "⚠️", "info": "ℹ️"}
@@ -308,6 +349,8 @@ async def send_alert(
 
 
 async def _test_webhook(webhook: str, label: str) -> tuple[bool, str]:
+    if not is_valid_discord_webhook(webhook):
+        return False, "URL de webhook refusée : https://discord.com/... attendu"
     payload = {"embeds": [{
         "title": f"✅ Hygie — Test {label}",
         "description": f"Le webhook **{label}** fonctionne correctement.",
@@ -320,9 +363,10 @@ async def _test_webhook(webhook: str, label: str) -> tuple[bool, str]:
             r = await client.post(webhook, json=payload)
             if r.status_code in (200, 204):
                 return True, f"Message de test envoyé ✅ ({label})"
-            return False, f"HTTP {r.status_code}: {r.text[:100]}"
+            return False, f"Le webhook a répondu HTTP {r.status_code}"
     except Exception as e:
-        return False, str(e)
+        logger.warning("Discord test webhook (%s): %s", label, type(e).__name__)
+        return False, "Impossible de joindre le webhook"
 
 
 async def test_discord() -> tuple[bool, str]:

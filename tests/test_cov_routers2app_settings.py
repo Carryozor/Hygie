@@ -15,12 +15,32 @@ override). Mounting our own app avoids relying on unrelated reload ordering.
 import json
 from unittest.mock import AsyncMock, patch
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 import os
 os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
+
+
+@pytest.fixture(autouse=True)
+def _lan_dns(monkeypatch):
+    """Resolve IP literals to themselves and fake hostnames to a LAN address
+    (the SSRF guard fails closed on unresolvable hosts)."""
+    import ipaddress
+    import socket
+
+    def _gai(host, *a, **k):
+        try:
+            ip = str(ipaddress.ip_address(host.strip("[]")))
+        except ValueError:
+            ip = "192.168.1.10"
+        fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+        return [(fam, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr("backend.db.utils.socket.getaddrinfo", _gai)
+
 
 
 @pytest_asyncio.fixture
@@ -62,7 +82,7 @@ async def settings_client(tmp_path):
 # ─── GET /api/settings — masking ───────────────────────────────────────────
 
 async def test_get_settings_masks_sensitive_key(settings_client):
-    r = await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.example/hook"})
+    r = await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.com/api/webhooks/1/hook"})
     assert r.status_code == 200
     r = await settings_client.get("/api/settings")
     assert r.status_code == 200
@@ -94,23 +114,23 @@ async def test_get_settings_falls_back_to_full_mask_on_invalid_json_array(settin
 # ─── POST /api/settings — masked PUT must not overwrite the real secret ───
 
 async def test_put_with_mask_sentinel_does_not_overwrite_existing_secret(settings_client):
-    await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.example/real"})
+    await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.com/api/webhooks/1/real"})
     # Simulate the frontend re-submitting the masked value it was shown
     r = await settings_client.post("/api/settings", json={"discord_webhook": "***"})
     assert r.status_code == 200
     assert "discord_webhook" not in r.json()["updated"]
 
     from backend.db.settings_store import get_setting
-    assert await get_setting("discord_webhook") == "https://discord.example/real"
+    assert await get_setting("discord_webhook") == "https://discord.com/api/webhooks/1/real"
 
 
 async def test_put_with_real_new_value_overwrites_existing_secret(settings_client):
-    await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.example/old"})
-    r = await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.example/new"})
+    await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.com/api/webhooks/1/old"})
+    r = await settings_client.post("/api/settings", json={"discord_webhook": "https://discord.com/api/webhooks/1/new"})
     assert "discord_webhook" in r.json()["updated"]
 
     from backend.db.settings_store import get_setting
-    assert await get_setting("discord_webhook") == "https://discord.example/new"
+    assert await get_setting("discord_webhook") == "https://discord.com/api/webhooks/1/new"
 
 
 async def test_put_restores_masked_api_key_inside_radarr_servers_array(settings_client):
@@ -366,8 +386,10 @@ async def test_reveal_media_server_key_returns_plaintext(settings_client):
 # ─── /media-servers/{id}/test — SSRF guard ─────────────────────────────────
 
 async def test_test_media_server_blocks_loopback_host(settings_client):
-    add = await settings_client.post("/api/settings/media-servers", json={"url": "http://127.0.0.1:8096"})
-    sid = add.json()["id"]
+    # Registration now refuses loopback; seed directly to exercise the use-time guard.
+    from backend.db.media_servers import save_media_servers
+    await save_media_servers([{"id": "0", "url": "http://127.0.0.1:8096", "api_key": ""}])
+    sid = "0"
     r = await settings_client.post(f"/api/settings/media-servers/{sid}/test")
     assert r.status_code == 200
     body = r.json()
@@ -427,10 +449,10 @@ async def test_reveal_setting_falls_back_to_raw_string_on_invalid_json(settings_
 
 async def test_reveal_setting_returns_raw_string_for_non_array_sensitive_key(settings_client):
     from backend.db.settings_store import set_setting
-    await set_setting("discord_webhook", "https://discord.example/real")
+    await set_setting("discord_webhook", "https://discord.com/api/webhooks/1/real")
     r = await settings_client.get("/api/settings/reveal/discord_webhook")
     assert r.status_code == 200
-    assert r.json() == {"value": "https://discord.example/real"}
+    assert r.json() == {"value": "https://discord.com/api/webhooks/1/real"}
 
 
 # ─── /test/{service} ────────────────────────────────────────────────────────

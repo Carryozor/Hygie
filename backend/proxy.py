@@ -3,6 +3,7 @@ import asyncio
 import logging
 import re
 import time
+from collections import deque
 from urllib.parse import urlparse
 
 import httpx
@@ -11,6 +12,7 @@ from fastapi.responses import Response
 
 from .db.settings_store import get_setting
 from .db.media_servers import get_media_servers
+from .auth import get_client_ip
 from .db.utils import sanitize_url, is_loopback_or_link_local
 
 logger = logging.getLogger(__name__)
@@ -97,9 +99,56 @@ async def _get_proxy_whitelist() -> set:
         return allowed
 
 
+# ─── Abuse limits (unauthenticated endpoints) ─────────────────────────────────
+# Global cap on concurrent upstream fetches and a per-IP sliding-window budget.
+# The budget is deliberately generous: a poster grid fires dozens of requests
+# at once, and in deployments without HYGIE_TRUST_PROXY every visitor shares
+# the proxy's IP. In-memory and per-worker by design (cheap, no DB write per
+# image); it bounds abuse, it is not an auth control.
+_PROXY_MAX_CONCURRENCY = 8
+_PROXY_RATE_MAX = 600
+_PROXY_RATE_WINDOW = 60.0
+_proxy_semaphore = asyncio.Semaphore(_PROXY_MAX_CONCURRENCY)
+_proxy_hits: dict = {}
+
+
+def _proxy_rate_limited(request: Request) -> bool:
+    """Record this request for the client IP; True when over budget.
+
+    Inactive unless HYGIE_TRUST_PROXY is on: behind a tunnel without it every
+    visitor shares the tunnel's IP, so one abusive client would exhaust the
+    budget for everyone (including the admin's poster grid). The concurrency
+    cap still bounds upstream load in that case.
+    """
+    from . import auth as _auth
+    if not _auth._TRUST_PROXY:
+        return False
+    now = time.monotonic()
+    cutoff = now - _PROXY_RATE_WINDOW
+    ip = get_client_ip(request)
+    hits = _proxy_hits.setdefault(ip, deque())
+    while hits and hits[0] <= cutoff:
+        hits.popleft()
+    if len(hits) >= _PROXY_RATE_MAX:
+        return True
+    hits.append(now)
+    if len(_proxy_hits) > 1024:  # drop idle clients so the dict stays bounded
+        for k in [k for k, v in _proxy_hits.items() if not v or v[-1] <= cutoff]:
+            del _proxy_hits[k]
+    return False
+
+
 # ─── Image proxy ──────────────────────────────────────────────────────────────
 @router.get("/api/proxy/image")
 async def proxy_image(request: Request):
+    """Rate-limited, concurrency-capped wrapper around the image fetch."""
+    if _proxy_rate_limited(request):
+        return Response(status_code=429, headers={"Retry-After": "60", "Cache-Control": "no-store"})
+    async with _proxy_semaphore:
+        return await _fetch_proxied_image(request)
+
+
+async def _fetch_proxied_image(request: Request):
     """
     Proxy images from configured services (Emby/Radarr/Sonarr) and TMDB CDN.
 
@@ -191,7 +240,15 @@ async def proxy_image(request: Request):
 
 # ─── Poster proxy — serves Emby item images without exposing the API key ──────
 @router.get("/api/proxy/poster/{server_id}/{item_id}")
-async def proxy_poster(server_id: str, item_id: str):
+async def proxy_poster(server_id: str, item_id: str, request: Request):
+    """Rate-limited, concurrency-capped wrapper around the poster fetch."""
+    if _proxy_rate_limited(request):
+        return Response(status_code=429, headers={"Retry-After": "60", "Cache-Control": "no-store"})
+    async with _proxy_semaphore:
+        return await _fetch_proxied_poster(server_id, item_id)
+
+
+async def _fetch_proxied_poster(server_id: str, item_id: str):
     """Serve an Emby/Jellyfin item poster image.
 
     The API key never appears in the client-facing URL: it is retrieved server-side

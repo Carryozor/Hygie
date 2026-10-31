@@ -51,6 +51,8 @@ def test_proxy_url_allowed_rejects_unknown_host():
 class _FakeRequest:
     def __init__(self, url: str):
         self.query_params = {"url": url}
+        self.headers = {}
+        self.client = type("C", (), {"host": "10.9.9.9"})()
 
 
 class _FakeStream:

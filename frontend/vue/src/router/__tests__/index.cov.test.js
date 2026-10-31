@@ -138,3 +138,18 @@ describe('router navigation guard', () => {
     }
   })
 })
+
+describe('router guard — backend unreachable', () => {
+  beforeEach(async () => {
+    resetAuthState()
+    await router.push('/login')
+  })
+
+  it('checkSetup rejecting redirects to /login with a message instead of breaking navigation', async () => {
+    authState.checkSetup = vi.fn().mockRejectedValue(new Error('Network Error'))
+    await router.push('/queue')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.error).toBe('backend_unreachable')
+    expect(router.currentRoute.value.query.redirect).toBe('/queue')
+  })
+})

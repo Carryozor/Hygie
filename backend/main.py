@@ -299,6 +299,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
+    openapi_url=None,  # schema not served unauthenticated (no tool depends on it)
 )
 
 # CORS — restrict to same origin by default (self-hosted).

@@ -2,6 +2,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+const axiosPost = vi.hoisted(() => vi.fn())
+// Token refresh goes through api/refreshCoordinator.js, which uses plain axios.
+vi.mock('axios', () => ({ default: { post: axiosPost } }))
+
 vi.mock('@/api/client', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
@@ -63,26 +67,26 @@ describe('useAuthStore', () => {
   })
 
   it('refresh relies on the httpOnly cookie (empty body)', async () => {
-    api.post.mockResolvedValueOnce({ data: { access_token: 'new' } })
+    axiosPost.mockResolvedValueOnce({ data: { access_token: 'new' } })
     const store = useAuthStore()
     const ok = await store.refresh()
     expect(ok).toBe(true)
     expect(store.token).toBe('new')
-    expect(api.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: '' })
+    expect(axiosPost).toHaveBeenCalledWith('/api/auth/refresh', { refresh_token: '' })
   })
 
   it('refresh sends and purges a legacy localStorage refresh token', async () => {
     localStorage.setItem('hygie_refresh_token', 'legacy-ref')
-    api.post.mockResolvedValueOnce({ data: { access_token: 'new' } })
+    axiosPost.mockResolvedValueOnce({ data: { access_token: 'new' } })
     const store = useAuthStore()
     const ok = await store.refresh()
     expect(ok).toBe(true)
-    expect(api.post).toHaveBeenCalledWith('/auth/refresh', { refresh_token: 'legacy-ref' })
+    expect(axiosPost).toHaveBeenCalledWith('/api/auth/refresh', { refresh_token: 'legacy-ref' })
     expect(localStorage.getItem('hygie_refresh_token')).toBeNull()
   })
 
   it('refresh emits unauthorized on failure', async () => {
-    api.post.mockRejectedValueOnce(new Error('401'))
+    axiosPost.mockRejectedValueOnce({ response: { status: 401 } })
     const events = []
     window.addEventListener('hygie:unauthorized', () => events.push(1))
     const store = useAuthStore()

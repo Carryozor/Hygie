@@ -13,6 +13,7 @@ Public API:
   get_client_ip(request) -> str
 """
 import hashlib
+import ipaddress
 import os
 import time
 import secrets
@@ -435,17 +436,44 @@ def release_attempt(key: str, token) -> None:
 _warned_untrusted_forwarded_for = False
 
 
+def _valid_ip(value: str) -> Optional[str]:
+    """Return the normalized IP string, or None if `value` is not an IP."""
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        return None
+
+
+def _trusted_proxy_ip(request: Request) -> Optional[str]:
+    """Client IP as asserted by a trusted proxy, or None.
+
+    CF-Connecting-IP (set by the Cloudflare edge, which overwrites any
+    client-supplied value) wins. Otherwise the RIGHTMOST valid
+    X-Forwarded-For entry is used: it is the one appended by the closest
+    trusted proxy, whereas the leftmost entries are client-controlled.
+    """
+    cf = request.headers.get("CF-Connecting-IP")
+    if cf and (ip := _valid_ip(cf)):
+        return ip
+    fwd = request.headers.get("X-Forwarded-For")
+    if fwd:
+        for part in reversed(fwd.split(",")):
+            if ip := _valid_ip(part):
+                return ip
+    return None
+
+
 def get_client_ip(request: Request) -> str:
     """Return the client IP for rate limiting.
 
-    Only trusts X-Forwarded-For when HYGIE_TRUST_PROXY=1 is set, preventing
+    Only trusts proxy headers when HYGIE_TRUST_PROXY=1 is set, preventing
     spoofing attacks on deployments without a reverse proxy.
     """
     global _warned_untrusted_forwarded_for
     if _TRUST_PROXY:
-        fwd = request.headers.get("X-Forwarded-For")
-        if fwd:
-            return fwd.split(",")[0].strip()
+        ip = _trusted_proxy_ip(request)
+        if ip:
+            return ip
     elif request.headers.get("X-Forwarded-For") and not _warned_untrusted_forwarded_for:
         # StartupValidator only catches this via HYGIE_ALLOWED_ORIGINS, which
         # stays unset on deployments behind a tunnel/proxy that doesn't need

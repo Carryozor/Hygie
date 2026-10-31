@@ -17,6 +17,25 @@ os.environ.setdefault("DB_PATH", ":memory:")
 os.environ.setdefault("HYGIE_ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=")
 
 
+@pytest.fixture(autouse=True)
+def _lan_dns(monkeypatch):
+    """Resolve IP literals to themselves and fake hostnames to a LAN address
+    (the SSRF guard fails closed on unresolvable hosts)."""
+    import ipaddress
+    import socket
+
+    def _gai(host, *a, **k):
+        try:
+            ip = str(ipaddress.ip_address(host.strip("[]")))
+        except ValueError:
+            ip = "192.168.1.10"
+        fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+        return [(fam, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr("backend.db.utils.socket.getaddrinfo", _gai)
+
+
+
 @pytest_asyncio.fixture
 async def ms_client(tmp_path):
     from fastapi import FastAPI

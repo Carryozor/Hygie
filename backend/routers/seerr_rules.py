@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import require_auth
 from ..db.engine import get_db
@@ -21,7 +21,7 @@ class RuleBody(BaseModel):
     seerr_username: str
     library_id: str = ""
     library_ids: Optional[List[str]] = None  # None = all; list = specific library IDs
-    grace_days: int = 30
+    grace_days: int = Field(default=30, ge=0, le=3650)
     enabled: bool = True
     discord_id: str = ""
 

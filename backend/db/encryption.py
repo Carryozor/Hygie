@@ -34,6 +34,8 @@ SENSITIVE_KEYS = frozenset({
     "sonarr_servers",   # JSON array — encrypt the whole blob
     "plex_tv_token",
     "plex_webhook_secret",
+    "public_dashboard_password",
+    "prometheus_bearer_token",
 })
 
 _fernet_instance = None

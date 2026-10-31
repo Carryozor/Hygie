@@ -6,6 +6,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
+const axiosPost = vi.hoisted(() => vi.fn())
+// Token refresh goes through api/refreshCoordinator.js, which uses plain axios.
+vi.mock('axios', () => ({ default: { post: axiosPost } }))
+
 vi.mock('@/api/client', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
@@ -74,9 +78,9 @@ describe('useAuthStore — gap fill', () => {
     expect(store.token).toBe('pre-existing-token')
     // 55 minutes (ACCESS_TTL - REFRESH_BEFORE) must have a refresh scheduled —
     // advancing past it should trigger exactly one POST /auth/refresh.
-    api.post.mockResolvedValue({ data: { access_token: 'renewed' } })
+    axiosPost.mockResolvedValue({ data: { access_token: 'renewed' } })
     await vi.advanceTimersByTimeAsync(55 * 60 * 1000 + 1)
-    expect(api.post).toHaveBeenCalledWith('/auth/refresh', expect.any(Object))
+    expect(axiosPost).toHaveBeenCalledWith('/api/auth/refresh', expect.any(Object))
     expect(store.token).toBe('renewed')
     vi.useRealTimers()
   })
@@ -96,11 +100,11 @@ describe('useAuthStore — gap fill', () => {
     const store = useAuthStore()
     await store.login('admin', 'pass') // schedules timer #1
     await store.login('admin', 'pass') // must clear #1, schedule #2 — not stack both
-    api.post.mockClear()
-    api.post.mockResolvedValue({ data: { access_token: 'renewed' } })
+    axiosPost.mockClear()
+    axiosPost.mockResolvedValue({ data: { access_token: 'renewed' } })
     await vi.advanceTimersByTimeAsync(55 * 60 * 1000 + 1)
     // If the first timer had not been cleared, refresh() would have fired twice.
-    expect(api.post).toHaveBeenCalledTimes(1)
+    expect(axiosPost).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
 
@@ -112,7 +116,7 @@ describe('useAuthStore — gap fill', () => {
   })
 
   it('refresh() falls back to the legacy "token" field when access_token is absent', async () => {
-    api.post.mockResolvedValueOnce({ data: { token: 'legacy-refreshed' } })
+    axiosPost.mockResolvedValueOnce({ data: { token: 'legacy-refreshed' } })
     const store = useAuthStore()
     const ok = await store.refresh()
     expect(ok).toBe(true)

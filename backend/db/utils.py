@@ -41,27 +41,75 @@ def sanitize_url(url: str) -> str:
     return _SENSITIVE_PARAMS.sub(r'\1=***', url)
 
 
-async def is_loopback_or_link_local(hostname: str) -> bool:
-    """Return True if hostname resolves to a loopback or link-local address.
+class UnsafeUrlError(ValueError):
+    """Raised when a user-supplied URL targets a forbidden or unresolvable host."""
 
-    Blocks SSRF probes against the host itself (127.0.0.1) and the cloud
-    metadata service (169.254.169.254, link-local). RFC1918 LAN addresses
-    (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are NOT blocked — legitimate
-    self-hosted Emby/Radarr/Sonarr instances commonly live there.
+
+def _ip_is_forbidden(ip) -> bool:
+    """True for loopback, link-local (incl. cloud metadata), unspecified,
+    multicast and reserved addresses. IPv4-mapped IPv6 is unwrapped first so
+    ``::ffff:127.0.0.1`` cannot slip through. RFC1918 stays allowed."""
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_loopback or ip.is_link_local or ip.is_unspecified
+        or ip.is_multicast or ip.is_reserved
+    )
+
+
+async def _resolve_ips(hostname: str) -> list:
+    """Resolve hostname to ip_address objects. Raises on any failure."""
+    host = hostname.strip().strip("[]")
+    # Drop an IPv6 zone id ("fe80::1%eth0") — ip_address() rejects it pre-3.9
+    # and it never changes the classification.
+    host = host.split("%", 1)[0]
+    loop = asyncio.get_running_loop()
+    infos = await loop.run_in_executor(
+        None, lambda: socket.getaddrinfo(host, None, 0, socket.SOCK_STREAM)
+    )
+    if not infos:
+        raise OSError(f"no address for {hostname!r}")
+    return [ipaddress.ip_address(info[4][0].split("%", 1)[0]) for info in infos]
+
+
+async def is_loopback_or_link_local(hostname: str, *, fail_closed: bool = False) -> bool:
+    """Return True if hostname must NOT be contacted (SSRF guard).
+
+    Blocks loopback, link-local (cloud metadata 169.254.169.254), unspecified
+    (0.0.0.0 / ::), multicast, reserved and IPv4-mapped IPv6 forms. RFC1918
+    LAN addresses are NOT blocked — legitimate self-hosted Emby/Radarr/Sonarr
+    instances live there.
+
+    A resolution failure means "not blocked" by default (the request itself
+    will fail on the same lookup — legacy callers such as the image proxy rely
+    on this); pass fail_closed=True to refuse instead. assert_public_or_lan
+    always does.
     """
     try:
-        loop = asyncio.get_event_loop()
-        infos = await loop.run_in_executor(
-            None,
-            lambda: socket.getaddrinfo(hostname, None, 0, socket.SOCK_STREAM),
-        )
-        for info in infos:
-            ip = ipaddress.ip_address(info[4][0])
-            if ip.is_loopback or ip.is_link_local:
-                return True
-    except Exception:
-        pass
-    return False
+        return any(_ip_is_forbidden(ip) for ip in await _resolve_ips(hostname))
+    except Exception as e:
+        logger.debug("SSRF guard: résolution impossible pour %r (%s)", hostname, e)
+        return fail_closed
+
+
+async def assert_public_or_lan(url: str) -> None:
+    """Raise UnsafeUrlError unless `url` is http(s) and targets a public or LAN host.
+
+    Single entry point for user-supplied service URLs (settings, test
+    endpoints, Seerr sync). Fails closed: an unresolvable host is refused.
+    """
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse((url or "").strip())
+        host = parsed.hostname
+    except ValueError as e:
+        raise UnsafeUrlError("URL invalide") from e
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise UnsafeUrlError("le schéma doit être http ou https")
+    if not host:
+        raise UnsafeUrlError("URL sans hôte")
+    if await is_loopback_or_link_local(host, fail_closed=True):
+        raise UnsafeUrlError(f"hôte non autorisé ou non résolu : {host}")
 
 
 async def ssrf_guard_hook(request) -> None:

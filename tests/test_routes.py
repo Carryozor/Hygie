@@ -477,11 +477,13 @@ async def test_test_arr_rejects_ftp_scheme(registered_client):
 
 
 async def test_test_arr_accepts_http_scheme(registered_client):
-    """http:// URLs must be allowed (internal deployments — not 422)."""
+    """http:// URLs must be allowed (internal LAN deployments — not 422).
+
+    Loopback is deliberately refused by the SSRF guard, so use a LAN address."""
     c, token = registered_client
     r = await c.post(
         "/api/settings/test-arr",
-        json={"type": "radarr", "url": "http://localhost:7878", "api_key": "testkey"},
+        json={"type": "radarr", "url": "http://192.168.1.10:7878", "api_key": "testkey"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code != 422

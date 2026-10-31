@@ -189,6 +189,8 @@ async def test_get_proxy_whitelist_rebuilds_after_invalidate(monkeypatch):
 class _FakeRequest:
     def __init__(self, url: str):
         self.query_params = {"url": url} if url is not None else {}
+        self.headers = {}
+        self.client = type("C", (), {"host": "10.9.9.9"})()
 
 
 class _FakeStream:
@@ -378,7 +380,7 @@ async def test_proxy_image_swallows_exception_and_returns_404(monkeypatch):
 # ─── proxy_poster ───────────────────────────────────────────────────────────────
 
 async def test_proxy_poster_rejects_invalid_item_id():
-    resp = await proxy_mod.proxy_poster("srv1", "not valid!!")
+    resp = await proxy_mod.proxy_poster("srv1", "not valid!!", _FakeRequest(None))
     assert resp.status_code == 400
 
 
@@ -386,7 +388,7 @@ async def test_proxy_poster_returns_404_when_server_not_found(monkeypatch):
     async def _servers():
         return [{"id": "other", "url": "http://emby:8096", "api_key": "k"}]
     monkeypatch.setattr("backend.db.media_servers.get_media_servers", _servers)
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 404
 
 
@@ -394,7 +396,7 @@ async def test_proxy_poster_returns_404_when_server_missing_url_or_key(monkeypat
     async def _servers():
         return [{"id": "srv1", "url": "", "api_key": ""}]
     monkeypatch.setattr("backend.db.media_servers.get_media_servers", _servers)
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 404
 
 
@@ -419,7 +421,7 @@ async def test_proxy_poster_returns_image_and_injects_api_key_header(monkeypatch
 
     monkeypatch.setattr(proxy_mod.httpx, "AsyncClient", _Client)
 
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 200
     assert resp.body == b"\xff\xd8img"
     assert "abc123" in captured["url"]
@@ -442,7 +444,7 @@ async def test_proxy_poster_rejects_non_image_content_type(monkeypatch):
             return _FakeStream(200, {"content-type": "text/html"})
 
     monkeypatch.setattr(proxy_mod.httpx, "AsyncClient", _Client)
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 415
 
 
@@ -465,7 +467,7 @@ async def test_proxy_poster_enforces_max_bytes(monkeypatch):
             return _FakeStream(200, {"content-type": "image/jpeg"}, chunks=chunks)
 
     monkeypatch.setattr(proxy_mod.httpx, "AsyncClient", _Client)
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 413
 
 
@@ -485,7 +487,7 @@ async def test_proxy_poster_returns_404_on_non_200(monkeypatch):
             return _FakeStream(404, {})
 
     monkeypatch.setattr(proxy_mod.httpx, "AsyncClient", _Client)
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 404
 
 
@@ -498,5 +500,5 @@ async def test_proxy_poster_swallows_exception_and_returns_404(monkeypatch):
         raise RuntimeError("boom")
     monkeypatch.setattr(proxy_mod.httpx, "AsyncClient", _raise)
 
-    resp = await proxy_mod.proxy_poster("srv1", "abc123")
+    resp = await proxy_mod.proxy_poster("srv1", "abc123", _FakeRequest(None))
     assert resp.status_code == 404

@@ -38,7 +38,15 @@ router.beforeEach(async to => {
   if (to.meta.public) return true
   const auth = useAuthStore()
   // Only call the API once — setupComplete is null until first check
-  const setup = auth.setupComplete !== null ? auth.setupComplete : await auth.checkSetup()
+  let setup
+  try {
+    setup = auth.setupComplete !== null ? auth.setupComplete : await auth.checkSetup()
+  } catch {
+    // Backend unreachable: land on /login with a message rather than a blank
+    // screen (an uncaught guard rejection aborts the navigation).
+    if (to.name === 'login') return true
+    return { name: 'login', query: { redirect: to.fullPath, error: 'backend_unreachable' } }
+  }
   if (!setup) return { name: 'setup' }
   // The access token lives in memory only (see api/tokenStore.js) and does not
   // survive a page reload — try once to re-mint it from the httpOnly refresh

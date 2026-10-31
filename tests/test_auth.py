@@ -144,7 +144,7 @@ def test_get_client_ip_ignores_forwarded_for_by_default():
 
 
 def test_get_client_ip_uses_forwarded_for_when_trust_proxy_enabled():
-    """When HYGIE_TRUST_PROXY=1, X-Forwarded-For first IP is used."""
+    """When HYGIE_TRUST_PROXY=1, the RIGHTMOST X-Forwarded-For entry is used (leftmost is client-forgeable)."""
     from unittest.mock import MagicMock
     request = MagicMock()
     request.headers = {"X-Forwarded-For": "1.2.3.4, 10.0.0.1"}
@@ -152,7 +152,7 @@ def test_get_client_ip_uses_forwarded_for_when_trust_proxy_enabled():
     original = auth_mod._TRUST_PROXY
     try:
         auth_mod._TRUST_PROXY = True
-        assert auth_mod.get_client_ip(request) == "1.2.3.4"
+        assert auth_mod.get_client_ip(request) == "10.0.0.1"
     finally:
         auth_mod._TRUST_PROXY = original
 

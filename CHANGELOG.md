@@ -8,6 +8,23 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.5.1] — 2026-11-24
+
+### Fixed
+- **Shared season-pack guard was a no-op on Sonarr 5.** Before erasing a torrent's files for one episode or season, Hygie checks whether other episodes of the same download still have files in Sonarr. That check read an `episodeIds` field on `/api/v3/episodefile` that Sonarr 5 (verified on 5.0.0.3041) does not return, so it always answered "not shared" and a season pack still used by other episodes could have been erased. It now reads `/api/v3/episode?seriesId=` (`hasFile` / `episodeFileId`) and keeps the torrent whenever the answer is unusable (unexpected payload, no matching episode, HTTP error). The test fixtures encoded the non-existent contract and were rewritten with real Sonarr 5 payloads. Not triggered in production so far (the episode-unit libraries had no rules).
+- **"Delete now" and bulk delete now apply the configured qBittorrent action.** Manual deletions ignored `qbit_action` / `qbit_tag` and only tagged the torrent (`tag_only`), while the deletion preview announced that files would be erased. They now behave like the scheduled job: with `delete_files`, a manual deletion removes the torrent and its files (with the same shared-path and cross-seed safeguards). A failure to read the settings is recorded as a failed attempt; the row never stays in `deleting`.
+- **"Leaving soon" collection and poster banners on Emby/Jellyfin.** Banners never applied: posters were uploaded as raw JPEG while Emby/Jellyfin expect a base64 body (HTTP 500 "not a valid Base-64 string"). Consolidated series/season rows were sent to Emby with their internal id (`sonarr-series:N`, HTTP 500 "Unrecognized Guid format"), so series never joined the collection; once only series were pending, the emptied collection was removed by Emby and Hygie failed silently to recreate it. Rows are now resolved to the real Series/Season item by path (same resolution as the deletion pipeline), uploads are base64, every add/remove/create response is checked and logged as a warning on failure, and nothing is removed from the collection during a cycle where an item could not be resolved.
+- **Banners no longer stack or stay behind.** The banner is opaque, so redrawing it over yesterday's poster leaves no ghost of the previous count; when the original poster cannot be downloaded the item is skipped instead of being re-banded; only items that really are in the collection get a banner; an item leaving the collection without a downloadable original poster gets its own image re-fetched by the media server (Primary image reset + refresh) instead of keeping the banner forever.
+
+### Security
+- **A stolen refresh cookie can no longer survive "log out everywhere" or a password change.** A refresh landing between the token check and the version read could mint a new session with the new version, and the revocation and the version bump ran in two transactions. The version is now read with the refresh token itself, "log out everywhere" bumps the version and revokes in one transaction, and the new refresh token is only minted under a row lock if the version is unchanged. Concurrent test: 2/60 surviving sessions before, 0/60 after; row-lock behaviour checked on MariaDB 11.8.
+
+### Upgrade notes
+- No migration. With `qbit_action = delete_files`, a manual "Delete now" now erases the torrent's files like the scheduled job (it used to only tag the torrent).
+- The "Leaving soon" collection is recreated at the next sync (after a scan, a deletion run or the 03:00 cleanup) and poster banners start applying for the first time.
+
+---
+
 ## [4.5.0] — 2026-10-31
 
 ### Added

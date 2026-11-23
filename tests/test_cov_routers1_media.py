@@ -292,7 +292,7 @@ async def test_bulk_delete_marks_only_successful_items_deleted(test_client, monk
     id_fail = await _seed_item("b5", status="pending")
     await _set_dry_run(False)
 
-    async def _fake_delete(row, dry_run):
+    async def _fake_delete(row, dry_run, **_kw):
         return row["emby_id"] == "b4"
 
     import backend.routers.media as media_mod
@@ -304,6 +304,86 @@ async def test_bulk_delete_marks_only_successful_items_deleted(test_client, monk
 
     assert (await _fetch_item(id_ok))["status"] == "deleted"
     assert (await _fetch_item(id_fail))["status"] == "error"  # R2/B2
+
+
+async def _set_qbit(action=None, tag=None) -> None:
+    from backend.db.engine import get_db
+    from backend.db.settings_store import set_setting, _invalidate_settings_cache
+    async with get_db() as db:
+        await db.execute("DELETE FROM settings WHERE `key` IN ('qbit_action','qbit_tag')")
+        await db.commit()
+    _invalidate_settings_cache()
+    if action:
+        await set_setting("qbit_action", action)
+    if tag:
+        await set_setting("qbit_tag", tag)
+
+
+async def test_delete_now_passes_configured_qbit_action_and_tag(test_client, monkeypatch):
+    await _set_dry_run(False)
+    await _set_qbit("delete_files", "Purge")
+    item_id = await _seed_item("q1", status="pending")
+    import backend.routers.media as media_mod
+    mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(media_mod, "_delete_media", mock)
+
+    r = test_client.post(f"/api/media/{item_id}/delete-now")
+    await _set_qbit()
+    assert r.status_code == 200
+    mock.assert_awaited_once()
+    assert mock.await_args.kwargs["qbit_action"] == "delete_files"
+    assert mock.await_args.kwargs["qbit_tag_val"] == "Purge"
+
+
+async def test_bulk_delete_passes_configured_qbit_action(test_client, monkeypatch):
+    await _set_dry_run(False)
+    await _set_qbit("delete_files", "Purge")
+    item_id = await _seed_item("q2", status="pending")
+    import backend.routers.media as media_mod
+    mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(media_mod, "_delete_media", mock)
+
+    r = test_client.post("/api/media/bulk", json={"ids": [item_id], "action": "delete"})
+    await _set_qbit()
+    assert r.status_code == 200
+    assert r.json() == {"affected": 1, "skipped": 0}
+    mock.assert_awaited_once()
+    assert mock.await_args.kwargs["qbit_action"] == "delete_files"
+    assert mock.await_args.kwargs["qbit_tag_val"] == "Purge"
+
+
+async def test_delete_now_defaults_to_tag_only(test_client, monkeypatch):
+    await _set_dry_run(False)
+    await _set_qbit()
+    item_id = await _seed_item("q3", status="pending")
+    import backend.routers.media as media_mod
+    mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(media_mod, "_delete_media", mock)
+
+    r = test_client.post(f"/api/media/{item_id}/delete-now")
+    assert r.status_code == 200
+    mock.assert_awaited_once()
+    assert mock.await_args.kwargs["qbit_action"] == "tag_only"
+    assert mock.await_args.kwargs["qbit_tag_val"] == "Supprimé-Hygie"
+
+
+async def test_delete_now_config_failure_records_failure(test_client, monkeypatch):
+    await _set_dry_run(False)
+    item_id = await _seed_item("q4", status="pending")
+    import backend.routers.media as media_mod
+    delete_mock = AsyncMock(return_value=True)
+    load_mock = AsyncMock(side_effect=RuntimeError("settings unreadable"))
+    monkeypatch.setattr(media_mod, "_delete_media", delete_mock)
+    monkeypatch.setattr(media_mod, "_load_batch_config", load_mock)
+
+    r = test_client.post(f"/api/media/{item_id}/delete-now")
+    assert r.status_code == 500
+    load_mock.assert_awaited()
+    delete_mock.assert_not_awaited()
+    row = await _fetch_item(item_id)
+    assert row["status"] == "error"
+    assert row["status"] != "deleting"
+    assert row["attempts"] == 1
 
 
 # ─── ignore_one ─────────────────────────────────────────────────────────────

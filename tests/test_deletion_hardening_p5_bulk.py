@@ -80,7 +80,7 @@ async def test_already_deleted_row_is_not_reprocessed(test_client, monkeypatch):
 async def test_exception_on_one_row_does_not_stop_the_batch(test_client, monkeypatch):
     a, b, c = await _seed("a"), await _seed("b"), await _seed("c")
 
-    async def _fake(row, dry_run):
+    async def _fake(row, dry_run, **_kw):
         if row["emby_id"] == "b":
             raise RuntimeError("boom")
         return True
@@ -125,7 +125,7 @@ async def test_server_id_is_resolved_from_library(test_client, monkeypatch):
     a = await _seed("a")
     seen = {}
 
-    async def _fake(row, dry_run):
+    async def _fake(row, dry_run, **_kw):
         seen["sid"] = row.get("_server_id")
         return True
     _patch(monkeypatch, _fake)
@@ -145,7 +145,7 @@ async def test_delete_now_also_gets_server_id(test_client, monkeypatch):
     a = await _seed("a")
     seen = {}
 
-    async def _fake(row, dry_run):
+    async def _fake(row, dry_run, **_kw):
         seen["sid"] = row.get("_server_id")
         return True
     _patch(monkeypatch, _fake)

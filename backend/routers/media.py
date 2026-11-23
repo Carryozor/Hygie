@@ -19,7 +19,7 @@ from ..db.repositories import (
     get_pending_for_poster_regen, update_poster,
 )
 from ..deletion import (
-    _delete_media, _load_library_server_map, _refresh_watch_state_before_deletion,
+    _delete_media, _load_batch_config, _load_library_server_map, _refresh_watch_state_before_deletion,
     _rescue_watched_since_queued, record_failure_and_alert,
 )
 from ..rules.legacy_conditions import _get_poster_url
@@ -126,17 +126,21 @@ async def _delete_claimed(media_id: int, row: dict) -> bool:
     the claim is released to 'pending' with the attempt counted.
     """
     finalized = False
+    cfg = None
     try:
         error = "pipeline step failed (see deletion logs)"
         try:
-            ok = await _delete_media(row, False)
+            cfg = await _load_batch_config(False, 0)
+            ok = await _delete_media(
+                row, False, qbit_action=cfg.qbit_action, qbit_tag_val=cfg.qbit_tag,
+            )
         except Exception as e:
             logger.exception("Manual deletion: unexpected error for '%s'", row.get("title", media_id))
             ok, error = False, f"{type(e).__name__}: {e}"
         if ok:
             await update_queue_status(media_id, STATUS_DELETED)
         else:
-            await record_failure_and_alert({**row, "id": media_id}, error)
+            await record_failure_and_alert({**row, "id": media_id}, error, cfg)
         finalized = True
         return ok
     finally:

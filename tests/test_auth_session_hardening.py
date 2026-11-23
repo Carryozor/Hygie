@@ -144,7 +144,7 @@ async def test_rotated_token_inside_grace_window_still_works(env):
     auth, _ = env
     raw = await auth.create_refresh_token("alice")
     await auth.retire_refresh_token(raw, grace_seconds=60)
-    assert await auth.verify_refresh_token(raw) == "alice"
+    assert (await auth.verify_refresh_token(raw))[0] == "alice"
 
 
 async def test_reuse_after_grace_revokes_every_session(env):
@@ -167,7 +167,7 @@ async def test_naturally_expired_token_does_not_revoke_other_sessions(env):
                          (past, auth._hash_token(old)))
         await db.commit()
     assert await auth.verify_refresh_token(old) is None
-    assert await auth.verify_refresh_token(other) == "alice"
+    assert (await auth.verify_refresh_token(other))[0] == "alice"
 
 
 async def test_reuse_detection_does_not_touch_other_users(env):
@@ -178,7 +178,7 @@ async def test_reuse_detection_does_not_touch_other_users(env):
     await auth.retire_refresh_token(stolen, grace_seconds=60)
     await _age_rotation(path, stolen, 600)
     await auth.verify_refresh_token(stolen)
-    assert await auth.verify_refresh_token(bob) == "bob"
+    assert (await auth.verify_refresh_token(bob))[0] == "bob"
 
 
 async def test_reuse_also_invalidates_access_tokens(env):
@@ -239,17 +239,24 @@ def test_ddl_parity_for_session_columns():
 # ── review follow-ups ───────────────────────────────────────────────────────
 
 async def test_refresh_racing_a_logout_all_does_not_leave_a_live_session(env, monkeypatch):
-    """logout-all landing between the version read and the new refresh token."""
+    """logout-all landing right before the new refresh token is minted.
+
+    Rewritten for 4.5.1: the old post-mint re-check no longer exists; the
+    version check now lives inside create_refresh_token_if_version.
+    """
     from fastapi import FastAPI
     from httpx import AsyncClient, ASGITransport
     from backend.routers import auth as auth_router
     auth, path = env
     real_create = auth.create_refresh_token
+    real_if_version = auth_router.create_refresh_token_if_version
+    seen = []
 
-    async def create_then_logout_all(username):
+    async def logout_all_then_create(username, version):
+        seen.append((username, version))
         await auth.invalidate_access_tokens(username)      # the racing logout-all
-        return await real_create(username)
-    monkeypatch.setattr(auth_router, "create_refresh_token", create_then_logout_all)
+        return await real_if_version(username, version)
+    monkeypatch.setattr(auth_router, "create_refresh_token_if_version", logout_all_then_create)
 
     app = FastAPI()
     app.include_router(auth_router.router)
@@ -258,10 +265,11 @@ async def test_refresh_racing_a_logout_all_does_not_leave_a_live_session(env, mo
         c.cookies.set(COOKIE, raw, path="/api/auth")
         r = await c.post("/api/auth/refresh", json={})
         assert r.status_code == 401
+    assert seen == [("alice", 0)]
     async with aiosqlite.connect(path) as db:
-        async with db.execute("SELECT COUNT(*) FROM refresh_tokens WHERE revoked=0 AND token_hash!=?",
+        async with db.execute("SELECT COUNT(*) FROM refresh_tokens WHERE token_hash!=?",
                               (auth._hash_token(raw),)) as cur:
-            assert (await cur.fetchone())[0] == 0           # the freshly minted token was revoked
+            assert (await cur.fetchone())[0] == 0           # no new token was ever inserted
 
 
 async def test_public_upcoming_survives_token_check_failure(monkeypatch):

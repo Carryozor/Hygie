@@ -150,8 +150,38 @@ async def create_refresh_token(username: str) -> str:
     return raw
 
 
-async def verify_refresh_token(raw: str) -> Optional[str]:
-    """Returns username if token is valid, not expired, not revoked. Else None.
+async def create_refresh_token_if_version(username: str, expected_version: int) -> Optional[str]:
+    """Create a refresh token only if the user's token_version is still `expected_version`.
+
+    The first statement is a no-op UPDATE on the user row: it takes the row lock
+    (portable across SQLite/MariaDB, no FOR UPDATE) BEFORE any read, so the
+    version read below is taken after the lock and cannot be stale. A concurrent
+    revoke_all_refresh_tokens (which bumps the version first) either commits
+    before us (we see the new version, return None) or waits for us (and then
+    revokes the row we inserted). Returns None when the session was revoked.
+    """
+    raw    = secrets.token_urlsafe(32)
+    hashed = _hash_token(raw)
+    expires = (datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
+
+    async with get_db() as db:
+        await db.execute("UPDATE users SET token_version = token_version WHERE username=?", (username,))
+        user = await db.fetch_one("SELECT id, token_version FROM users WHERE username=?", (username,))
+        if not user or (user["token_version"] or 0) != expected_version:
+            return None
+        created = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            (user["id"], hashed, expires, created),
+        )
+        await db.commit()
+    return raw
+
+
+async def verify_refresh_token(raw: str) -> Optional[tuple[str, int]]:
+    """Returns (username, token_version) if token is valid, not expired, not revoked. Else None.
+
+    The version is read in the same row snapshot as the token itself.
 
     A token that was already rotated and is presented again after its grace
     window has been replayed (stolen cookie, or a client that kept an old one):
@@ -160,7 +190,7 @@ async def verify_refresh_token(raw: str) -> Optional[str]:
     hashed = _hash_token(raw)
     async with get_db() as db:
         row = await db.fetch_one(
-            """SELECT u.username, rt.expires_at, rt.revoked, rt.rotated_at
+            """SELECT u.username, u.token_version, rt.expires_at, rt.revoked, rt.rotated_at
                FROM refresh_tokens rt
                JOIN users u ON u.id = rt.user_id
                WHERE rt.token_hash = ?""",
@@ -175,7 +205,7 @@ async def verify_refresh_token(raw: str) -> Optional[str]:
     expires = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
     if datetime.now(timezone.utc) > expires:
         return None
-    return row["username"]
+    return row["username"], (row["token_version"] or 0)
 
 
 def _past_rotation_grace(rotated_at: str) -> bool:
@@ -216,16 +246,20 @@ async def revoke_refresh_token(raw: str) -> None:
 
 
 async def revoke_all_refresh_tokens(username: str) -> None:
-    """Revoke all active refresh tokens AND outstanding access tokens of a user."""
+    """Revoke all active refresh tokens AND outstanding access tokens of a user.
+
+    One transaction, lock order users -> refresh_tokens: the version bump comes
+    first, so a concurrent create_refresh_token_if_version either sees it or is
+    waited for (and its freshly inserted row is revoked by the second UPDATE).
+    """
     async with get_db() as db:
-        user = await db.fetch_one("SELECT id FROM users WHERE username=?", (username,))
-        if user:
-            await db.execute(
-                "UPDATE refresh_tokens SET revoked=1 WHERE user_id=? AND revoked=0",
-                (user["id"],),
-            )
-            await db.commit()
-    await invalidate_access_tokens(username)
+        await db.execute("UPDATE users SET token_version = token_version + 1 WHERE username=?", (username,))
+        await db.execute(
+            "UPDATE refresh_tokens SET revoked=1 WHERE revoked=0 "
+            "AND user_id IN (SELECT id FROM users WHERE username=?)",
+            (username,),
+        )
+        await db.commit()
 
 
 async def invalidate_access_tokens(username: str) -> None:

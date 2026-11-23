@@ -5,6 +5,7 @@ Public API:
   sync_emby_collection  — sync collection membership + apply poster overlays
 """
 import asyncio
+import base64
 import logging
 from datetime import timedelta
 from typing import Optional
@@ -17,6 +18,7 @@ from .db.settings_store import get_setting, get_bool_setting, get_int_setting
 from .db.media_servers import get_media_servers
 from .db.logs import add_log
 from .logmsg import lm
+from .media_item_resolver import resolve_server_item_id
 
 from .emby_client import get_client
 from .overlay import _overlay_poster
@@ -75,7 +77,16 @@ async def _get_or_create_collection(
             "system",
         )
         return rc.json().get("Id")
+    await _warn(
+        f"Création de la collection Emby '{collection_name}' échouée (HTTP {rc.status_code})"
+    )
     return None
+
+
+async def _warn(message: str) -> None:
+    """Log a French warning both to the app logger and the UI log table."""
+    logger.warning(message)
+    await add_log("WARN", message, "system")
 
 
 async def _sync_collection_membership(
@@ -84,8 +95,13 @@ async def _sync_collection_membership(
     emby_key: str,
     collection_id: str,
     wanted_ids: set,
+    allow_remove: bool = True,
 ) -> tuple[set, set]:
-    """Add/remove items to match wanted_ids. Returns (added, removed) for logging."""
+    """Add/remove items to match wanted_ids. Returns (added, removed) actually applied.
+
+    A failed add/remove call is logged and its set is returned empty, so the
+    caller never reports changes the server rejected.
+    """
     rc = await client.get(
         f"{emby_url}/Items",
         headers={"X-Emby-Token": emby_key},
@@ -96,21 +112,52 @@ async def _sync_collection_membership(
         current_ids = {item["Id"] for item in rc.json().get("Items", [])}
 
     to_add    = wanted_ids - current_ids
-    to_remove = current_ids - wanted_ids
+    to_remove = (current_ids - wanted_ids) if allow_remove else set()
 
     if to_add:
-        await client.post(
+        ra = await client.post(
             f"{emby_url}/Collections/{collection_id}/Items",
             headers={"X-Emby-Token": emby_key},
             params={"Ids": ",".join(to_add)},
         )
+        if ra.status_code not in (200, 204):
+            await _warn(f"Ajout de {len(to_add)} média(s) à la collection échoué (HTTP {ra.status_code})")
+            to_add = set()
     if to_remove:
-        await client.delete(
+        rd = await client.delete(
             f"{emby_url}/Collections/{collection_id}/Items",
             headers={"X-Emby-Token": emby_key},
             params={"Ids": ",".join(to_remove)},
         )
+        if rd.status_code not in (200, 204):
+            await _warn(f"Retrait de {len(to_remove)} média(s) de la collection échoué (HTTP {rd.status_code})")
+            to_remove = set()
     return to_add, to_remove
+
+
+async def _refresh_primary_image(
+    client: httpx.AsyncClient, emby_url: str, emby_key: str, emby_id: str
+) -> bool:
+    """Drop the Primary image and ask the server to re-download it (no stored poster)."""
+    headers = {"X-Emby-Token": emby_key}
+    rd = await client.delete(f"{emby_url}/Items/{emby_id}/Images/Primary", headers=headers)
+    if rd.status_code not in (200, 204, 404):
+        logger.warning(f"Restore poster: DELETE Primary HTTP {rd.status_code} for {emby_id}")
+        return False
+    rr = await client.post(
+        f"{emby_url}/Items/{emby_id}/Refresh",
+        headers=headers,
+        params={
+            "Recursive": "false",
+            "MetadataRefreshMode": "Default",
+            "ImageRefreshMode": "FullRefresh",
+            "ReplaceAllImages": "false",
+        },
+    )
+    if rr.status_code not in (200, 204):
+        logger.warning(f"Restore poster: Refresh HTTP {rr.status_code} for {emby_id}")
+        return False
+    return True
 
 
 async def _restore_posters_for_removed(
@@ -125,7 +172,14 @@ async def _restore_posters_for_removed(
     for emby_id in removed_ids:
         try:
             poster_url = await get_poster_url_by_emby_id(emby_id) or ""
-            if not poster_url or not poster_url.startswith("http"):
+            if not poster_url:
+                # Consolidated series/seasons have no stored poster: let the
+                # server re-fetch its own Primary image.
+                if await _refresh_primary_image(client, emby_url, emby_key, emby_id):
+                    _invalidate_overlay_cache(emby_id)
+                    await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
+                continue
+            if not poster_url.startswith("http"):
                 continue
             poster_bytes = await guarded_image_get(poster_url)
             if not poster_bytes:
@@ -133,7 +187,7 @@ async def _restore_posters_for_removed(
             resp = await client.post(
                 f"{emby_url}/Items/{emby_id}/Images/Primary",
                 headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                content=poster_bytes,
+                content=base64.b64encode(poster_bytes),
             )
             if resp.status_code in (200, 204):
                 _invalidate_overlay_cache(emby_id)
@@ -191,7 +245,7 @@ async def _apply_overlays(
                 resp = await client.post(
                     f"{emby_url}/Items/{emby_id}/Images/Primary",
                     headers={"X-Emby-Token": emby_key, "Content-Type": "image/jpeg"},
-                    content=modified,
+                    content=base64.b64encode(modified),
                 )
                 if resp.status_code in (200, 204):
                     _overlay_cache[emby_id] = days_left
@@ -205,6 +259,38 @@ async def _apply_overlays(
                 logger.warning(f"Overlay error for {w.get('title', '?')}: {e}")
 
     await asyncio.gather(*[_apply_one(w) for w in wanted])
+
+
+async def _resolve_wanted(wanted: list, server_id: str) -> tuple[list, bool]:
+    """Map queue rows to copies carrying the real server Id, deduplicated by Id.
+
+    On duplicates the row with the closest ``delete_at`` wins. Returns
+    (rows, has_unresolved); unresolved rows are warned about and skipped.
+    """
+    by_id: dict[str, dict] = {}
+    has_unresolved = False
+    for w in wanted:
+        try:
+            real_id = await resolve_server_item_id(w, server_id)
+        except Exception as e:
+            logger.warning(f"Résolution Id échouée pour {w.get('title', '?')}: {e}")
+            real_id = None
+        if not real_id:
+            has_unresolved = True
+            await _warn(
+                f"Collection : impossible de résoudre '{w.get('title', '?')}' "
+                f"sur le serveur média — aucun retrait ce cycle"
+            )
+            continue
+        candidate = {**w, "emby_id": real_id}
+        existing = by_id.get(real_id)
+        if existing is None:
+            by_id[real_id] = candidate
+            continue
+        cand_dt, cur_dt = parse_iso_dt(candidate.get("delete_at")), parse_iso_dt(existing.get("delete_at"))
+        if cand_dt and (cur_dt is None or cand_dt < cur_dt):
+            by_id[real_id] = candidate
+    return list(by_id.values()), has_unresolved
 
 
 async def sync_emby_collection():
@@ -244,11 +330,12 @@ async def sync_emby_collection():
     # corrupt Emby items whose numeric IDs happen to match those rating keys.
     wanted = await get_pending_before_for_server(cutoff.isoformat(), sync_server_id)
 
-    wanted_ids = {w["emby_id"] for w in wanted}
-
     emby_url, emby_key = await get_client(sync_server_id)
     if not emby_url or not emby_key:
         return
+
+    wanted, has_unresolved = await _resolve_wanted(wanted, sync_server_id)
+    wanted_ids = {w["emby_id"] for w in wanted}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -259,7 +346,8 @@ async def sync_emby_collection():
                 return
 
             to_add, to_remove = await _sync_collection_membership(
-                client, emby_url, emby_key, collection_id, wanted_ids
+                client, emby_url, emby_key, collection_id, wanted_ids,
+                allow_remove=not has_unresolved,
             )
 
             overlay_enabled = await get_bool_setting("emby_leaving_soon_overlay")

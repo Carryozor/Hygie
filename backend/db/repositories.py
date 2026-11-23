@@ -460,7 +460,8 @@ async def get_pending_before_for_server(cutoff_iso: str, server_id: str) -> list
     """Return pending rows for a specific server whose delete_at <= cutoff_iso."""
     async with get_db() as db:
         return await db.fetch_all(
-            "SELECT mq.emby_id, mq.title, mq.delete_at, mq.poster_url "
+            "SELECT mq.emby_id, mq.title, mq.delete_at, mq.poster_url, "
+            "mq.sonarr_series_id, mq.season_number, mq.file_path, mq.arr_server_url "
             "FROM media_queue mq JOIN libraries l ON mq.library_id = l.id "
             "WHERE mq.status='pending' AND mq.delete_at <= ? AND l.server_id = ?",
             (cutoff_iso, server_id),

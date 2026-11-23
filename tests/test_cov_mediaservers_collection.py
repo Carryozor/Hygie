@@ -208,28 +208,34 @@ async def test_restore_posters_for_removed_skips_when_fetch_returns_no_bytes(mon
     # point is that a failed fetch is a silent, safe no-op.
 
 
-async def test_restore_posters_for_removed_skips_item_with_no_stored_poster_url():
+async def test_restore_posters_for_removed_refreshes_item_with_no_stored_poster_url(httpx_mock: HTTPXMock):
+    """No media_queue row (or empty poster_url, e.g. consolidated series): the
+    server must re-download its own Primary (DELETE Primary then Refresh)."""
+    httpx_mock.add_response(url=f"{FAKE_URL}/Items/unknown-id/Images/Primary", method="DELETE", status_code=204)
+    httpx_mock.add_response(method="POST", status_code=204)
     from backend.collection import _restore_posters_for_removed
     async with httpx.AsyncClient() as client:
-        # No media_queue row for "unknown-id" -> get_poster_url_by_emby_id returns None
         await _restore_posters_for_removed(client, FAKE_URL, FAKE_KEY, {"unknown-id"})
-    # Must not raise
+    assert [(r.method, r.url.path) for r in httpx_mock.get_requests()] == [
+        ("DELETE", "/Items/unknown-id/Images/Primary"),
+        ("POST", "/Items/unknown-id/Refresh"),
+    ]
 
 
-async def test_restore_posters_for_removed_skips_non_http_poster_url():
+async def test_restore_posters_for_removed_skips_non_http_poster_url(httpx_mock: HTTPXMock):
     from backend.db.engine import get_db
     async with get_db() as db:
         await db.execute(
             """INSERT INTO media_queue
                (emby_id, title, media_type, library_id, library_name, file_path,
                 poster_url, detected_at, delete_at, status)
-               VALUES ('e2', 'T', 'Movie', 'lib1', 'Films', '', '', '2026-01-01', '2026-01-01', 'pending')""",
+               VALUES ('e2', 'T', 'Movie', 'lib1', 'Films', '', 'file:///x.jpg', '2026-01-01', '2026-01-01', 'pending')""",
         )
         await db.commit()
     from backend.collection import _restore_posters_for_removed
     async with httpx.AsyncClient() as client:
         await _restore_posters_for_removed(client, FAKE_URL, FAKE_KEY, {"e2"})
-    # Must not raise, no HTTP call attempted for the poster fetch
+    assert httpx_mock.get_requests() == []  # neither fetch nor upload nor refresh
 
 
 async def test_restore_posters_for_removed_continues_after_one_item_errors(httpx_mock: HTTPXMock):

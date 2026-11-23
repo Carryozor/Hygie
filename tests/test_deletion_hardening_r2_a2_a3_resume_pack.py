@@ -212,21 +212,78 @@ def _history(*pairs):
     return [{"episodeId": e, "downloadId": h.upper(), "eventType": "grabbed"} for e, h in pairs]
 
 
-async def test_sonarr_remaining_counts_files_still_linked(httpx_mock: HTTPXMock):
-    httpx_mock.add_response(url=f"{SURL}/api/v3/history/series?seriesId=5",
-                            json=_history((1, HASH), (2, HASH), (3, HASH), (9, HASH2)))
-    httpx_mock.add_response(url=f"{SURL}/api/v3/episodefile?seriesId=5", json=[
-        {"id": 12, "episodeIds": [2]}, {"id": 13, "episodeIds": [3]}, {"id": 19, "episodeIds": [9]},
-    ])
+SONARR5_EPISODE_KEYS = (
+    "absoluteEpisodeNumber", "airDate", "airDateUtc", "episodeFileId", "episodeNumber",
+    "hasFile", "id", "lastSearchTime", "monitored", "overview", "runtime",
+    "seasonNumber", "seriesId", "title", "tvdbId", "unverifiedSceneNumbering",
+)
+
+
+def _ep(ep_id, has_file, file_id=None):
+    """Episode shaped exactly like Sonarr 5.0.0.3041 /api/v3/episode items."""
+    item = dict.fromkeys(SONARR5_EPISODE_KEYS)
+    item.update(id=ep_id, seriesId=5, hasFile=has_file,
+                episodeFileId=file_id if file_id is not None else (100 + ep_id if has_file else 0))
+    assert set(item) == set(SONARR5_EPISODE_KEYS)
+    return item
+
+
+def _mock_history(httpx_mock, *pairs):
+    httpx_mock.add_response(url=f"{SURL}/api/v3/history/series?seriesId=5", json=_history(*pairs))
+
+
+def _mock_episodes(httpx_mock, payload, status_code=200):
+    httpx_mock.add_response(url=f"{SURL}/api/v3/episode?seriesId=5", json=payload,
+                            status_code=status_code)
+
+
+async def test_remaining_counts_real_sonarr5_episode_payload(httpx_mock: HTTPXMock):
+    _mock_history(httpx_mock, (1, HASH), (2, HASH), (3, HASH), (9, HASH2))
+    _mock_episodes(httpx_mock, [_ep(1, False), _ep(2, True), _ep(3, True), _ep(9, True)])
     assert await sonarr.sonarr_remaining_files_for_hash(5, HASH, url=SURL, key=SKEY) == 2
 
 
 async def test_sonarr_remaining_zero_when_all_files_gone(httpx_mock: HTTPXMock):
-    httpx_mock.add_response(url=f"{SURL}/api/v3/history/series?seriesId=5",
-                            json=_history((1, HASH), (2, HASH)))
-    httpx_mock.add_response(url=f"{SURL}/api/v3/episodefile?seriesId=5",
-                            json=[{"id": 19, "episodeIds": [9]}])
+    _mock_history(httpx_mock, (1, HASH), (2, HASH), (9, HASH2))
+    _mock_episodes(httpx_mock, [_ep(1, False), _ep(2, False), _ep(9, True)])
     assert await sonarr.sonarr_remaining_files_for_hash(5, HASH, url=SURL, key=SKEY) == 0
+
+
+@pytest.mark.parametrize("payload,status", [
+    ({"records": []}, 200),                                  # non-list body
+    ([_ep(1, True), {"id": 2, "seriesId": 5}], 200),         # targeted item lacks both keys
+    ([], 500),                                               # HTTP error
+    ([_ep(9, True), _ep(10, False)], 200),                   # no targeted episode listed
+])
+async def test_remaining_none_when_episode_listing_unusable(httpx_mock: HTTPXMock, payload, status):
+    _mock_history(httpx_mock, (1, HASH), (2, HASH))
+    _mock_episodes(httpx_mock, payload, status)
+    assert await sonarr.sonarr_remaining_files_for_hash(5, HASH, url=SURL, key=SKEY) is None
+
+
+def test_count_episodes_with_file_rules():
+    f = sonarr._count_episodes_with_file
+    assert f([{"id": 1, "hasFile": True}, {"id": 2, "episodeFileId": 7},
+              {"id": 3, "hasFile": False, "episodeFileId": 0}, {"id": 4, "hasFile": True}],
+             {1, 2, 3}) == 2
+    assert f([{"id": 1, "episodeFileId": True}], {1}) is None   # bool is not a file id
+    assert f([{"id": 1, "hasFile": "yes", "episodeFileId": None}], {1}) is None
+    assert f("nope", {1}) is None
+    assert f([], {1}) is None
+    assert f([{"id": 1}], {1}) is None
+    assert f(["junk", {"id": 1, "hasFile": False}], {1}) == 0
+
+
+async def test_shared_pack_blocker_end_to_end_real_payload(httpx_mock: HTTPXMock):
+    from backend.deletion_helpers import _shared_pack_blocker
+    _mock_history(httpx_mock, (1, HASH), (2, HASH), (3, HASH), (9, HASH2))
+    _mock_episodes(httpx_mock, [_ep(1, False), _ep(2, True), _ep(3, True), _ep(9, True)])
+    with patch("backend.arr_clients.sonarr._creds_for_row",
+               new=AsyncMock(return_value=(SURL, SKEY))) as creds:
+        reason = await _shared_pack_blocker(
+            {"title": "S01E01", "media_type": "Episode", "sonarr_series_id": 5}, HASH)
+    creds.assert_awaited()
+    assert reason is not None and "torrent partagé avec 2" in reason
 
 
 async def test_sonarr_remaining_none_when_unverifiable(httpx_mock: HTTPXMock):

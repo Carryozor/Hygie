@@ -630,6 +630,31 @@ async def sonarr_get_torrent_hashes_for_group(
         return set()
 
 
+def _count_episodes_with_file(episodes, episode_ids: set) -> Optional[int]:
+    """Count targeted episodes (``id`` in ``episode_ids``) that still have a file.
+
+    Returns None (caller keeps the torrent) when the answer is unreliable:
+    non-list body, a targeted episode exposing neither ``hasFile`` nor an
+    ``episodeFileId``, or no targeted episode present in the list at all.
+    """
+    if not isinstance(episodes, list):
+        return None
+    seen = 0
+    with_file = 0
+    for ep in episodes:
+        if not isinstance(ep, dict) or ep.get("id") not in episode_ids:
+            continue
+        has_file = ep.get("hasFile")
+        file_id = ep.get("episodeFileId")
+        file_id_ok = isinstance(file_id, int) and not isinstance(file_id, bool)
+        if not isinstance(has_file, bool) and not file_id_ok:
+            return None
+        seen += 1
+        if has_file is True or (file_id_ok and file_id > 0):
+            with_file += 1
+    return with_file if seen else None
+
+
 async def sonarr_remaining_files_for_hash(
     series_id: int, torrent_hash: str, url: str = "", key: str = "",
     arr_server_url: Optional[str] = None,
@@ -637,12 +662,15 @@ async def sonarr_remaining_files_for_hash(
     """Count the episode files still present in Sonarr that came from ``torrent_hash``.
 
     Episodes covered by the download are read from ``/history/series``
-    (``downloadId`` == hash); a file counts when its ``episodeIds`` intersect
-    that set. Used to avoid deleting a season pack's files while other
-    episodes of the pack are still in the library.
+    (``downloadId`` == hash); each is then looked up in ``/episode`` and
+    counts when it still has a file (``hasFile`` / ``episodeFileId``).
+    ``/episodefile`` is NOT usable here: Sonarr 5 does not return
+    ``episodeIds`` on it. Used to avoid deleting a season pack's files while
+    other episodes of the pack are still in the library.
 
     Returns None whenever the answer cannot be established (Sonarr
-    unreachable, HTTP error, no history record for the hash) — callers must
+    unreachable, HTTP error, no history record for the hash, unusable
+    ``/episode`` payload) — callers must
     then assume the torrent is shared.
     """
     url, key = await _creds_for_row(url, key, arr_server_url)
@@ -662,11 +690,11 @@ async def sonarr_remaining_files_for_hash(
                            and (r.get("downloadId") or "").lower() == wanted}
             if not episode_ids:
                 return None
-            rf = await c.get(f"{url}/api/v3/episodefile", headers=_arr_auth(key),
-                             params={"seriesId": series_id})
-            if rf.status_code != 200:
+            re_ = await c.get(f"{url}/api/v3/episode", headers=_arr_auth(key),
+                              params={"seriesId": series_id})
+            if re_.status_code != 200:
                 return None
-            return sum(1 for ef in rf.json() if episode_ids & set(ef.get("episodeIds") or []))
+            return _count_episodes_with_file(re_.json(), episode_ids)
     except Exception as e:
         logger.warning(f"sonarr_remaining_files_for_hash: {e}")
         return None

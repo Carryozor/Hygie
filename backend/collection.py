@@ -96,8 +96,11 @@ async def _sync_collection_membership(
     collection_id: str,
     wanted_ids: set,
     allow_remove: bool = True,
-) -> tuple[set, set]:
-    """Add/remove items to match wanted_ids. Returns (added, removed) actually applied.
+) -> tuple[set, set, set]:
+    """Add/remove items to match wanted_ids.
+
+    Returns (added, removed, members): the changes actually applied and the
+    effective collection membership afterwards.
 
     A failed add/remove call is logged and its set is returned empty, so the
     caller never reports changes the server rejected.
@@ -132,7 +135,8 @@ async def _sync_collection_membership(
         if rd.status_code not in (200, 204):
             await _warn(f"Retrait de {len(to_remove)} média(s) de la collection échoué (HTTP {rd.status_code})")
             to_remove = set()
-    return to_add, to_remove
+    members = (current_ids - to_remove) | to_add
+    return to_add, to_remove, members
 
 
 async def _refresh_primary_image(
@@ -160,6 +164,15 @@ async def _refresh_primary_image(
     return True
 
 
+async def _refresh_and_log(
+    client: httpx.AsyncClient, emby_url: str, emby_key: str, emby_id: str,
+) -> None:
+    """Let the server re-fetch its own Primary image, then log the restore."""
+    if await _refresh_primary_image(client, emby_url, emby_key, emby_id):
+        _invalidate_overlay_cache(emby_id)
+        await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
+
+
 async def _restore_posters_for_removed(
     client: httpx.AsyncClient,
     emby_url: str,
@@ -173,16 +186,16 @@ async def _restore_posters_for_removed(
         try:
             poster_url = await get_poster_url_by_emby_id(emby_id) or ""
             if not poster_url:
-                # Consolidated series/seasons have no stored poster: let the
-                # server re-fetch its own Primary image.
-                if await _refresh_primary_image(client, emby_url, emby_key, emby_id):
-                    _invalidate_overlay_cache(emby_id)
-                    await add_log("INFO", lm("collection.poster_restored", id=emby_id), "system")
+                # Consolidated series/seasons have no stored poster.
+                await _refresh_and_log(client, emby_url, emby_key, emby_id)
                 continue
-            if not poster_url.startswith("http"):
-                continue
-            poster_bytes = await guarded_image_get(poster_url)
+            poster_bytes = (
+                await guarded_image_get(poster_url) if poster_url.startswith("http") else None
+            )
             if not poster_bytes:
+                # No usable stored original: never leave the banner behind, let
+                # the server re-fetch its own Primary image.
+                await _refresh_and_log(client, emby_url, emby_key, emby_id)
                 continue
             resp = await client.post(
                 f"{emby_url}/Items/{emby_id}/Images/Primary",
@@ -225,6 +238,11 @@ async def _apply_overlays(
                 poster_url = w.get("poster_url", "")
                 if poster_url and poster_url.startswith("http"):
                     original_bytes = await guarded_image_get(poster_url)
+                    if not original_bytes:
+                        # CDN unavailable: Emby's current Primary may already
+                        # carry yesterday's banner, re-banding it would stack
+                        # labels. Keep what is there.
+                        return
 
                 if not original_bytes:
                     pr = await client.get(
@@ -345,7 +363,7 @@ async def sync_emby_collection():
             if not collection_id:
                 return
 
-            to_add, to_remove = await _sync_collection_membership(
+            to_add, to_remove, members = await _sync_collection_membership(
                 client, emby_url, emby_key, collection_id, wanted_ids,
                 allow_remove=not has_unresolved,
             )
@@ -355,8 +373,11 @@ async def sync_emby_collection():
                 ui_lang = await get_setting("ui_language") or "fr"
                 if to_remove:
                     await _restore_posters_for_removed(client, emby_url, emby_key, to_remove)
-                if wanted:
-                    await _apply_overlays(client, emby_url, emby_key, wanted, ui_lang)
+                # Only band items that really are in the collection: an item whose
+                # add failed would never be in to_remove, so it would stay banded.
+                members_wanted = [w for w in wanted if w["emby_id"] in members]
+                if members_wanted:
+                    await _apply_overlays(client, emby_url, emby_key, members_wanted, ui_lang)
                 # Delete the collection's cached primary image so Emby rebuilds the
                 # mosaic from the freshly-overlaid item posters (fixes stale day counts).
                 # Brief pause so Emby finishes writing uploaded item posters before

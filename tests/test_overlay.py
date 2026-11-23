@@ -72,3 +72,22 @@ async def test_overlay_poster_async_wrapper_non_blocking():
     assert result is not None
     img = Image.open(io.BytesIO(result))
     assert img.format == "JPEG"
+
+
+def test_overlay_banner_is_opaque_so_rebanding_covers_previous_label():
+    """A banner must fully cover what is under it: re-banding an already-banded
+    poster (same height => same banner area) must not leave a ghost label.
+
+    A saturated green background stands in for a strongly contrasting previous
+    banner; with a translucent fill (alpha 230) the corner stays ~(180,52,25).
+    """
+    from backend.overlay import _overlay_poster_sync
+    w, h = 200, 300
+    for bg in ((255, 255, 255), (0, 255, 0)):
+        buf = io.BytesIO()
+        Image.new("RGB", (w, h), bg).save(buf, format="JPEG", quality=88)
+        first = _overlay_poster_sync(buf.getvalue(), 15, "fr")
+        second = _overlay_poster_sync(first, 3, "en")
+        for out in (first, second):
+            px = Image.open(io.BytesIO(out)).convert("RGB").getpixel((3, h - 3))
+            assert all(abs(c - t) <= 12 for c, t in zip(px, (200, 30, 30))), (bg, px)

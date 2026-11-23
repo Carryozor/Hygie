@@ -288,7 +288,7 @@ async def test_membership_add_failure_warns_and_returns_empty_added(httpx_mock: 
         caplog.at_level(logging.WARNING, logger="backend.collection"),
     ):
         async with httpx.AsyncClient() as client:
-            added, removed = await _sync_collection_membership(
+            added, removed, _members = await _sync_collection_membership(
                 client, FAKE_URL, FAKE_KEY, "col-1", {"a"})
     assert added == set() and removed == set()
     assert "500" in caplog.text
@@ -304,7 +304,7 @@ async def test_membership_remove_failure_warns_and_returns_empty_removed(httpx_m
         caplog.at_level(logging.WARNING, logger="backend.collection"),
     ):
         async with httpx.AsyncClient() as client:
-            added, removed = await _sync_collection_membership(
+            added, removed, _members = await _sync_collection_membership(
                 client, FAKE_URL, FAKE_KEY, "col-1", set())
     assert added == set() and removed == set()
     assert any(c.args[0] == "WARN" for c in m_log.await_args_list)
@@ -315,7 +315,7 @@ async def test_membership_allow_remove_false_never_deletes(httpx_mock: HTTPXMock
     httpx_mock.add_response(method="POST", status_code=204)
     from backend.collection import _sync_collection_membership
     async with httpx.AsyncClient() as client:
-        added, removed = await _sync_collection_membership(
+        added, removed, _members = await _sync_collection_membership(
             client, FAKE_URL, FAKE_KEY, "col-1", {"new"}, allow_remove=False)
     assert added == {"new"} and removed == set()
     assert "DELETE" not in [r.method for r in httpx_mock.get_requests()]
@@ -446,7 +446,7 @@ async def test_sync_dedup_keeps_first_when_later_row_is_not_earlier(httpx_mock: 
         patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=[first, second])),
         patch("backend.collection.resolve_server_item_id", new=AsyncMock(return_value="55")),
         patch("backend.collection._sync_collection_membership",
-              new=AsyncMock(return_value=(set(), set()))) as m_mem,
+              new=AsyncMock(return_value=(set(), set(), set()))) as m_mem,
     ):
         from backend.collection import sync_emby_collection
         await sync_emby_collection()
@@ -494,3 +494,115 @@ async def test_resolve_wanted_dedup_prefers_parsable_delete_at():
         rows, unresolved = await _resolve_wanted([bad, good], "0")
     assert unresolved is False
     assert len(rows) == 1 and rows[0]["delete_at"] == good["delete_at"]
+
+
+# ─── M1: no stacked banners ────────────────────────────────────────────────────
+
+async def test_apply_overlays_http_poster_fetch_failure_does_not_fall_back_to_emby_primary(
+    httpx_mock: HTTPXMock, monkeypatch,
+):
+    from backend.db.utils import now_utc
+    w = {"emby_id": "e1", "title": "T", "delete_at": (now_utc() + timedelta(days=4)).isoformat(),
+         "poster_url": "http://poster.example/x.jpg"}
+    fetch = AsyncMock(return_value=None)
+    monkeypatch.setattr("backend.collection.guarded_image_get", fetch)
+    render = AsyncMock(return_value=b"modified")
+    monkeypatch.setattr("backend.collection._overlay_poster", render)
+
+    from backend.collection import _apply_overlays, _overlay_cache
+    async with httpx.AsyncClient() as client:
+        await _apply_overlays(client, FAKE_URL, FAKE_KEY, [w], "fr")
+
+    fetch.assert_awaited_once_with("http://poster.example/x.jpg")
+    assert httpx_mock.get_requests() == []  # no Primary GET, no upload
+    render.assert_not_awaited()
+    assert "e1" not in _overlay_cache
+
+
+# ─── M2: orphan banners are restored / never applied ───────────────────────────
+
+async def test_restore_non_http_poster_refreshes_primary_instead_of_skipping(httpx_mock: HTTPXMock):
+    await _insert_row("e2", "/api/proxy/poster/0/e2")
+    httpx_mock.add_response(url=f"{FAKE_URL}/Items/e2/Images/Primary", method="DELETE", status_code=204)
+    httpx_mock.add_response(url=re.compile(r".*/Items/e2/Refresh.*"), method="POST", status_code=204)
+    from backend.collection import _restore_posters_for_removed
+    async with httpx.AsyncClient() as client:
+        await _restore_posters_for_removed(client, FAKE_URL, FAKE_KEY, {"e2"})
+    assert [(r.method, r.url.path) for r in httpx_mock.get_requests()] == [
+        ("DELETE", "/Items/e2/Images/Primary"),
+        ("POST", "/Items/e2/Refresh"),
+    ]
+
+
+async def test_restore_failed_http_fetch_refreshes_primary_instead_of_skipping(httpx_mock: HTTPXMock, monkeypatch):
+    await _insert_row("e4", "http://poster.example/x.jpg")
+    fetch = AsyncMock(return_value=None)
+    monkeypatch.setattr("backend.collection.guarded_image_get", fetch)
+    httpx_mock.add_response(url=f"{FAKE_URL}/Items/e4/Images/Primary", method="DELETE", status_code=204)
+    httpx_mock.add_response(url=re.compile(r".*/Items/e4/Refresh.*"), method="POST", status_code=204)
+    from backend.collection import _restore_posters_for_removed
+    async with httpx.AsyncClient() as client:
+        await _restore_posters_for_removed(client, FAKE_URL, FAKE_KEY, {"e4"})
+    fetch.assert_awaited_once()
+    assert [(r.method, r.url.path) for r in httpx_mock.get_requests()] == [
+        ("DELETE", "/Items/e4/Images/Primary"),
+        ("POST", "/Items/e4/Refresh"),
+    ]
+
+
+async def test_membership_returns_effective_members(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json={"Items": [{"Id": "keep"}, {"Id": "old"}]})
+    httpx_mock.add_response(method="POST", status_code=204)
+    httpx_mock.add_response(method="DELETE", status_code=204)
+    from backend.collection import _sync_collection_membership
+    async with httpx.AsyncClient() as client:
+        added, removed, members = await _sync_collection_membership(
+            client, FAKE_URL, FAKE_KEY, "col-1", {"keep", "new"})
+    assert (added, removed, members) == ({"new"}, {"old"}, {"keep", "new"})
+
+
+async def test_membership_failed_add_excluded_from_effective_members(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json={"Items": [{"Id": "keep"}]})
+    httpx_mock.add_response(method="POST", status_code=500)
+    from backend.collection import _sync_collection_membership
+    with patch("backend.collection.add_log", new=AsyncMock()):
+        async with httpx.AsyncClient() as client:
+            _, _, members = await _sync_collection_membership(
+                client, FAKE_URL, FAKE_KEY, "col-1", {"keep", "new"})
+    assert members == {"keep"}
+
+
+async def test_membership_failed_remove_keeps_item_as_member(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json={"Items": [{"Id": "old"}]})
+    httpx_mock.add_response(method="DELETE", status_code=500)
+    from backend.collection import _sync_collection_membership
+    with patch("backend.collection.add_log", new=AsyncMock()):
+        async with httpx.AsyncClient() as client:
+            _, removed, members = await _sync_collection_membership(
+                client, FAKE_URL, FAKE_KEY, "col-1", set())
+    assert removed == set() and members == {"old"}
+
+
+async def test_sync_does_not_overlay_items_whose_collection_add_failed(httpx_mock: HTTPXMock, monkeypatch):
+    await _configure(overlay="true")
+
+    async def fast_sleep(*_a, **_kw):
+        return None
+    monkeypatch.setattr("backend.collection.asyncio.sleep", fast_sleep)
+    rows = [_row("m1")]
+    httpx_mock.add_response(url=re.compile(r".*/Items\?.*SearchTerm.*"), json={"Items": [{"Id": "col-1", "Name": "Soon"}]})
+    httpx_mock.add_response(url=re.compile(r".*/Items\?.*ParentId.*"), json={"Items": []})
+    httpx_mock.add_response(method="POST", url=re.compile(r".*/Collections/col-1/Items.*"), status_code=500)
+    httpx_mock.add_response(method="DELETE", url=f"{FAKE_URL}/Items/col-1/Images/Primary", status_code=204)
+    httpx_mock.add_response(method="POST", url=re.compile(r".*/Items/col-1/Refresh.*"), status_code=204)
+    apply_mock = AsyncMock()
+    with (
+        patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=rows)),
+        patch("backend.collection.add_log", new=AsyncMock()),
+        patch("backend.collection._apply_overlays", new=apply_mock),
+    ):
+        from backend.collection import sync_emby_collection
+        await sync_emby_collection()
+    applied = apply_mock.await_args.args[3] if apply_mock.await_args else []
+    assert applied == []
+    assert not any(r.url.path == "/Items/m1/Images/Primary" for r in httpx_mock.get_requests())

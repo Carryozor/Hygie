@@ -113,7 +113,7 @@ async def test_sync_collection_membership_computes_add_and_remove_diff(httpx_moc
 
     from backend.collection import _sync_collection_membership
     async with httpx.AsyncClient() as client:
-        to_add, to_remove = await _sync_collection_membership(
+        to_add, to_remove, _members = await _sync_collection_membership(
             client, FAKE_URL, FAKE_KEY, "col-1", {"already-there", "new-item"}
         )
     assert to_add == {"new-item"}
@@ -124,7 +124,7 @@ async def test_sync_collection_membership_skips_add_call_when_nothing_to_add(htt
     httpx_mock.add_response(json={"Items": [{"Id": "already-there"}]})
     from backend.collection import _sync_collection_membership
     async with httpx.AsyncClient() as client:
-        to_add, to_remove = await _sync_collection_membership(
+        to_add, to_remove, _members = await _sync_collection_membership(
             client, FAKE_URL, FAKE_KEY, "col-1", {"already-there"}
         )
     assert to_add == set()
@@ -142,7 +142,7 @@ async def test_sync_collection_membership_treats_non_200_listing_as_empty_curren
 
     from backend.collection import _sync_collection_membership
     async with httpx.AsyncClient() as client:
-        to_add, to_remove = await _sync_collection_membership(
+        to_add, to_remove, _members = await _sync_collection_membership(
             client, FAKE_URL, FAKE_KEY, "col-1", {"m1"}
         )
     assert to_add == {"m1"}
@@ -222,7 +222,11 @@ async def test_restore_posters_for_removed_refreshes_item_with_no_stored_poster_
     ]
 
 
-async def test_restore_posters_for_removed_skips_non_http_poster_url(httpx_mock: HTTPXMock):
+async def test_restore_posters_for_removed_refreshes_primary_for_non_http_poster_url(httpx_mock: HTTPXMock):
+    """Non-http stored poster (e.g. /api/proxy/poster/...): the item will never
+    leave the collection again, so the banner must be removed via server refresh."""
+    httpx_mock.add_response(url=f"{FAKE_URL}/Items/e2/Images/Primary", method="DELETE", status_code=204)
+    httpx_mock.add_response(method="POST", status_code=204)
     from backend.db.engine import get_db
     async with get_db() as db:
         await db.execute(
@@ -235,7 +239,10 @@ async def test_restore_posters_for_removed_skips_non_http_poster_url(httpx_mock:
     from backend.collection import _restore_posters_for_removed
     async with httpx.AsyncClient() as client:
         await _restore_posters_for_removed(client, FAKE_URL, FAKE_KEY, {"e2"})
-    assert httpx_mock.get_requests() == []  # neither fetch nor upload nor refresh
+    assert [(r.method, r.url.path) for r in httpx_mock.get_requests()] == [
+        ("DELETE", "/Items/e2/Images/Primary"),
+        ("POST", "/Items/e2/Refresh"),
+    ]
 
 
 async def test_restore_posters_for_removed_continues_after_one_item_errors(httpx_mock: HTTPXMock):
@@ -507,7 +514,7 @@ async def test_sync_emby_collection_overlay_disabled_skips_restore_and_apply():
     await _db_ss.set_setting("emby_leaving_soon_overlay", "false")
     with (
         patch("backend.collection._get_or_create_collection", new=AsyncMock(return_value="col-1")),
-        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=({"m1"}, {"m2"}))),
+        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=({"m1"}, {"m2"}, {"m1"}))),
         patch("backend.collection._restore_posters_for_removed", new=AsyncMock()) as mock_restore,
         patch("backend.collection._apply_overlays", new=AsyncMock()) as mock_apply,
     ):
@@ -530,7 +537,7 @@ async def test_sync_emby_collection_overlay_enabled_restores_and_applies_then_re
 
     with (
         patch("backend.collection._get_or_create_collection", new=AsyncMock(return_value="col-1")),
-        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), {"m2"}))),
+        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), {"m2"}, {"m3"}))),
         patch("backend.collection._restore_posters_for_removed", new=AsyncMock()) as mock_restore,
         patch("backend.collection._apply_overlays", new=AsyncMock()) as mock_apply,
         patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=[{"emby_id": "m3"}])),
@@ -557,7 +564,7 @@ async def test_sync_emby_collection_logs_warning_when_image_delete_http_fails(ht
 
     with (
         patch("backend.collection._get_or_create_collection", new=AsyncMock(return_value="col-1")),
-        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set()))),
+        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set(), set()))),
         patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=[])),
     ):
         from backend.collection import sync_emby_collection
@@ -577,7 +584,7 @@ async def test_sync_emby_collection_logs_warning_when_refresh_http_fails(httpx_m
 
     with (
         patch("backend.collection._get_or_create_collection", new=AsyncMock(return_value="col-1")),
-        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set()))),
+        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set(), set()))),
         patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=[])),
     ):
         from backend.collection import sync_emby_collection
@@ -629,7 +636,7 @@ async def test_sync_emby_collection_swallows_mosaic_refresh_exception(httpx_mock
     with (
         patch("backend.collection.asyncio.sleep", new=fast_sleep),
         patch("backend.collection._get_or_create_collection", new=AsyncMock(return_value="col-1")),
-        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set()))),
+        patch("backend.collection._sync_collection_membership", new=AsyncMock(return_value=(set(), set(), set()))),
         patch("backend.collection.get_pending_before_for_server", new=AsyncMock(return_value=[])),
     ):
         from backend.collection import sync_emby_collection

@@ -29,7 +29,7 @@ def _overlay_poster_sync(image_bytes: bytes, days_left: int, ui_lang: str = "fr"
         banner_h = max(52, int(h * 0.13))
         banner = Image.new("RGBA", (w, banner_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(banner)
-        draw.rectangle([0, 0, w, banner_h], fill=(200, 30, 30, 230))
+        draw.rectangle([0, 0, w, banner_h], fill=(200, 30, 30, 255))  # opaque: a re-banding fully covers the old label
 
         if ui_lang == "en":
             label = f"Deleted in {days_left}d" if days_left > 0 else "Deletion today"

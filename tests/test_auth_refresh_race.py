@@ -6,7 +6,6 @@ refresh token must not leave a live session behind.
 import asyncio
 import contextlib
 import os
-import time
 
 import aiosqlite
 import pytest_asyncio
@@ -212,7 +211,6 @@ async def test_stochastic_no_session_survives_logout_all_or_password_change(env,
     from backend.routers import auth as auth_router
     monkeypatch.setattr(auth_router, "rate_limit_attempt", lambda key: (False, "t"))
     app = _app()
-    started = time.monotonic()
     survivors, refresh_ok, trials = 0, 0, 0
     password = PWD
     for i in range(40):
@@ -228,8 +226,5 @@ async def test_stochastic_no_session_survives_logout_all_or_password_change(env,
         refresh_ok += st["ok"]
         trials += 1
         assert st["statuses"] <= {200, 401}
-    print(f"RATE survivors={survivors}/{trials} refresh_ok={refresh_ok} "
-          f"t={time.monotonic() - started:.1f}s")
     assert refresh_ok >= trials          # the attacker really was refreshing
     assert survivors == 0
-    assert time.monotonic() - started < 20

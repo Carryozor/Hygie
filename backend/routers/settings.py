@@ -251,27 +251,19 @@ async def update_settings(body: SettingsUpdate, request: Request, user: str = De
             except (ValueError, TypeError):
                 pass
     if scan_min is not None or del_min is not None:
-        from .._scheduler_instance import reschedule_jobs
-        reschedule_jobs(scan_minutes=scan_min, deletion_minutes=del_min)
+        from .._schedule_reconcile import apply_interval_changes
+        await apply_interval_changes(scan_minutes=scan_min, deletion_minutes=del_min)
 
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
         if "backup_interval_hours" in updated or "backup_enabled" in updated:
             try:
-                from ..backup import run_backup as _run_backup, _DEFAULT_INTERVAL_HOURS
+                from ..backup import _DEFAULT_INTERVAL_HOURS
+                from .._schedule_reconcile import apply_backup
                 from ..db.settings_store import get_int_setting as _get_int
                 hours = int(incoming.get("backup_interval_hours") or await _get_int("backup_interval_hours", _DEFAULT_INTERVAL_HOURS))
                 enabled = (incoming.get("backup_enabled", "true") == "true")
-                if not enabled or hours <= 0:
-                    try:
-                        scheduler.remove_job("backup_job")
-                    except Exception:
-                        pass
-                else:
-                    scheduler.add_job(
-                        _run_backup, "interval", hours=hours,
-                        id="backup_job", replace_existing=True,
-                    )
+                await apply_backup(scheduler, hours, enabled)
             except Exception as e:
                 logger.warning("settings: failed to reschedule backup_job: %s", e)
 

@@ -14,7 +14,6 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -33,7 +32,8 @@ from .scheduler import (
     sync_plex_overlays,
 )
 from ._lock_backend import cleanup_lock, LockNotAvailable
-from ._scheduler_instance import scheduler, reschedule_jobs  # noqa: F401 (used by routers/settings.py)
+from ._scheduler_instance import scheduler
+from ._schedule_reconcile import read_intervals as _read_intervals
 from . import proxy
 from .version import VERSION
 from .routers import (
@@ -130,42 +130,15 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     return now + timedelta(seconds=30)
 
 
-async def _read_intervals() -> tuple[int, int]:
-    """(scan_min, deletion_min) from settings, clamped to [1, 10080]; defaults on bad values."""
-    try:
-        scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))
-        del_min = max(1, min(10080, int(await get_setting("deletion_check_interval_minutes") or "60")))
-    except (ValueError, TypeError):
-        return 360, 60
-    return scan_min, del_min
-
-
-async def _reconcile_interval(sched, job_id: str, job_type: str, minutes: int) -> None:
-    job = sched.get_job(job_id)
-    if job is None:
-        return
-    if getattr(job.trigger, "interval", None) == timedelta(minutes=minutes):
-        return
-    # Same phase anchor as at startup, so every worker lands on the same next_run_time.
-    next_run = await _job_next_run(job_type, minutes)
-    sched.modify_job(
-        job_id,
-        trigger=IntervalTrigger(minutes=minutes, timezone=sched.timezone),
-        next_run_time=next_run,
-    )
-    logger.info("%s reconciled to %dm interval (changed by another worker)", job_id, minutes)
-
-
 async def _schedule_reconcile(sched=None) -> None:
-    """Apply interval settings changed by another worker (reschedule is local-only).
+    """Apply interval/backup settings changed by another worker (reschedule is local-only).
 
-    Only touches a job whose interval differs from the settings.
+    Only touches a job whose interval differs from the settings, on the anchored
+    trigger shared with the settings route (see _schedule_reconcile.py).
     """
-    sched = sched or scheduler
+    from ._schedule_reconcile import reconcile_schedules
     try:
-        scan_min, del_min = await _read_intervals()
-        await _reconcile_interval(sched, "scan_job", "scan", scan_min)
-        await _reconcile_interval(sched, "deletion_job", "deletion_check", del_min)
+        await reconcile_schedules(sched or scheduler)
     except Exception as e:
         logger.warning(f"_schedule_reconcile: {e}")
 

@@ -168,7 +168,7 @@ async def test_post_settings_rejects_invalid_backup_path(settings_client):
 
 
 async def test_post_settings_reschedules_jobs_when_interval_changes(settings_client):
-    with patch("backend._scheduler_instance.reschedule_jobs") as mock_resched:
+    with patch("backend._schedule_reconcile.apply_interval_changes", new=AsyncMock()) as mock_resched:
         r = await settings_client.post("/api/settings", json={"scan_interval_minutes": "120"})
     assert r.status_code == 200
     mock_resched.assert_called_once()
@@ -178,7 +178,7 @@ async def test_post_settings_reschedules_jobs_when_interval_changes(settings_cli
 
 async def test_post_settings_does_not_reschedule_when_interval_unchanged(settings_client):
     await settings_client.post("/api/settings", json={"scan_interval_minutes": "120"})
-    with patch("backend._scheduler_instance.reschedule_jobs") as mock_resched:
+    with patch("backend._schedule_reconcile.apply_interval_changes", new=AsyncMock()) as mock_resched:
         r = await settings_client.post("/api/settings", json={"scan_interval_minutes": "120"})
     assert r.status_code == 200
     mock_resched.assert_not_called()

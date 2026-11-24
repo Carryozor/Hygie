@@ -112,66 +112,61 @@ async def test_cache_populated_in_bulk(fresh_db):
     assert await _db_ss.get_setting("dry_run") == "true"
 
 
-# ─── reschedule_jobs tests ────────────────────────────────────────────────────
+# ─── apply_interval_changes tests (replaces reschedule_jobs) ──────────────────
 
-def test_reschedule_jobs_calls_scheduler_reschedule_job(monkeypatch):
-    """reschedule_jobs() should forward interval changes to the scheduler."""
-    # reschedule_jobs now lives in _scheduler_instance and uses its own scheduler reference
-    import backend._scheduler_instance as _si
-    import backend.main as _main  # noqa: F401 — ensure main is importable
-    calls = []
-
-    class _FakeScheduler:
-        def reschedule_job(self, job_id, trigger, minutes):
-            calls.append((job_id, trigger, minutes))
-
-    monkeypatch.setattr(_si, "scheduler", _FakeScheduler())
-    _si.reschedule_jobs(scan_minutes=45, deletion_minutes=30)
-
-    assert ("scan_job", "interval", 45) in calls
-    assert ("deletion_job", "interval", 30) in calls
+class _FakeJob:
+    def __init__(self, minutes):
+        from datetime import timedelta
+        self.trigger = type("T", (), {"interval": timedelta(minutes=minutes)})()
 
 
-def test_reschedule_jobs_skips_none_args(monkeypatch):
-    """Passing None for an argument must not attempt to reschedule that job."""
-    import backend._scheduler_instance as _si
-    calls = []
+class _FakeScheduler:
+    timezone = None
 
-    class _FakeScheduler:
-        def reschedule_job(self, job_id, trigger, minutes):
-            calls.append(job_id)
+    def __init__(self, broken=False):
+        self.calls = []
+        self.broken = broken
 
-    monkeypatch.setattr(_si, "scheduler", _FakeScheduler())
-    _si.reschedule_jobs(scan_minutes=10, deletion_minutes=None)
-
-    assert "scan_job" in calls
-    assert "deletion_job" not in calls
-
-
-def test_reschedule_jobs_clamps_to_minimum_one(monkeypatch):
-    """Minutes below 1 must be clamped to 1."""
-    import backend._scheduler_instance as _si
-    calls = []
-
-    class _FakeScheduler:
-        def reschedule_job(self, job_id, trigger, minutes):
-            calls.append((job_id, minutes))
-
-    monkeypatch.setattr(_si, "scheduler", _FakeScheduler())
-    _si.reschedule_jobs(scan_minutes=0, deletion_minutes=-5)
-
-    assert ("scan_job", 1) in calls
-    assert ("deletion_job", 1) in calls
-
-
-def test_reschedule_jobs_swallows_scheduler_errors(monkeypatch):
-    """Exceptions from the scheduler must be caught so the caller is not disrupted."""
-    import backend._scheduler_instance as _si
-
-    class _BrokenScheduler:
-        def reschedule_job(self, *args, **kwargs):
+    def get_job(self, job_id):
+        if self.broken:
             raise RuntimeError("scheduler not running")
+        return _FakeJob(999)
 
-    monkeypatch.setattr(_si, "scheduler", _BrokenScheduler())
-    # Must not raise
-    _si.reschedule_jobs(scan_minutes=60, deletion_minutes=60)
+    def reschedule_job(self, job_id, trigger):
+        self.calls.append((job_id, int(trigger.interval.total_seconds() // 60)))
+
+
+async def test_apply_interval_changes_forwards_both_intervals(monkeypatch):
+    import backend._scheduler_instance as _si
+    from backend._schedule_reconcile import apply_interval_changes
+    sched = _FakeScheduler()
+    monkeypatch.setattr(_si, "scheduler", sched)
+    await apply_interval_changes(scan_minutes=45, deletion_minutes=30)
+    assert ("scan_job", 45) in sched.calls
+    assert ("deletion_job", 30) in sched.calls
+
+
+async def test_apply_interval_changes_skips_none_args(monkeypatch):
+    import backend._scheduler_instance as _si
+    from backend._schedule_reconcile import apply_interval_changes
+    sched = _FakeScheduler()
+    monkeypatch.setattr(_si, "scheduler", sched)
+    await apply_interval_changes(scan_minutes=10, deletion_minutes=None)
+    assert [c[0] for c in sched.calls] == ["scan_job"]
+
+
+async def test_apply_interval_changes_clamps_to_minimum_one(monkeypatch):
+    import backend._scheduler_instance as _si
+    from backend._schedule_reconcile import apply_interval_changes
+    sched = _FakeScheduler()
+    monkeypatch.setattr(_si, "scheduler", sched)
+    await apply_interval_changes(scan_minutes=0, deletion_minutes=-5)
+    assert ("scan_job", 1) in sched.calls
+    assert ("deletion_job", 1) in sched.calls
+
+
+async def test_apply_interval_changes_swallows_scheduler_errors(monkeypatch):
+    import backend._scheduler_instance as _si
+    from backend._schedule_reconcile import apply_interval_changes
+    monkeypatch.setattr(_si, "scheduler", _FakeScheduler(broken=True))
+    await apply_interval_changes(scan_minutes=60, deletion_minutes=60)  # must not raise

@@ -14,7 +14,7 @@ App de nettoyage de médiathèque (Emby/Jellyfin/Plex + *arr). Backend FastAPI (
 | Lint | `make lint-all` (ruff + eslint) |
 | Parité schémas | `make check-schema` — obligatoire après tout changement DB |
 | Build image | `make build` |
-| Déploiement | `git tag vX.Y.Z && git push origin main vX.Y.Z` — le workflow `ci.yml` (trigger `tags: v*`) build + push l'image ghcr et crée la release GitHub depuis `CHANGELOG.md` |
+| Déploiement | `git tag vX.Y.Z && git push origin main vX.Y.Z` — le workflow `ci.yml` (trigger `tags: v*`) rejoue d'abord toute la suite `test.yml` (job `gate`), puis build + push l'image ghcr et crée la release GitHub depuis la section `## [X.Y.Z]` de `CHANGELOG.md`. Un tag `vX.Y.Z-rcN` ne pousse que `:X.Y.Z-rcN` (jamais `:latest`, que la prod suit via Arcane) et crée une pré-release. Un seul tag à la fois : deux CI concurrentes se disputent `:latest`. |
 
 ## Pièges connus — et la règle qui prévient chacun
 

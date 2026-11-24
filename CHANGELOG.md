@@ -8,6 +8,39 @@ All notable changes to Hygie are documented here.
 
 ---
 
+## [4.6.0-rc1] — 2026-11-24
+
+Reliability release: deletion safety, multi-worker behaviour, backups and the release pipeline.
+
+### Fixed
+- **Consolidated (series/season) rows are never deleted on an unknown watch state.** A media-server error on the lookup or on any page of episodes, a series unknown to Sonarr, or a series/season not found on the media server now postpones the row (it stays queued, with a WARN "Suppression reportée … état de visionnage inconnu" in the Logs page) instead of treating it as never watched. A retry of a failed deletion whose series or season was already removed by the previous attempt proceeds (there is nothing left to watch or protect). The episode walk is paginated (no more 500-episode cap) and series are resolved on the row's own Sonarr instance.
+- **No more blind file erasing when qBittorrent's torrent listing is unavailable.** With `delete_files`, the qBittorrent step now fails instead of erasing files without the shared-path and cross-seed checks; the row goes to `error` and is retried with the existing backoff (the media-server and *arr steps replay idempotently). Failed tag/pause actions are now counted in the "torrents kept" note, and consolidated deletions target the Sonarr instance recorded on the row.
+- **A row can no longer stay stuck in `deleting` during a database outage.** Releasing a claim is retried with a bounded backoff by the scheduled job; "Delete now" makes a single release attempt and answers 503 at once when the row cannot be reloaded (404 if it vanished), startup recovery handling the rest.
+- **Pre-migration dumps survive a crash loop.** They are named `hygie_premig_<first pending migration>_<timestamp>`, kept outside the periodic rotation (own cap of 3) and not repeated while a valid dump exists for the same pending migration; they stay listed, verifiable, restorable and deletable, and are ignored when judging backup freshness (a stopped periodic backup is no longer masked).
+- **The stale-backup watchdog can no longer make the daily backup skip** (it now uses its own lock), and a backup that loses the lock race is logged at INFO instead of debug.
+- **The 03:00 cleanup runs once** (cross-worker lock) instead of once per worker, and its failures are logged as warnings in the Logs page instead of being dropped; `run_ignored_cleanup` failures are logged at warning level too.
+- **Scan, deletion and backup interval changes apply to every worker with identical due dates**: the settings route and a 60 s reconcile job share one trigger anchored on the end of the last run, so jobs no longer run twice per interval after a change.
+- **Session refresh:** a superseded refresh settling late no longer lets a third caller rotate the refresh cookie twice.
+- The "torrent removed, files kept" log line is a proper localized message (8 languages) instead of a contradictory hard-coded French suffix.
+
+### Security
+- Media-server create/update/delete responses and the Seerr sync response no longer return API keys in clear.
+- The stored Seerr API key is only reused for the registered Seerr URL (otherwise 400, "re-enter the API key"); Seerr redirects are followed manually, same host and same effective port only (the default http→https upgrade is allowed), with the SSRF guard applied at every hop.
+- A disabled Plex server no longer receives the Plex token through the image proxy.
+- Media-server edits no longer mutate the settings cache before validation and save.
+
+### Changed
+- **Release pipeline:** tag pushes run the full test suite (backend with MariaDB, coverage, lint, schema check, security scans, frontend) before any image is pushed. Pre-release tags (`-rc`) no longer move `:latest` and are published as GitHub pre-releases. Monthly Dependabot updates for Docker and GitHub Actions.
+- The Docker image builds the frontend on Node 24 (same as CI) on a refreshed `python:3.12-slim` (Debian 13); the build fails if `mysqldump` is missing.
+
+### Upgrade notes
+- No migration.
+- Some consolidated rows may be reported as "postponed" with a WARN when their watch state cannot be established (for example a path that differs between Sonarr and the media server); they are retried at every run.
+- With `delete_files` and qBittorrent unreachable at deletion time, the row goes to `error` (with the usual alert) and is retried later instead of erasing files unchecked.
+- Up to 3 `hygie_premig_*` dumps are kept in addition to the periodic rotation.
+
+---
+
 ## [4.5.1] — 2026-11-24
 
 Reliability and security release. Hygie is often published on the Internet (reverse proxy, tunnel): everything below lives in the app itself, no external access gateway required.

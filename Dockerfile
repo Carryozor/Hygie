@@ -1,5 +1,5 @@
 # ── Stage 1: Build Vue frontend ────────────────────────────────────────────────
-FROM node:24-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend/vue/package*.json ./
 RUN npm ci

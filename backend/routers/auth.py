@@ -192,8 +192,15 @@ async def login(body: LoginRequest, request: Request, response: Response):
         # token, only an opaque short-lived single-use challenge.
         challenge = await mfa.create_challenge(user["id"], user.get("token_version") or 0)
         return {"mfa_required": True, "mfa_token": challenge.token, "expires_in": challenge.expires_in}
-    access_token  = await issue_access_token(user["username"])
-    refresh_token = await create_refresh_token(user["username"])
+    # `user` was read before Argon2: pin the session to THAT version so a 2FA
+    # activation / password change landing meanwhile cannot leave a live session.
+    ver = user.get("token_version") or 0
+    refresh_token = await create_refresh_token_if_version(user["username"], ver)
+    if refresh_token is None:
+        await log_auth_event(
+            "login_failure", ip=ip, username=body.username, method="password", reason="version")
+        raise HTTPException(401, "Identifiants invalides")
+    access_token = create_access_token(user["username"], ver)
     _set_refresh_cookie(response, request, refresh_token)
     await log_auth_event("login_success", ip=ip, username=user["username"], method="password", notify=True)
     return {

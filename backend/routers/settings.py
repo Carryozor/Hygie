@@ -17,7 +17,9 @@ from ..db.media_servers import is_plex
 from ..arr_clients import test_radarr, test_sonarr, test_seerr
 from ..qbit_client import test_qbit, test_qui
 from ..discord_client import test_discord, test_discord_alerts, is_valid_discord_webhook
-from ..services.arr_service import test_arr_instance as _test_arr, sync_arr_from_seerr as _sync_arr
+from ..services.arr_service import (
+    test_arr_instance as _test_arr, sync_arr_from_seerr as _sync_arr, _mask_servers,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -325,14 +327,7 @@ async def list_media_servers(user: str = Depends(require_auth)):
     list that other readers (the actual Emby/Jellyfin/Plex clients) rely on
     for the real key.
     """
-    servers = await get_media_servers()
-    masked = []
-    for s in servers:
-        s2 = dict(s)
-        if s2.get("api_key"):
-            s2["api_key"] = _MASK
-        masked.append(s2)
-    return masked
+    return _mask_servers(await get_media_servers())
 
 
 @router.post("/media-servers", status_code=201)
@@ -341,7 +336,7 @@ async def add_media_server(body: MediaServerBody, user: str = Depends(require_au
     url = _validate_server_url(body.url or "", "url")
     await _assert_safe_url(url, "url")
     ext_url = _validate_server_url(body.ext_url, "ext_url")
-    servers = await get_media_servers()
+    servers = [dict(s) for s in await get_media_servers()]
     existing_ids = []
     for s in servers:
         try:
@@ -359,12 +354,14 @@ async def add_media_server(body: MediaServerBody, user: str = Depends(require_au
         "enabled": body.enabled if body.enabled is not None else True,
     })
     await save_media_servers(servers)
-    return {"id": new_id, "servers": servers}
+    return {"id": new_id, "servers": _mask_servers(servers)}
 
 
 @router.put("/media-servers/{server_id}")
 async def update_media_server(server_id: str, body: MediaServerBody, user: str = Depends(require_auth)):
-    servers = await get_media_servers()
+    # Work on copies: the cached list must stay untouched until validation passed
+    # and save_media_servers() succeeded (it invalidates the cache itself).
+    servers = [dict(s) for s in await get_media_servers()]
     for s in servers:
         if str(s.get("id")) == server_id:
             if body.name is not None:
@@ -387,7 +384,7 @@ async def update_media_server(server_id: str, body: MediaServerBody, user: str =
     if body.enabled is False:
         await _purge_server_queue(server_id)
 
-    return {"servers": servers}
+    return {"servers": _mask_servers(servers)}
 
 
 @router.delete("/media-servers/{server_id}")
@@ -397,7 +394,7 @@ async def delete_media_server(server_id: str, user: str = Depends(require_auth))
     await save_media_servers(servers)
     # Also purge pending queue items for the deleted server
     await _purge_server_queue(server_id)
-    return {"servers": servers}
+    return {"servers": _mask_servers(servers)}
 
 
 async def _purge_server_queue(server_id: str) -> int:

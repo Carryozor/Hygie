@@ -172,6 +172,7 @@ async def test_sync_arr_from_seerr_resolves_masked_seerr_key_from_settings(fresh
     from backend.services.arr_service import sync_arr_from_seerr
 
     await set_setting("seerr_api_key", "real-seerr-key")
+    await set_setting("seerr_url", "http://seerr.local")  # 4.6.0: stored key only for the registered URL
 
     with respx.mock:
         route = respx.get("http://seerr.local/api/v1/settings/radarr").mock(

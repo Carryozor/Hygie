@@ -304,8 +304,11 @@ async def test_update_media_server_masked_api_key_does_not_overwrite(settings_cl
     r = await settings_client.put(f"/api/settings/media-servers/{sid}", json={"api_key": "***", "name": "Renamed"})
     assert r.status_code == 200
     updated = next(s for s in r.json()["servers"] if s["id"] == sid)
-    assert updated["api_key"] == "real-secret"
+    assert updated["api_key"] == "***"  # 4.6.0: responses are masked
     assert updated["name"] == "Renamed"
+    from backend.db.media_servers import get_media_servers
+    stored = next(s for s in await get_media_servers() if s["id"] == sid)
+    assert stored["api_key"] == "real-secret"
 
 
 async def test_update_media_server_sets_real_api_key_and_type(settings_client):
@@ -317,8 +320,11 @@ async def test_update_media_server_sets_real_api_key_and_type(settings_client):
     )
     assert r.status_code == 200
     updated = next(s for s in r.json()["servers"] if s["id"] == sid)
-    assert updated["api_key"] == "brand-new-key"
+    assert updated["api_key"] == "***"  # 4.6.0: responses are masked
     assert updated["type"] == "jellyfin"
+    from backend.db.media_servers import get_media_servers
+    stored = next(s for s in await get_media_servers() if s["id"] == sid)
+    assert stored["api_key"] == "brand-new-key"
 
 
 async def test_update_media_server_disabling_purges_queue(settings_client):

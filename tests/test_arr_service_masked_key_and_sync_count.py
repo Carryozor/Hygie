@@ -41,6 +41,7 @@ async def test_masked_key_with_no_stored_match_is_rejected_without_calling_the_s
 
 async def test_seerr_sync_saves_and_reports_when_stored_servers_json_is_corrupt(settings, httpx_mock):
     settings["seerr_api_key"] = "k"
+    settings["seerr_url"] = "http://seerr.test"  # 4.6.0: stored key only for the registered URL
     settings["radarr_servers"] = "{not valid json"
     settings["sonarr_servers"] = "[]"
     httpx_mock.add_response(url="http://seerr.test/api/v1/settings/radarr",

@@ -4,7 +4,7 @@ Extracted from routers/settings.py to separate HTTP concerns from domain logic.
 """
 import json
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -14,6 +14,7 @@ from ..db.utils import TIMEOUT_SHORT, is_loopback_or_link_local
 logger = logging.getLogger(__name__)
 
 _MASK = "***"
+_SEERR_MAX_REDIRECTS = 3
 
 
 async def _reject_if_loopback_or_link_local(url: str) -> str:
@@ -95,6 +96,53 @@ def _build_arr_url(srv: dict) -> str:
     return f"{scheme}://{host}:{port}/{burl}".rstrip("/")
 
 
+def _normalize_base_url(url: str) -> tuple:
+    """(scheme, host, port, path) of a service URL, for same-target comparison."""
+    try:
+        p = urlparse((url or "").strip())
+        scheme = p.scheme.lower()
+        port = p.port or (443 if scheme == "https" else 80)
+        return (scheme, (p.hostname or "").lower(), port, p.path.rstrip("/"))
+    except ValueError:
+        return ("", "", 0, "")
+
+
+async def _seerr_get(client: httpx.AsyncClient, url: str, headers: dict) -> httpx.Response:
+    """GET with manual redirect handling so X-Api-Key never leaves the Seerr host.
+
+    httpx only strips Authorization on a cross-origin redirect, not X-Api-Key,
+    so redirects are followed here: same hostname only (http -> https allowed,
+    https -> http refused), each hop re-validated against the SSRF guard.
+    """
+    origin_host = (urlparse(url).hostname or "").lower()
+    for _ in range(_SEERR_MAX_REDIRECTS + 1):
+        resp = await client.get(url, headers=headers)
+        location = resp.headers.get("location")
+        if resp.status_code not in (301, 302, 303, 307, 308) or not location:
+            return resp
+        target = urljoin(url, location)
+        parsed = urlparse(target)
+        if (parsed.hostname or "").lower() != origin_host:
+            raise ValueError(
+                "Seerr redirige vers un autre hôte : la clé API n'est pas envoyée. "
+                "Saisissez l'URL finale de Seerr."
+            )
+        if parsed.scheme.lower() == "http" and urlparse(url).scheme.lower() == "https":
+            raise ValueError("Seerr redirige de HTTPS vers HTTP : redirection refusée")
+        if parsed.scheme.lower() not in ("http", "https"):
+            raise ValueError("Redirection Seerr vers un schéma non autorisé")
+        blocked = await _reject_if_loopback_or_link_local(target)
+        if blocked:
+            raise ValueError(blocked)
+        url = target
+    raise ValueError("Trop de redirections depuis Seerr")
+
+
+def _mask_servers(servers: list[dict]) -> list[dict]:
+    """Copies of the server dicts with api_key masked (stored data untouched)."""
+    return [{**s, "api_key": _MASK} if s.get("api_key") else dict(s) for s in servers]
+
+
 async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     """Import Radarr/Sonarr instances from Seerr and merge with existing ones.
 
@@ -104,8 +152,12 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     base = (seerr_url or "").rstrip("/")
     key  = seerr_api_key or ""
 
-    # If frontend sent masked value, read real key from DB
+    # If frontend sent masked value, reuse the stored key — but only toward the
+    # registered Seerr URL, otherwise it would be sent to an arbitrary host.
     if key == _MASK or not key:
+        stored_url = await get_setting("seerr_url") or ""
+        if not base or _normalize_base_url(base) != _normalize_base_url(stored_url):
+            raise ValueError("Ressaisissez la clé API Seerr pour cette URL")
         key = await get_setting("seerr_api_key") or ""
 
     if not base or not key:
@@ -120,11 +172,11 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     imported_sonarr: list[dict] = []
 
     async with httpx.AsyncClient(
-        timeout=TIMEOUT_SHORT, follow_redirects=True,
+        timeout=TIMEOUT_SHORT, follow_redirects=False,
         event_hooks={"request": [_ssrf_guard_hook]},
     ) as c:
         for endpoint in ("/api/v1/settings/radarr", "/api/v1/service/radarr"):
-            rr = await c.get(f"{base}{endpoint}", headers=headers)
+            rr = await _seerr_get(c, f"{base}{endpoint}", headers)
             logger.info("Seerr radarr %s → HTTP %s", endpoint, rr.status_code)
             if rr.status_code == 200:
                 data = rr.json()
@@ -140,7 +192,7 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
                     break
 
         for endpoint in ("/api/v1/settings/sonarr", "/api/v1/service/sonarr"):
-            rs = await c.get(f"{base}{endpoint}", headers=headers)
+            rs = await _seerr_get(c, f"{base}{endpoint}", headers)
             logger.info("Seerr sonarr %s → HTTP %s", endpoint, rs.status_code)
             if rs.status_code == 200:
                 data = rs.json()
@@ -177,7 +229,7 @@ async def sync_arr_from_seerr(seerr_url: str, seerr_api_key: str) -> dict:
     await set_setting("sonarr_servers", json.dumps(merged_sonarr))
 
     return {
-        "radarr_servers": merged_radarr,
-        "sonarr_servers": merged_sonarr,
+        "radarr_servers": _mask_servers(merged_radarr),
+        "sonarr_servers": _mask_servers(merged_sonarr),
         "message": f"{added_r} Radarr et {added_s} Sonarr ajouté(s)",
     }

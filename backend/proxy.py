@@ -59,6 +59,8 @@ def _plex_headers(url: str, servers: list) -> dict:
         for srv in servers:
             if (srv.get("type") or "").lower() != "plex" or not srv.get("api_key"):
                 continue
+            if not srv.get("enabled", True):
+                continue  # disabled server: never hand it the token
             sp = urlparse(srv.get("url") or "")
             if (sp.hostname or "").lower() == host and (sp.port or (443 if sp.scheme == "https" else 80)) == port:
                 return {"X-Plex-Token": srv["api_key"]}

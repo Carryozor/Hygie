@@ -8,7 +8,7 @@ All notable changes to Hygie are documented here.
 
 ---
 
-## [4.6.0-rc1] — 2026-11-24
+## [4.6.0] — 2026-11-24
 
 Reliability release: deletion safety, multi-worker behaviour, backups and the release pipeline.
 

@@ -584,8 +584,11 @@ async def backup_status() -> dict:
     if SQLITE_PATH == ":memory:" or not await get_bool_setting("backup_enabled") or interval == 0:
         return base
 
+    # Pre-migration dumps are one-off safety copies, not the periodic chain:
+    # a fresh one must not hide a stopped periodic backup.
     newest = max(
-        (b for b in list_backups(backup_dir) if b["size_bytes"] > 0),
+        (b for b in list_backups(backup_dir)
+         if b["size_bytes"] > 0 and not b["filename"].startswith(_PREMIG_PREFIX)),
         key=lambda b: b["created_at"],
         default=None,
     )

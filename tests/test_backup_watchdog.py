@@ -194,3 +194,27 @@ def test_status_endpoint(test_client, monkeypatch):
 
 def test_status_endpoint_requires_auth(test_client):
     assert test_client.get("/api/backup/status").status_code in (401, 403)
+
+
+async def test_status_ignores_premigration_dumps_for_freshness(env):
+    """A fresh hygie_premig_* must not mask 3 days without a periodic dump."""
+    d, _ = env
+    _dump(d, "hygie_20261121_030000.sql.gz", age_hours=72)
+    _dump(d, "hygie_premig_m018_20261124_100000.sql.gz", age_hours=1)
+    st = await backup_mod.backup_status()
+    assert st["state"] == "stale"
+    assert st["age_hours"] > 70
+
+
+async def test_status_never_when_only_premigration_dumps_exist(env):
+    d, _ = env
+    _dump(d, "hygie_premig_m018_20261124_100000.sql.gz", age_hours=1)
+    assert (await backup_mod.backup_status())["state"] == "never"
+
+
+async def test_premigration_dumps_stay_listed(env):
+    d, _ = env
+    _dump(d, "hygie_premig_m018_20261124_100000.sql.gz", age_hours=1)
+    assert [b["filename"] for b in backup_mod.list_backups(str(d))] == [
+        "hygie_premig_m018_20261124_100000.sql.gz"
+    ]

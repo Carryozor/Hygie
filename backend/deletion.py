@@ -31,6 +31,7 @@ from ._job_state import _deletion_lock
 from ._lock_backend import LockNotAvailable
 from ._job_health import warn_if_job_starved
 from .logmsg import lm
+from .exceptions import MediaServerUnreachable
 
 logger = logging.getLogger(__name__)
 
@@ -52,34 +53,43 @@ def _advance_last_played(row: dict, played: str) -> None:
         row["last_played"] = played
 
 
+class WatchStateUnknown(Exception):
+    """The watch state of a consolidated row could not be established.
+
+    Raised instead of answering "no play": deleting on an unknown state is what
+    caused incident 2026-09-15, so the row is postponed (it stays queued).
+    """
+
+
 async def _consolidated_last_play(row: dict, server_id: str, activity: dict) -> Optional[str]:
     """Most recent play among the episodes a consolidated row stands for.
 
     Consolidated rows carry a synthetic emby_id, so they never appear in the
     activity log themselves. Resolve the Series/Season library item from its
-    on-disk path — the same resolution the deletion pipeline already performs —
-    then look its episodes up in the activity log.
+    on-disk path (on the row's own Sonarr server, like the deletion pipeline),
+    then walk ALL its episodes, page by page, against the activity log.
+
+    Raises WatchStateUnknown when the state cannot be established: media server
+    failing on the lookup or on any page, series unknown to Sonarr, or target
+    not found on the server. A row with no sonarr_series_id has nothing to
+    resolve and answers None.
     """
-    import os
+    from .emby_client import iter_library_items_strict
+    from .media_item_resolver import find_consolidated_target_strict
 
-    from .arr_clients import sonarr_get_series_by_id_any
-    from .emby_client import find_item_by_path, get_items_in_library
-
-    series_id = row.get("sonarr_series_id")
-    if not series_id:
+    if not row.get("sonarr_series_id"):
         return None
-    series      = await sonarr_get_series_by_id_any(int(series_id))
-    series_path = (series or {}).get("path") or ""
-    if row.get("season_number") is not None:
-        season_path = os.path.dirname(row.get("file_path") or "")
-        target = await find_item_by_path(season_path, include_types="Season", server_id=server_id) if season_path else None
-    else:
-        target = await find_item_by_path(series_path, include_types="Series", server_id=server_id) if series_path else None
-    if not target:
-        return None
-
-    episodes, _ = await get_items_in_library(str(target.get("Id")), limit=500, start=0, server_id=server_id)
-    plays = [activity[str(ep.get("Id"))] for ep in episodes if str(ep.get("Id")) in activity]
+    try:
+        target = await find_consolidated_target_strict(row, server_id)
+        if not target:
+            raise WatchStateUnknown("série ou saison introuvable (Sonarr ou serveur média)")
+        plays = []
+        async for ep in iter_library_items_strict(str(target.get("Id")), server_id=server_id):
+            played = activity.get(str(ep.get("Id")))
+            if played:
+                plays.append(played)
+    except MediaServerUnreachable as e:
+        raise WatchStateUnknown(str(e)) from e
     return max(plays) if plays else None
 
 
@@ -127,7 +137,17 @@ async def _refresh_watch_state_before_deletion(rows: list, lib_server_map: dict)
         for row in server_rows:
             emby_id = row.get("emby_id") or ""
             if emby_id.startswith(_CONSOLIDATED_PREFIXES):
-                played = await _consolidated_last_play(row, server_id, activity)
+                try:
+                    played = await _consolidated_last_play(row, server_id, activity)
+                except WatchStateUnknown as e:
+                    title = row.get("title", "?")
+                    logger.warning("Deletion postponed for '%s': watch state unknown: %s", title, e)
+                    await add_log(
+                        "WARN",
+                        f"Suppression reportée : « {title} » — état de visionnage inconnu ({e})",
+                        "deletion",
+                    )
+                    continue
                 if played:
                     consolidated.append(
                         (played, max(int(row.get("view_count") or 0), 1), emby_id, played)
@@ -552,7 +572,7 @@ async def run_ignored_cleanup():
                 purged_rows += count
                 await add_log("INFO", lm("cleanup.retention", n=count, days=retention_days), "system")
     except Exception as e:
-        logger.debug(f"Purge retention: {e}")
+        logger.warning(f"Purge retention: {e}")
 
     # Purge old log entries
     try:
@@ -570,7 +590,7 @@ async def run_ignored_cleanup():
                     purged_rows += count
                     await add_log("INFO", lm("cleanup.logs", n=count, days=log_retention), "system")
     except Exception as e:
-        logger.debug(f"Purge logs: {e}")
+        logger.warning(f"Purge logs: {e}")
 
     # Purge old job_history entries
     try:
@@ -589,7 +609,7 @@ async def run_ignored_cleanup():
                     await db.commit()
                     purged_rows += count
     except Exception as e:
-        logger.debug(f"Purge job_history: {e}")
+        logger.warning(f"Purge job_history: {e}")
 
     # VACUUM + WAL checkpoint — SQLite only (no equivalent on MariaDB)
     if purged_rows > 1000:
@@ -606,7 +626,7 @@ async def run_ignored_cleanup():
                 await loop.run_in_executor(None, _vacuum)
                 await add_log("INFO", lm("cleanup.vacuum", n=purged_rows), "system")
             except Exception as e:
-                logger.debug(f"VACUUM: {e}")
+                logger.warning(f"VACUUM: {e}")
         else:
             logger.debug("VACUUM/WAL checkpoint skipped (dialect: %s)", DIALECT)
 

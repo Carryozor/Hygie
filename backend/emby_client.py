@@ -454,17 +454,27 @@ async def get_play_activity(server_id: str = "0", days: int = 365) -> dict:
     return result
 
 
-async def find_item_by_path(path: str, include_types: str = "Series,Season", server_id: str = "0") -> Optional[dict]:
+async def find_item_by_path(
+    path: str, include_types: str = "Series,Season", server_id: str = "0", *, strict: bool = False,
+) -> Optional[dict]:
     """Find a library item (Series or Season by default) by its exact on-disk path.
 
     Used for consolidated season/series deletions, which have no per-item
     Emby ID stored — the deletion pipeline knows the path (from Sonarr) but
     not which Emby item it corresponds to.
+
+    Default mode swallows every failure and returns None ("not found").
+    ``strict=True`` raises MediaServerUnreachable instead on a missing client,
+    an open breaker, a transport error, a non-200 answer or an unreadable body,
+    so a caller that must not treat "unknown" as "absent" can tell them apart.
+    None then means a genuine "answered, no such item".
     """
     if not path:
         return None
     url, key = await get_client(server_id)
     if not url or not key:
+        if strict:
+            raise MediaServerUnreachable(f"emby:{server_id} is not configured")
         return None
     breaker = _emby_breaker(server_id)
     try:
@@ -489,11 +499,82 @@ async def find_item_by_path(path: str, include_types: str = "Series,Season", ser
                     # handing back an item that gets deleted by the caller.
                     if (item.get("Path") or "").rstrip("/") == wanted:
                         return item
-    except CircuitOpenError:
+            elif strict:
+                raise MediaServerUnreachable(
+                    f"emby:{server_id} item lookup returned HTTP {r.status_code}"
+                )
+    except CircuitOpenError as e:
+        if strict:
+            raise MediaServerUnreachable(
+                f"Circuit breaker OPEN for emby:{server_id} — item lookup unavailable"
+            ) from e
         logger.warning("Circuit breaker OPEN for emby:%s — find_item_by_path skipped", server_id)
+    except MediaServerUnreachable:
+        raise
     except Exception as e:
+        if strict:
+            raise MediaServerUnreachable(f"emby:{server_id} item lookup failed: {e}") from e
         logger.warning(f"find_item_by_path error: {e}")
     return None
+
+
+async def iter_library_items_strict(
+    library_id: str, server_id: str = "0", page_size: int = 500,
+):
+    """Yield every Movie/Episode under ``library_id``, page by page.
+
+    Unlike get_items_in_library() (which answers ``[], 0`` on any failure), a
+    page that cannot be fetched raises MediaServerUnreachable: a partial walk
+    is an unknown result, never a shorter list. Also raised when the server
+    stops returning items before TotalRecordCount is reached.
+    """
+    url, key = await get_client(server_id)
+    if not url or not key:
+        raise MediaServerUnreachable(f"emby:{server_id} is not configured")
+    breaker = _emby_breaker(server_id)
+    start = 0
+    async with httpx.AsyncClient(timeout=TIMEOUT_LONG) as client:
+        while True:
+            params = {
+                "ParentId": library_id,
+                "Recursive": "true",
+                "IncludeItemTypes": "Movie,Episode",
+                "Fields": "Path,DateCreated,ProviderIds",
+                "Limit": page_size,
+                "StartIndex": start,
+            }
+            try:
+                r = await breaker.call(
+                    lambda p=params: http_retry(
+                        lambda: client.get(f"{url}/Items", headers=_auth(key), params=p)
+                    )
+                )
+                if r.status_code != 200:
+                    raise MediaServerUnreachable(
+                        f"emby:{server_id} library page at {start} returned HTTP {r.status_code}"
+                    )
+                body = r.json()
+            except CircuitOpenError as e:
+                raise MediaServerUnreachable(
+                    f"Circuit breaker OPEN for emby:{server_id} — library listing unavailable"
+                ) from e
+            except MediaServerUnreachable:
+                raise
+            except Exception as e:
+                raise MediaServerUnreachable(
+                    f"emby:{server_id} library page at {start} failed: {e}"
+                ) from e
+            items = body.get("Items", [])
+            total = body.get("TotalRecordCount", 0)
+            for item in items:
+                yield item
+            start += len(items)
+            if start >= total:
+                return
+            if not items:
+                raise MediaServerUnreachable(
+                    f"emby:{server_id} library listing stopped at {start}/{total} items"
+                )
 
 
 async def delete_item(item_id: str, server_id: str = "0", *, missing_ok: bool = False) -> bool:

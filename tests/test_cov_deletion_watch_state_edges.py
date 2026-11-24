@@ -37,6 +37,14 @@ async def fresh_db(monkeypatch, tmp_path):
     yield db_path
 
 
+def _pages(episodes):
+    """Stand-in for emby_client.iter_library_items_strict (async generator)."""
+    async def _gen(*args, **kwargs):
+        for ep in episodes:
+            yield ep
+    return _gen
+
+
 def _consolidated_row(**overrides) -> dict:
     base = {
         "id": 1,
@@ -65,19 +73,19 @@ async def test_consolidated_last_play_returns_none_without_series_id():
     assert result is None
 
 
-async def test_consolidated_last_play_returns_none_when_series_not_found_on_media_server():
-    """Sonarr knows the series but it can't be located on the media server —
-    must not raise or fabricate a play date."""
-    from backend.deletion import _consolidated_last_play
+async def test_consolidated_last_play_unknown_when_series_not_found_on_media_server():
+    """D1 (4.6.0): a target that cannot be located is an UNKNOWN watch state,
+    not 'never played' — the row is postponed instead of fabricating a result."""
+    from backend.deletion import WatchStateUnknown, _consolidated_last_play
 
     row = _consolidated_row()
     with (
-        patch("backend.arr_clients.sonarr_get_series_by_id_any",
+        patch("backend.media_item_resolver.sonarr_get_series_by_id_any",
               new=AsyncMock(return_value={"path": "/media/grimm"})),
-        patch("backend.emby_client.find_item_by_path", new=AsyncMock(return_value=None)),
+        patch("backend.media_item_resolver.find_item_by_path", new=AsyncMock(return_value=None)),
+        pytest.raises(WatchStateUnknown),
     ):
-        result = await _consolidated_last_play(row, "0", {})
-    assert result is None
+        await _consolidated_last_play(row, "0", {})
 
 
 async def test_consolidated_last_play_aggregates_max_play_across_episodes():
@@ -89,12 +97,11 @@ async def test_consolidated_last_play_aggregates_max_play_across_episodes():
     episodes = [{"Id": "ep-1"}, {"Id": "ep-2"}, {"Id": "ep-3"}]
     activity = {"ep-1": "2026-09-01T00:00:00+00:00", "ep-2": "2026-09-20T00:00:00+00:00"}
     with (
-        patch("backend.arr_clients.sonarr_get_series_by_id_any",
+        patch("backend.media_item_resolver.sonarr_get_series_by_id_any",
               new=AsyncMock(return_value={"path": "/media/grimm"})),
-        patch("backend.emby_client.find_item_by_path",
+        patch("backend.media_item_resolver.find_item_by_path",
               new=AsyncMock(return_value={"Id": "series-emby-id"})) as mock_find,
-        patch("backend.emby_client.get_items_in_library",
-              new=AsyncMock(return_value=(episodes, 3))),
+        patch("backend.emby_client.iter_library_items_strict", new=_pages(episodes)),
     ):
         result = await _consolidated_last_play(row, "0", activity)
 
@@ -109,12 +116,11 @@ async def test_consolidated_last_play_uses_season_subfolder_for_season_rows():
 
     row = _consolidated_row(season_number=2, file_path="/media/grimm/Season 02/e01.mkv")
     with (
-        patch("backend.arr_clients.sonarr_get_series_by_id_any",
+        patch("backend.media_item_resolver.sonarr_get_series_by_id_any",
               new=AsyncMock(return_value={"path": "/media/grimm"})),
-        patch("backend.emby_client.find_item_by_path",
+        patch("backend.media_item_resolver.find_item_by_path",
               new=AsyncMock(return_value={"Id": "season-emby-id"})) as mock_find,
-        patch("backend.emby_client.get_items_in_library",
-              new=AsyncMock(return_value=([], 0))),
+        patch("backend.emby_client.iter_library_items_strict", new=_pages([])),
     ):
         await _consolidated_last_play(row, "0", {})
 
@@ -128,12 +134,11 @@ async def test_consolidated_last_play_returns_none_when_no_episode_has_a_play():
 
     row = _consolidated_row()
     with (
-        patch("backend.arr_clients.sonarr_get_series_by_id_any",
+        patch("backend.media_item_resolver.sonarr_get_series_by_id_any",
               new=AsyncMock(return_value={"path": "/media/grimm"})),
-        patch("backend.emby_client.find_item_by_path",
+        patch("backend.media_item_resolver.find_item_by_path",
               new=AsyncMock(return_value={"Id": "series-emby-id"})),
-        patch("backend.emby_client.get_items_in_library",
-              new=AsyncMock(return_value=([{"Id": "ep-1"}], 1))),
+        patch("backend.emby_client.iter_library_items_strict", new=_pages([{"Id": "ep-1"}])),
     ):
         result = await _consolidated_last_play(row, "0", {})
     assert result is None

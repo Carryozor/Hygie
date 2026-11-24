@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 _CONSOLIDATED_PREFIXES = ("sonarr-series:", "sonarr-season:")
 
 
-async def resolve_server_item_id(row: dict, server_id: str) -> Optional[str]:
-    """Return the real server Id for ``row``, or None if it cannot be resolved."""
-    emby_id = row.get("emby_id")
-    if not emby_id:
-        return None
-    if not str(emby_id).startswith(_CONSOLIDATED_PREFIXES):
-        return emby_id
+async def _locate_target(row: dict, server_id: str, **find_kwargs) -> Optional[dict]:
+    """Series/Season library item of a consolidated row, or None.
 
+    None when Sonarr does not know the series, the season folder cannot be
+    derived, or the server has no item at that path. ``find_kwargs`` are
+    forwarded to find_item_by_path (``strict=True`` makes a failed lookup
+    raise instead of looking like "not found").
+    """
     series_id = row.get("sonarr_series_id")
     if not series_id:
         return None
@@ -38,10 +38,33 @@ async def resolve_server_item_id(row: dict, server_id: str) -> Optional[str]:
         season_path = os.path.dirname(row.get("file_path") or "")
         if not season_path:
             return None
-        target = await find_item_by_path(season_path, include_types="Season", server_id=server_id)
-    else:
-        target = await find_item_by_path(series_path, include_types="Series", server_id=server_id)
+        return await find_item_by_path(
+            season_path, include_types="Season", server_id=server_id, **find_kwargs
+        )
+    return await find_item_by_path(
+        series_path, include_types="Series", server_id=server_id, **find_kwargs
+    )
 
+
+async def find_consolidated_target_strict(row: dict, server_id: str) -> Optional[dict]:
+    """Like the lookup behind resolve_server_item_id, but a server failure raises.
+
+    Raises MediaServerUnreachable when the media server cannot answer; returns
+    None only when the series/season is genuinely unresolvable (unknown to
+    Sonarr, or no item at that path).
+    """
+    return await _locate_target(row, server_id, strict=True)
+
+
+async def resolve_server_item_id(row: dict, server_id: str) -> Optional[str]:
+    """Return the real server Id for ``row``, or None if it cannot be resolved."""
+    emby_id = row.get("emby_id")
+    if not emby_id:
+        return None
+    if not str(emby_id).startswith(_CONSOLIDATED_PREFIXES):
+        return emby_id
+
+    target = await _locate_target(row, server_id)
     if not target:
         return None
     return str(target["Id"])

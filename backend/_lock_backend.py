@@ -5,7 +5,7 @@ Single-worker (default): AsyncioLockBackend — asyncio.Lock in-process.
 Multi-worker:            MariaDBAdvisoryLockBackend — GET_LOCK() advisory locks.
                          Requires HYGIE_LOCK_BACKEND=mariadb + DATABASE_URL.
 
-Callers import `scan_lock` and `deletion_lock` and use them as async context
+Callers import `scan_lock`, `deletion_lock` and `cleanup_lock` and use them as async context
 managers. In multi-worker mode, `__aenter__` raises `LockNotAvailable` if
 another worker already holds the lock — callers must catch this to skip the
 job for the current cycle (the worker that holds the lock will run it).
@@ -172,6 +172,8 @@ _BACKEND = os.environ.get("HYGIE_LOCK_BACKEND", "asyncio").lower()
 if _BACKEND == "mariadb":
     scan_lock: LockBackend = MariaDBAdvisoryLockBackend("hygie_scan_lock")
     deletion_lock: LockBackend = MariaDBAdvisoryLockBackend("hygie_deletion_lock")
+    cleanup_lock: LockBackend = MariaDBAdvisoryLockBackend("hygie_cleanup_lock")
 else:
     scan_lock = AsyncioLockBackend("scan")
     deletion_lock = AsyncioLockBackend("deletion")
+    cleanup_lock = AsyncioLockBackend("cleanup")

@@ -14,6 +14,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -31,6 +32,7 @@ from .scheduler import (
     sync_emby_collection,
     sync_plex_overlays,
 )
+from ._lock_backend import cleanup_lock, LockNotAvailable
 from ._scheduler_instance import scheduler, reschedule_jobs  # noqa: F401 (used by routers/settings.py)
 from . import proxy
 from .version import VERSION
@@ -59,20 +61,31 @@ from .routers import (
 
 
 
+async def _cleanup_step(name: str, step) -> None:
+    """Run one cleanup step; a failure is visible (WARNING + UI log) but isolated."""
+    try:
+        await step()
+    except Exception as e:
+        logger.warning(f"_internal_cleanup: {name}: {e}")
+        await add_log("WARN", f"Nettoyage de 03:00 : échec de {name} : {e}", "system")
+
+
 async def _internal_cleanup():
-    """Run cleanup jobs silently — no job_history entry, no UI clutter."""
+    """Run cleanup jobs silently — no job_history entry, no UI clutter.
+
+    The cron is registered in every worker: a cross-worker lock makes sure only
+    one of them runs the cycle (the others skip it).
+    """
+    if cleanup_lock.locked():
+        logger.info("_internal_cleanup: cleanup already running, skipping this cycle")
+        return
     try:
-        await run_ignored_cleanup()
-    except Exception as e:
-        logger.debug(f"_internal_cleanup: run_ignored_cleanup: {e}")
-    try:
-        await sync_emby_collection()
-    except Exception as e:
-        logger.debug(f"_internal_cleanup: sync_emby_collection: {e}")
-    try:
-        await sync_plex_overlays()
-    except Exception as e:
-        logger.debug(f"_internal_cleanup: sync_plex_overlays: {e}")
+        async with cleanup_lock:
+            await _cleanup_step("run_ignored_cleanup", run_ignored_cleanup)
+            await _cleanup_step("sync_emby_collection", sync_emby_collection)
+            await _cleanup_step("sync_plex_overlays", sync_plex_overlays)
+    except LockNotAvailable:
+        logger.info("_internal_cleanup: cleanup held by another worker, skipping this cycle")
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -115,6 +128,46 @@ async def _job_next_run(job_type: str, interval_minutes: int) -> datetime:
     except Exception as e:
         logger.debug(f"_job_next_run({job_type}): {e}")
     return now + timedelta(seconds=30)
+
+
+async def _read_intervals() -> tuple[int, int]:
+    """(scan_min, deletion_min) from settings, clamped to [1, 10080]; defaults on bad values."""
+    try:
+        scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))
+        del_min = max(1, min(10080, int(await get_setting("deletion_check_interval_minutes") or "60")))
+    except (ValueError, TypeError):
+        return 360, 60
+    return scan_min, del_min
+
+
+async def _reconcile_interval(sched, job_id: str, job_type: str, minutes: int) -> None:
+    job = sched.get_job(job_id)
+    if job is None:
+        return
+    if getattr(job.trigger, "interval", None) == timedelta(minutes=minutes):
+        return
+    # Same phase anchor as at startup, so every worker lands on the same next_run_time.
+    next_run = await _job_next_run(job_type, minutes)
+    sched.modify_job(
+        job_id,
+        trigger=IntervalTrigger(minutes=minutes, timezone=sched.timezone),
+        next_run_time=next_run,
+    )
+    logger.info("%s reconciled to %dm interval (changed by another worker)", job_id, minutes)
+
+
+async def _schedule_reconcile(sched=None) -> None:
+    """Apply interval settings changed by another worker (reschedule is local-only).
+
+    Only touches a job whose interval differs from the settings.
+    """
+    sched = sched or scheduler
+    try:
+        scan_min, del_min = await _read_intervals()
+        await _reconcile_interval(sched, "scan_job", "scan", scan_min)
+        await _reconcile_interval(sched, "deletion_job", "deletion_check", del_min)
+    except Exception as e:
+        logger.warning(f"_schedule_reconcile: {e}")
 
 
 async def _init_database_and_migrate() -> str:
@@ -192,11 +245,7 @@ async def _schedule_recurring_jobs() -> tuple[int, int]:
     Returns (scan_min, del_min) for the startup log line.
     """
     # Intervals stored in minutes, clamped to [1, 10080]
-    try:
-        scan_min = max(1, min(10080, int(await get_setting("scan_interval_minutes") or "360")))
-        del_min  = max(1, min(10080, int(await get_setting("deletion_check_interval_minutes") or "60")))
-    except (ValueError, TypeError):
-        scan_min, del_min = 360, 60
+    scan_min, del_min = await _read_intervals()
 
     # Preserve countdown across restarts: compute next_run from last job_history entry.
     # If overdue (last run + interval < now), schedule 30s from now so startup is not blocked.
@@ -212,6 +261,10 @@ async def _schedule_recurring_jobs() -> tuple[int, int]:
     scheduler.add_job(
         _internal_cleanup, "cron", hour=3, minute=0, id="internal_cleanup", replace_existing=True
     )
+
+    # Other workers' interval changes (settings reschedule is local to one worker).
+    scheduler.add_job(_schedule_reconcile, "interval", seconds=60,
+                      id="schedule_reconcile", replace_existing=True)
 
     # Backup job — interval from settings, default 24h. 0 or backup_enabled=false = disabled.
     try:

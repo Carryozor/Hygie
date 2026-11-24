@@ -350,7 +350,7 @@ def test_spa_fallback_returns_404_for_unmatched_api_route():
     with TestClient(_spa_only_app()) as client:
         r = client.get("/api/this-route-does-not-exist")
     assert r.status_code == 404
-    assert "API route not found" in r.text
+    assert r.json() == {"detail": "Not Found"}
 
 
 def test_spa_fallback_serves_dist_index_when_present(tmp_path):

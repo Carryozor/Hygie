@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db.settings_store import get_setting, get_bool_setting, get_int_setting
@@ -403,7 +403,7 @@ async def spa_fallback(full_path: str):
     # Return 404 for unmatched /api/ routes instead of silently serving index.html,
     # which would make missing or mistyped API paths very hard to debug.
     if full_path.startswith("api/"):
-        return Response(status_code=404, content=f"API route not found: /{full_path}")
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
     index = os.path.join(_DIST, "index.html")
     if os.path.isfile(index):
         return FileResponse(index, headers={"Cache-Control": "no-store"})

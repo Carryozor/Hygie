@@ -105,17 +105,59 @@ class StartupValidator:
                 break
 
     async def _check_proxy_trust(self, issues: list) -> None:
-        """Warn if a public origin is configured but HYGIE_TRUST_PROXY is not set.
+        """Validate the reverse-proxy trust configuration.
 
-        When behind a reverse proxy (Cloudflare, Nginx, Traefik) without
-        HYGIE_TRUST_PROXY=1, rate limiting uses the proxy IP — shared by all
-        users — instead of the real client IP. Five failed logins from any
-        user will lock out everyone for 5 minutes.
+        Effective trust = union of FORWARDED_ALLOW_IPS (uvicorn) and
+        HYGIE_TRUSTED_PROXIES (Hygie). Without either, rate limiting uses the
+        proxy IP — shared by all users — instead of the real client IP.
         """
-        origins = os.environ.get("HYGIE_ALLOWED_ORIGINS", "")
-        trust_proxy = os.environ.get("HYGIE_TRUST_PROXY", "0").strip()
-        if trust_proxy in ("1", "true", "yes"):
+        from .auth import parse_trusted_proxies
+
+        legacy = os.environ.get("HYGIE_TRUST_PROXY", "0").strip() in ("1", "true", "yes")
+        raw = os.environ.get("HYGIE_TRUSTED_PROXIES", "")
+        nets, invalid = parse_trusted_proxies(raw)
+
+        if os.environ.get("FORWARDED_ALLOW_IPS", "").strip() == "*":
+            issues.append(ValidationIssue(
+                "WARN",
+                "FORWARDED_ALLOW_IPS=* : uvicorn fait confiance à n'importe quel pair, "
+                "l'IP cliente est usurpable via X-Forwarded-For (Hygie ne peut pas le détecter).",
+                "Restreindre FORWARDED_ALLOW_IPS au réseau du reverse proxy (CIDR).",
+            ))
+
+        if invalid:
+            issues.append(ValidationIssue(
+                "CRITICAL",
+                f"HYGIE_TRUSTED_PROXIES contient des entrées invalides : {', '.join(invalid)}.",
+                "Liste d'IP ou de CIDR séparés par des virgules, ex. 172.27.0.0/16.",
+            ))
             return
+
+        if nets:
+            if any(n.prefixlen == 0 for n in nets):
+                issues.append(ValidationIssue(
+                    "WARN",
+                    "HYGIE_TRUSTED_PROXIES contient 0.0.0.0/0 ou ::/0 : tous les pairs sont "
+                    "considérés comme proxies, l'IP cliente devient usurpable.",
+                    "Limiter la liste au réseau réel du reverse proxy.",
+                ))
+            if legacy:
+                issues.append(ValidationIssue(
+                    "WARN",
+                    "HYGIE_TRUST_PROXY ignoré : HYGIE_TRUSTED_PROXIES est défini et prime.",
+                    "Supprimer HYGIE_TRUST_PROXY.",
+                ))
+            return
+
+        if legacy:
+            issues.append(ValidationIssue(
+                "WARN",
+                "HYGIE_TRUST_PROXY=1 fait confiance aux en-têtes de proxy de n'importe quel pair.",
+                "Préférer HYGIE_TRUSTED_PROXIES=<CIDR du reverse proxy> (ex. 172.27.0.0/16).",
+            ))
+            return
+
+        origins = os.environ.get("HYGIE_ALLOWED_ORIGINS", "")
         has_public_origin = any(
             "localhost" not in o and "127.0.0.1" not in o
             for o in origins.split(",")
@@ -126,7 +168,8 @@ class StartupValidator:
                 "WARN",
                 "HYGIE_ALLOWED_ORIGINS contains a public domain but HYGIE_TRUST_PROXY is not set. "
                 "Rate limiting uses the proxy IP (shared by all users) instead of real client IPs.",
-                "Set HYGIE_TRUST_PROXY=1 when behind a trusted reverse proxy (Cloudflare, Nginx, Traefik).",
+                "Set HYGIE_TRUSTED_PROXIES=<proxy CIDR> when behind a trusted reverse proxy "
+                "(Cloudflare, Nginx, Traefik).",
             ))
 
     async def _check_encryption(self, issues: list) -> None:

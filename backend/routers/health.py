@@ -8,7 +8,6 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ..db.engine import get_db, DIALECT
-from ..version import VERSION
 
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
@@ -27,7 +26,6 @@ async def health():
     """Public healthcheck — for Uptime Kuma, Docker, etc."""
     status_info: dict = {
         "status": "healthy",
-        "version": VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

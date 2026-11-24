@@ -1,4 +1,4 @@
-"""Prometheus /metrics endpoint (no auth — scrape-friendly) + JSON /api/metrics."""
+"""Prometheus /metrics endpoint (bearer token required; 404 when none configured) + JSON /api/metrics."""
 import hmac
 import logging
 from datetime import datetime, timezone
@@ -61,14 +61,34 @@ async def _job_lines() -> list:
              "# TYPE hygie_job_last_success gauge", *ok])
 
 
+_warned_no_token = False
+_NO_TOKEN_MSG = (
+    "/metrics désactivé : aucun jeton Prometheus. Paramètres → Général → Jeton Prometheus, "
+    "puis `authorization: {credentials: …}` côté Prometheus."
+)
+
+
+async def _warn_no_token_once() -> None:
+    """One WARN per process (logger + security journal)."""
+    global _warned_no_token
+    if _warned_no_token:
+        return
+    _warned_no_token = True
+    logger.warning(_NO_TOKEN_MSG)
+    from ..db.logs import add_log
+    await add_log("WARN", _NO_TOKEN_MSG, source="security")
+
+
 @router.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics(authorization: Optional[str] = Header(default=None)):
     token = (await get_setting("prometheus_bearer_token") or "").strip()
-    if token:
-        if not authorization or not authorization.startswith("Bearer "):
-            return Response(status_code=401)
-        if not hmac.compare_digest(authorization[7:].encode(), token.encode()):
-            return Response(status_code=403)
+    if not token:
+        await _warn_no_token_once()
+        return Response(status_code=404)
+    if not authorization or not authorization.startswith("Bearer "):
+        return Response(status_code=401)
+    if not hmac.compare_digest(authorization[7:].encode(), token.encode()):
+        return Response(status_code=403)
     counts = await get_status_counts()
     pending = counts.get(STATUS_PENDING, 0)
     deleted = counts.get(STATUS_DELETED, 0)

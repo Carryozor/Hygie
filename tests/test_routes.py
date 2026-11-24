@@ -143,16 +143,9 @@ async def test_health_returns_healthy(client):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] in ("healthy", "degraded")
-    assert "version" in data
+    assert "version" not in data
     assert "database" in data
     assert "scheduler" in data
-
-
-async def test_version_returns_version_string(client):
-    r = await client.get("/api/version")
-    assert r.status_code == 200
-    assert "version" in r.json()
-    assert isinstance(r.json()["version"], str)
 
 
 async def test_index_returns_html(client, tmp_path, monkeypatch):
@@ -516,3 +509,18 @@ async def test_sync_arr_rejects_ftp_scheme(registered_client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 422
+
+
+# Placed last: registered_client creates the user, which would break the
+# "before setup" tests above if requested earlier.
+async def test_version_returns_version_string(registered_client):
+    client, token = registered_client
+    r = await client.get("/api/version", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert "version" in r.json()
+    assert isinstance(r.json()["version"], str)
+
+
+async def test_version_requires_token(client):
+    r = await client.get("/api/version")
+    assert r.status_code == 401

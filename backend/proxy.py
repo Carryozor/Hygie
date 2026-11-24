@@ -136,13 +136,13 @@ _proxy_hits: dict = {}
 def _proxy_rate_limited(request: Request) -> bool:
     """Record this request for the client IP; True when over budget.
 
-    Inactive unless HYGIE_TRUST_PROXY is on: behind a tunnel without it every
+    Inactive unless HYGIE_TRUSTED_PROXIES / HYGIE_TRUST_PROXY is set: behind a tunnel without it every
     visitor shares the tunnel's IP, so one abusive client would exhaust the
     budget for everyone (including the admin's poster grid). The concurrency
     cap still bounds upstream load in that case.
     """
     from . import auth as _auth
-    if not _auth._TRUST_PROXY:
+    if not _auth.proxy_trust_configured():
         return False
     now = time.monotonic()
     cutoff = now - _PROXY_RATE_WINDOW

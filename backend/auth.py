@@ -12,6 +12,7 @@ Public API:
   release_attempt(key, token) -> None      — un-records an attempt on the SUCCESS path
   get_client_ip(request) -> str
 """
+import asyncio
 import hashlib
 import ipaddress
 import os
@@ -535,6 +536,44 @@ def release_attempt(key: str, token) -> None:
 
 
 _warned_untrusted_forwarded_for = False
+_warned_untrusted_headers = False
+_background_tasks: set = set()
+
+_TRUSTED_ENV = "HYGIE_TRUSTED_PROXIES"
+_trusted_cache: tuple = (None, ())
+
+
+def parse_trusted_proxies(raw: str) -> tuple[tuple, list[str]]:
+    """Parse a comma-separated list of IPs/CIDRs. Returns (networks, invalid_entries)."""
+    nets: list = []
+    invalid: list[str] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            invalid.append(item)
+    return tuple(nets), invalid
+
+
+def trusted_networks() -> tuple:
+    """Networks from HYGIE_TRUSTED_PROXIES; () when unset or when any entry is invalid.
+
+    Cached by raw value so tests (and a changed env) are picked up.
+    """
+    global _trusted_cache
+    raw = os.environ.get(_TRUSTED_ENV, "")
+    if _trusted_cache[0] != raw:
+        nets, invalid = parse_trusted_proxies(raw)
+        _trusted_cache = (raw, () if invalid else nets)
+    return _trusted_cache[1]
+
+
+def proxy_trust_configured() -> bool:
+    """True when real client IPs are visible (legacy flag or trusted list)."""
+    return _TRUST_PROXY or bool(trusted_networks())
 
 
 def _valid_ip(value: str) -> Optional[str]:
@@ -545,8 +584,22 @@ def _valid_ip(value: str) -> Optional[str]:
         return None
 
 
+def _normalize_ip(value: str):
+    """ip_address with IPv4-mapped IPv6 collapsed to IPv4; None if invalid."""
+    try:
+        ip = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return None
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return mapped if mapped is not None else ip
+
+
+def _is_trusted(ip, nets: tuple) -> bool:
+    return any(ip in net for net in nets if net.version == ip.version)
+
+
 def _trusted_proxy_ip(request: Request) -> Optional[str]:
-    """Client IP as asserted by a trusted proxy, or None.
+    """Legacy mode (HYGIE_TRUST_PROXY=1, no list): client IP asserted by the proxy, or None.
 
     CF-Connecting-IP (set by the Cloudflare edge, which overwrites any
     client-supplied value) wins. Otherwise the RIGHTMOST valid
@@ -564,13 +617,68 @@ def _trusted_proxy_ip(request: Request) -> Optional[str]:
     return None
 
 
+def _warn_untrusted_headers_once(peer: str) -> None:
+    """One WARN per process (logger + security journal) for proxy headers from an untrusted peer."""
+    global _warned_untrusted_headers
+    if _warned_untrusted_headers:
+        return
+    _warned_untrusted_headers = True
+    msg = (
+        f"En-têtes de proxy (X-Forwarded-For / CF-Connecting-IP) reçus d'un pair non fiable "
+        f"({peer}) : ignorés. Si c'est votre reverse proxy, l'ajouter à {_TRUSTED_ENV}."
+    )
+    logger.warning(msg)
+    try:
+        from .db.logs import add_log
+        task = asyncio.get_running_loop().create_task(add_log("WARN", msg, source="security"))
+    except RuntimeError:
+        return  # no running loop (sync caller): logger warning is enough
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _resolve_with_trusted_list(request: Request, nets: tuple) -> str:
+    """Client IP when HYGIE_TRUSTED_PROXIES is set.
+
+    Same algorithm as uvicorn's ProxyHeadersMiddleware (rightmost untrusted
+    X-Forwarded-For entry), so the result is identical whether or not uvicorn
+    already rewrote request.client.
+    """
+    raw_peer = request.client.host if request.client else None
+    if not raw_peer:
+        return "unknown"
+    peer = _normalize_ip(raw_peer)
+    xff = request.headers.get("X-Forwarded-For")
+    cf = request.headers.get("CF-Connecting-IP")
+    if peer is None or not _is_trusted(peer, nets):
+        if xff or cf:
+            seen = {_normalize_ip(p) for p in (xff or "").split(",")}
+            seen.add(_normalize_ip(cf or ""))
+            if peer not in seen:
+                _warn_untrusted_headers_once(raw_peer)
+        return raw_peer
+    if xff:
+        entries = [e for e in (_normalize_ip(p) for p in xff.split(",")) if e is not None]
+        for ip in reversed(entries):
+            if not _is_trusted(ip, nets):
+                return str(ip)
+        if entries:  # every hop is a trusted proxy: leftmost, as uvicorn does
+            return str(entries[0])
+    if cf and (ip := _valid_ip(cf)):
+        return ip
+    return raw_peer
+
+
 def get_client_ip(request: Request) -> str:
     """Return the client IP for rate limiting.
 
-    Only trusts proxy headers when HYGIE_TRUST_PROXY=1 is set, preventing
-    spoofing attacks on deployments without a reverse proxy.
+    Proxy headers are only honoured from trusted peers: HYGIE_TRUSTED_PROXIES
+    (IP/CIDR list, recommended) or the legacy HYGIE_TRUST_PROXY=1 flag.
     """
     global _warned_untrusted_forwarded_for
+    nets = trusted_networks()
+    if nets:
+        return _resolve_with_trusted_list(request, nets)
     if _TRUST_PROXY:
         ip = _trusted_proxy_ip(request)
         if ip:
@@ -585,6 +693,7 @@ def get_client_ip(request: Request) -> str:
         logger.warning(
             "Requête reçue avec X-Forwarded-For mais HYGIE_TRUST_PROXY n'est pas activé — "
             "le rate limiting utilisera l'IP du proxy (partagée par tous) au lieu de l'IP réelle. "
-            "Si l'app est derrière un reverse proxy/tunnel, définir HYGIE_TRUST_PROXY=1."
+            "Si l'app est derrière un reverse proxy/tunnel, définir HYGIE_TRUSTED_PROXIES "
+            "(ex. 172.27.0.0/16) ou, à défaut, HYGIE_TRUST_PROXY=1."
         )
     return request.client.host if request.client else "unknown"

@@ -154,7 +154,17 @@ fi
 #   runs each job per cycle). WS log streaming uses DB polling (cross-worker safe).
 WORKERS="${WORKERS:-1}"
 
+# HYGIE_TRUSTED_PROXIES (CIDR list) → uvicorn --forwarded-allow-ips, unless the
+# operator already set FORWARDED_ALLOW_IPS (uvicorn reads that variable itself).
+UVICORN_EXTRA=()
+TRUSTED_PROXIES="${HYGIE_TRUSTED_PROXIES:-}"
+TRUSTED_PROXIES="${TRUSTED_PROXIES//[[:space:]]/}"
+if [ -n "$TRUSTED_PROXIES" ] && [ -z "${FORWARDED_ALLOW_IPS:-}" ]; then
+    UVICORN_EXTRA=(--forwarded-allow-ips "$TRUSTED_PROXIES")
+fi
+
 exec uvicorn backend.main:app \
     --host 0.0.0.0 \
     --port 8000 \
-    --workers "${WORKERS}"
+    --workers "${WORKERS}" \
+    ${UVICORN_EXTRA[@]+"${UVICORN_EXTRA[@]}"}

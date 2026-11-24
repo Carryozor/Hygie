@@ -92,7 +92,7 @@ Full deletion pipeline executed in sequence:
 - Startup validation blocks misconfiguration (`WORKERS>1` without MariaDB/advisory lock)
 
 #### 📊 Observability
-- **Prometheus metrics** at `/metrics` (optional bearer token) and JSON at `/api/metrics`
+- **Prometheus metrics** at `/metrics` (bearer token required; 404 until one is set in Settings → General) and JSON at `/api/metrics`
 - **Storage dashboard** — disk usage per Radarr/Sonarr instance (stale-while-revalidate)
 - **Unmonitored items** — list Radarr/Sonarr entries that are unmonitored but still have files
 - **Circuit breakers** — Emby, Plex, Radarr, Sonarr, Seerr; `/health` reports `degraded` when any breaker is open
@@ -221,7 +221,6 @@ curl http://localhost:8000/health
 ```json
 {
   "status": "healthy",
-  "version": "4.3.0",
   "timestamp": "2026-06-13T14:00:00.000000+00:00",
   "database": "ok",
   "scheduler": "3 jobs",
@@ -337,7 +336,7 @@ Pipeline exécuté dans l'ordre :
 - Validation au démarrage : bloque la mauvaise configuration (`WORKERS>1` sans MariaDB)
 
 #### 📊 Observabilité
-- **Métriques Prometheus** sur `/metrics` (token Bearer optionnel) et JSON sur `/api/metrics`
+- **Métriques Prometheus** sur `/metrics` (token Bearer requis ; 404 tant qu un jeton n est pas défini dans Paramètres → Général) et JSON sur `/api/metrics`
 - **Dashboard stockage** — utilisation disque par instance Radarr/Sonarr (cache stale-while-revalidate)
 - **Médias non-monitorés** — liste des entrées Radarr/Sonarr non-monitorées avec fichiers présents
 - **Circuit breakers** — Emby, Plex, Radarr, Sonarr, Seerr ; `/health` passe à `degraded` quand un breaker est ouvert

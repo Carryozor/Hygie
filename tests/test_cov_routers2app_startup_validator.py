@@ -90,13 +90,15 @@ async def test_check_mariadb_defaults_silent_on_strong_password(monkeypatch):
 
 # ─── _check_proxy_trust ──────────────────────────────────────────────────────
 
-async def test_check_proxy_trust_silent_when_trust_proxy_set(monkeypatch):
+async def test_check_proxy_trust_legacy_flag_only_warns_to_migrate(monkeypatch):
     monkeypatch.setenv("HYGIE_ALLOWED_ORIGINS", "https://hygie.example.com")
     monkeypatch.setenv("HYGIE_TRUST_PROXY", "1")
+    monkeypatch.delenv("HYGIE_TRUSTED_PROXIES", raising=False)
     v = StartupValidator()
     issues = []
     await v._check_proxy_trust(issues)
-    assert issues == []
+    assert [i.level for i in issues] == ["WARN"]
+    assert "HYGIE_TRUSTED_PROXIES" in str(issues[0])
 
 
 async def test_check_proxy_trust_warns_on_public_origin_without_trust_flag(monkeypatch):

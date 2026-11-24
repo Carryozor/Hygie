@@ -172,7 +172,7 @@ def test_jobs_history_respects_limit_query_param(test_client):
     assert r2.status_code == 422  # ge=1 constraint
 
 
-def test_version_info_is_public_and_returns_version_string(test_client):
+def test_version_info_returns_version_string_when_authenticated(test_client):
     r = test_client.get("/api/version")
     assert r.status_code == 200
     assert isinstance(r.json()["version"], str) and r.json()["version"]

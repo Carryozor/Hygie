@@ -19,8 +19,8 @@ router = APIRouter(tags=["scheduler"])
 
 
 @router.get("/api/version")
-async def version_info():
-    """Public — version display in UI."""
+async def version_info(user: str = Depends(require_auth)):
+    """Authenticated — version display in UI (not exposed publicly)."""
     return {"version": VERSION}
 
 

@@ -76,7 +76,7 @@ async def test_delete_now_still_503_when_release_also_fails(test_client, monkeyp
     import backend.routers.media as media_mod
     nid = await _seed()
     monkeypatch.setattr(media_mod, "get_by_id", AsyncMock(side_effect=RuntimeError("db down")))
-    monkeypatch.setattr(media_mod, "release_claim", AsyncMock(side_effect=RuntimeError("still down")))
+    monkeypatch.setattr(media_mod, "_release_claim_once", AsyncMock(side_effect=RuntimeError("still down")))
 
     with caplog.at_level(logging.ERROR):
         r = test_client.post(f"/api/media/{nid}/delete-now")
@@ -145,3 +145,24 @@ async def test_release_claim_no_retry_on_clean_outcome(monkeypatch):
     assert await repos.release_claim(nid) is False
 
     sleep.assert_not_awaited()
+
+
+async def test_delete_now_503_after_single_release_attempt_without_waiting(test_client, monkeypatch, caplog):
+    """DB outage: one release attempt, no backoff sleep — startup recovery takes over."""
+    import backend.db.repositories as repos
+    import backend.routers.media as media_mod
+    nid = await _seed()
+    monkeypatch.setattr(media_mod, "get_by_id", AsyncMock(side_effect=RuntimeError("db down")))
+    once = AsyncMock(side_effect=RuntimeError("still down"))
+    sleep = AsyncMock()
+    monkeypatch.setattr(repos, "_release_claim_once", once)
+    monkeypatch.setattr(repos, "_release_sleep", sleep)
+    monkeypatch.setattr(media_mod, "_release_claim_once", once)
+
+    with caplog.at_level(logging.ERROR):
+        r = test_client.post(f"/api/media/{nid}/delete-now")
+
+    assert r.status_code == 503
+    assert once.await_count == 1
+    sleep.assert_not_awaited()
+    assert "Could not release claim" in caplog.text

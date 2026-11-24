@@ -13,7 +13,7 @@ from ..db.engine import get_db
 from ..db.settings_store import get_setting
 from ..db.logs import add_log
 from ..db.repositories import (
-    get_by_id, claim_for_deletion, update_queue_status, release_claim,
+    get_by_id, claim_for_deletion, update_queue_status, release_claim, _release_claim_once,
     delete_by_id, purge_by_status,
     get_status_counts, get_all_for_enrichment, update_enrichment_fields,
     get_pending_for_poster_regen, update_poster,
@@ -152,9 +152,14 @@ async def _delete_claimed(media_id: int, row: dict) -> bool:
 
 
 async def _release_after_failed_reload(media_id: int) -> None:
-    """Hand a just-claimed row back to the queue; never raises."""
+    """Hand a just-claimed row back to the queue; never raises.
+
+    A single attempt, no backoff: the caller is about to answer 503 during a DB
+    outage and must not hang on release_claim's retries. A row left 'deleting'
+    is recovered at the next startup.
+    """
     try:
-        await asyncio.shield(release_claim(media_id))
+        await asyncio.shield(_release_claim_once(media_id))
     except Exception as e:
         logger.error("Could not release claim on queue item %s: %s", media_id, e)
 

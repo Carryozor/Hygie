@@ -128,19 +128,26 @@ async def _false():
 
 @pytest.mark.asyncio
 async def test_backup_before_migrations_runs_backup_when_db_preexists(monkeypatch):
+    # 4.6.0: the pre-migration dump is its own hygie_premig_<first id> dump,
+    # not a forced periodic run_backup() (which the rotation would evict).
     called = {}
 
-    async def _fake_run_backup(force=False):
-        called["force"] = force
-        return "hygie_20260810_100000.db"
+    async def _fake_premig(first_id):
+        called["first_id"] = first_id
+        return "hygie_premig_m999_20260810_100000.db"
+
+    async def _pending():
+        return ["m999", "m1000"]
 
     monkeypatch.setattr(backup_mod, "_db_already_exists", _true)
     monkeypatch.setattr(backup_mod, "get_bool_setting", lambda key: _true())
-    monkeypatch.setattr(backup_mod, "run_backup", _fake_run_backup)
+    monkeypatch.setattr(backup_mod, "_run_premigration_backup", _fake_premig)
+    import backend.db.migrations as mig
+    monkeypatch.setattr(mig, "pending_migration_ids", _pending)
 
     await backup_mod.backup_before_migrations()
 
-    assert called == {"force": True}
+    assert called == {"first_id": "m999"}
 
 
 @pytest.mark.asyncio
@@ -185,12 +192,17 @@ async def test_backup_before_migrations_never_raises_on_backup_failure(monkeypat
     """run_backup() already swallows its own errors (returns None), but this
     wiring must stay fail-open even if that contract is ever violated —
     startup must never crash because a safety backup failed."""
-    async def _raising_run_backup(force=False):
+    async def _raising(first_id):
         raise RuntimeError("disk full")
+
+    async def _pending():
+        return ["m999"]
 
     monkeypatch.setattr(backup_mod, "_db_already_exists", _true)
     monkeypatch.setattr(backup_mod, "get_bool_setting", lambda key: _true())
-    monkeypatch.setattr(backup_mod, "run_backup", _raising_run_backup)
+    monkeypatch.setattr(backup_mod, "_run_premigration_backup", _raising)
+    import backend.db.migrations as mig
+    monkeypatch.setattr(mig, "pending_migration_ids", _pending)
 
     await backup_mod.backup_before_migrations()  # must not raise
 
@@ -236,14 +248,14 @@ async def test_backup_when_a_migration_is_pending(monkeypatch):
     async def _pending():
         return ["m999"]
 
-    async def _backup(**_):
-        calls.append("backup")
+    async def _backup(first_id):
+        calls.append(first_id)
 
     monkeypatch.setattr(backup_mod, "_db_already_exists", _exists)
     monkeypatch.setattr(backup_mod, "get_bool_setting", _enabled)
-    monkeypatch.setattr(backup_mod, "run_backup", _backup)
+    monkeypatch.setattr(backup_mod, "_run_premigration_backup", _backup)
     import backend.db.migrations as mig
     monkeypatch.setattr(mig, "pending_migration_ids", _pending)
 
     await backup_mod.backup_before_migrations()
-    assert calls == ["backup"]
+    assert calls == ["m999"]

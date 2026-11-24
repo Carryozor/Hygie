@@ -77,6 +77,29 @@ async def warn_if_job_starved(
     return age_minutes
 
 
+_WATCHDOG_LOCK_NAME = "hygie_backup_watchdog_lock"
+_watchdog_guard_cls = None
+
+
+def _watchdog_lock():
+    """Guard private to the watchdog: its own advisory lock and in-process flag.
+
+    It must never share hygie_backup_lock / _BackupGuard._busy with run_backup:
+    the 6 h watchdog and the 24 h backup are anchored on the same start, so
+    they collide daily and the loser used to skip silently.
+    """
+    global _watchdog_guard_cls
+    if _watchdog_guard_cls is None:
+        from . import backup
+
+        class _WatchdogGuard(backup._BackupGuard):
+            _busy = False  # own flag: the class attribute is what is shared
+            _LOCK_NAME = _WATCHDOG_LOCK_NAME
+
+        _watchdog_guard_cls = _WatchdogGuard
+    return _watchdog_guard_cls()
+
+
 _BACKUP_ALERT_KEY = "backup_stale_alert_ts"
 _BACKUP_ALERT_EVERY_S = 24 * 3600
 
@@ -86,13 +109,13 @@ async def warn_if_backup_stale() -> bool:
 
     Returns True when an alert was raised. `never` (fresh install, first dump
     not yet due) stays silent; so does a disabled backup. The throttle lives in
-    the settings table and the check runs under the backup guard, so the two
+    the settings table and the check runs under its own guard, so the two
     uvicorn workers cannot both alert.
     """
     from . import backup
 
     try:
-        async with backup._backup_lock():
+        async with _watchdog_lock():
             status = await backup.backup_status()
             if status["state"] != "stale":
                 return False

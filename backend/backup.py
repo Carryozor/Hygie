@@ -12,6 +12,7 @@ import gzip
 import logging
 import os
 import posixpath
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -44,6 +45,13 @@ _FORBIDDEN_BACKUP_PREFIXES = (
 )
 
 _BACKUP_LOCK_NAME = "hygie_backup_lock"
+
+# Pre-migration safety dumps live beside the periodic ones but outside their
+# rotation: hygie_premig_<first pending migration id>_<ts>.<ext>. The hygie_
+# prefix keeps them visible to list_backups() and to the verify/delete routes.
+_PREMIG_PREFIX = "hygie_premig_"
+_PREMIG_MAX_KEPT = 3
+_BACKUP_GLOBS = ("hygie_*.db", "hygie_*.sql", "hygie_*.sql.gz")
 
 
 def _validate_backup_path(path: str) -> None:
@@ -286,12 +294,41 @@ async def backup_before_migrations() -> None:
     # Every uvicorn worker runs startup: without this, each restart would dump
     # the DB once per worker even when there is nothing to migrate.
     from .db import migrations
-    if not await migrations.pending_migration_ids():
+    pending = await migrations.pending_migration_ids()
+    if not pending:
         return
     try:
-        await run_backup(force=True)
+        await _run_premigration_backup(pending[0])
     except Exception as e:
         logger.error("Pre-migration backup failed, continuing startup anyway: %s", e)
+
+
+async def _run_premigration_backup(first_pending_id: str) -> Optional[str]:
+    """Dump hygie_premig_<id>_<ts>, unless a valid one already exists for this id.
+
+    A migration that crashes the boot is retried by the orchestrator (and by
+    every uvicorn worker): one dump per first-pending id is enough, otherwise
+    the loop evicts the older restore points.
+    """
+    if SQLITE_PATH == ":memory:":
+        return None
+    backup_dir, _, _ = await _backup_settings()
+    try:
+        _validate_backup_path(backup_dir)
+    except ValueError as e:
+        logger.error("Pre-migration backup aborted — invalid backup_path: %s", e)
+        await add_log("ERROR", f"Backup aborted: {e}", "system")
+        return None
+    try:
+        async with _backup_lock():
+            existing = await _valid_premigration_dump(backup_dir, first_pending_id)
+            if existing:
+                logger.info("Pre-migration dump %s already exists — not repeating", existing)
+                return existing
+            return await _create_backup(backup_dir, 0, premigration_id=first_pending_id)
+    except LockNotAvailable:
+        logger.info("Pre-migration backup: another run holds the backup lock — skipping")
+        return None
 
 
 # ─── Cross-worker exclusion ─────────────────────────────────────────────────────
@@ -306,19 +343,21 @@ class _BackupGuard:
     """
 
     _busy = False
+    _LOCK_NAME = _BACKUP_LOCK_NAME
 
     def __init__(self) -> None:
-        self._remote = MariaDBAdvisoryLockBackend(_BACKUP_LOCK_NAME) if DIALECT == "mariadb" else None
+        self._remote = MariaDBAdvisoryLockBackend(self._LOCK_NAME) if DIALECT == "mariadb" else None
 
     async def __aenter__(self):
-        if _BackupGuard._busy:
-            raise LockNotAvailable(_BACKUP_LOCK_NAME)
-        _BackupGuard._busy = True
+        cls = type(self)
+        if cls._busy:
+            raise LockNotAvailable(self._LOCK_NAME)
+        cls._busy = True
         try:
             if self._remote is not None:
                 await self._remote.__aenter__()
         except BaseException:
-            _BackupGuard._busy = False
+            cls._busy = False
             raise
         return self
 
@@ -327,7 +366,7 @@ class _BackupGuard:
             if self._remote is not None:
                 await self._remote.__aexit__(*_)
         finally:
-            _BackupGuard._busy = False
+            type(self)._busy = False
 
 
 class _NullLock:
@@ -359,15 +398,16 @@ def _verify_backup_file(path: str) -> bool:
         return False
 
 
-def _prune_old_backups(backup_dir: str, retention: int, keep: str) -> None:
-    """Delete the oldest backups beyond retention; never touches `keep`."""
+def _dump_files(backup_dir: str) -> list[Path]:
     d = Path(backup_dir)
-    all_backups = sorted(
-        [p for pat in ("hygie_*.db", "hygie_*.sql", "hygie_*.sql.gz") for p in d.glob(pat)],
-        key=lambda p: p.stat().st_mtime,
-    )
-    excess = max(0, len(all_backups) - retention)
-    for old in [p for p in all_backups if p.name != keep][:excess]:
+    return [p for pat in _BACKUP_GLOBS for p in d.glob(pat)]
+
+
+def _prune_oldest(files: list[Path], limit: int, keep: str) -> None:
+    """Delete the oldest of `files` beyond `limit`; never touches `keep`."""
+    ordered = sorted(files, key=lambda p: p.stat().st_mtime)
+    excess = max(0, len(ordered) - limit)
+    for old in [p for p in ordered if p.name != keep][:excess]:
         try:
             old.unlink()
             logger.debug("Backup pruned: %s", old.name)
@@ -375,11 +415,57 @@ def _prune_old_backups(backup_dir: str, retention: int, keep: str) -> None:
             logger.warning("Prune backup error: %s", e)
 
 
-async def _create_backup(backup_dir: str, retention: int) -> Optional[str]:
-    """Write, verify, log and prune. Runs while holding the backup guard."""
+def _prune_old_backups(backup_dir: str, retention: int, keep: str) -> None:
+    """Periodic rotation: pre-migration dumps neither count nor get deleted."""
+    _prune_oldest(
+        [p for p in _dump_files(backup_dir) if not p.name.startswith(_PREMIG_PREFIX)],
+        retention, keep,
+    )
+
+
+def _prune_premigration_backups(backup_dir: str, keep: str) -> None:
+    """Own cap for the pre-migration dumps (periodic dumps are never touched)."""
+    _prune_oldest(
+        [p for p in _dump_files(backup_dir) if p.name.startswith(_PREMIG_PREFIX)],
+        _PREMIG_MAX_KEPT, keep,
+    )
+
+
+def _premig_slug(migration_id: str) -> str:
+    """Filename-safe id; '_' is mapped too so `hygie_premig_<id>_` is unambiguous."""
+    return re.sub(r"[^A-Za-z0-9-]", "-", migration_id)
+
+
+async def _valid_premigration_dump(backup_dir: str, migration_id: str) -> Optional[str]:
+    """Name of a restorable pre-migration dump for this first pending id, if any."""
+    prefix = f"{_PREMIG_PREFIX}{_premig_slug(migration_id)}_"
+    candidates = sorted(
+        (p for p in _dump_files(backup_dir) if p.name.startswith(prefix)),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
+    loop = asyncio.get_running_loop()
+    for p in candidates:
+        if not _verify_backup_file(str(p)):
+            continue
+        verdict = await loop.run_in_executor(None, verify_backup_content, str(p))
+        if verdict["ok"]:
+            return p.name
+    return None
+
+
+async def _create_backup(
+    backup_dir: str, retention: int, premigration_id: Optional[str] = None,
+) -> Optional[str]:
+    """Write, verify, log and prune. Runs while holding the backup guard.
+
+    With `premigration_id` the dump is named hygie_premig_<id>_<ts> and pruned
+    by its own cap instead of the periodic rotation.
+    """
     Path(backup_dir).mkdir(parents=True, exist_ok=True)
     _purge_stale_parts(backup_dir)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    if premigration_id is not None:
+        ts = f"premig_{_premig_slug(premigration_id)}_{ts}"
     try:
         if DIALECT == "sqlite":
             filename = await _sqlite_backup(backup_dir, ts)
@@ -417,7 +503,10 @@ async def _create_backup(backup_dir: str, retention: int) -> Optional[str]:
         return None
 
     await add_log("INFO", lm("backup.done", filename=filename), "system")
-    _prune_old_backups(backup_dir, retention, keep=filename)
+    if premigration_id is None:
+        _prune_old_backups(backup_dir, retention, keep=filename)
+    else:
+        _prune_premigration_backups(backup_dir, keep=filename)
     return filename
 
 
@@ -449,7 +538,7 @@ async def run_backup(force: bool = False) -> Optional[str]:
         async with _backup_lock():
             return await _create_backup(backup_dir, retention)
     except LockNotAvailable:
-        logger.debug("run_backup: another run holds the backup lock — skipping")
+        logger.info("run_backup: another run holds the backup lock — skipping")
         return None
 
 

@@ -70,21 +70,30 @@
         <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.discord.errorThreshold') }}</label>
         <input v-model.number="form.discord_alert_error_threshold" type="number" min="0" class="field" />
       </div>
+      <div data-test="login-alert" class="flex items-center justify-between py-2 px-3 bg-[var(--bg3)] rounded-lg">
+        <div>
+          <div class="text-sm">{{ t('settings.discord.alerts.loginSuccess') }}</div>
+          <div class="text-xs text-[var(--muted)]">{{ t('settings.discord.alerts.loginSuccessHelp') }}</div>
+        </div>
+        <ToggleSlider :model-value="loginAlertEnabled" @update:model-value="v => props.form.discord_alert_login_success = String(v)" />
+      </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ServiceIcon from '@/components/ui/ServiceIcon.vue'
 import TestBtn from '@/components/ui/TestBtn.vue'
 import AlertRow from './AlertRow.vue'
+import ToggleSlider from '@/components/ui/ToggleSlider.vue'
 import { isMasked, revealSetting } from '@/composables/useRevealSetting'
 
 const { t } = useI18n()
 const props = defineProps({ form: { type: Object, required: true } })
 
+const loginAlertEnabled = computed(() => [true, 'true'].includes(props.form.discord_alert_login_success))
 const showWebhook = ref(false)
 const showAlerts  = ref(false)
 

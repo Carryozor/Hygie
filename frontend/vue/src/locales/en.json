@@ -62,7 +62,21 @@
     "changePassword": "Change Password",
     "currentPassword": "Current Password",
     "newPassword": "New Password",
-    "support": "Support"
+    "support": "Support",
+    "mfa": {
+      "title": "Two-step verification",
+      "codeLabel": "Authenticator app code",
+      "codeHint": "Enter the 6-digit code shown by your app.",
+      "backupLabel": "Backup code",
+      "backupHint": "Enter one of your backup codes. Each code works only once.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Verify",
+      "verifying": "Verifying...",
+      "back": "Back",
+      "useBackup": "Use a backup code",
+      "useTotp": "Use the app code",
+      "genericError": "Verification failed, please try again."
+    }
   },
   "sidebar": {
     "dryRun": "Dry Run",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Database"
+      "database": "Database",
+      "security": "Security"
     },
     "saveError": "Save failed",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Password (optional)",
         "passwordHelp": "If set, visitors will need to enter this password to access the dashboard."
+      },
+      "prometheus": {
+        "title": "Prometheus metrics",
+        "token": "Prometheus token (Bearer)",
+        "placeholder": "Leave empty to disable /metrics",
+        "help": "Without a token, the /metrics endpoint answers 404. Use the same token in Prometheus' authorization section."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Alerts webhook (critical errors)",
         "deletionError": "Deletion error",
         "scanFailure": "Scan failure",
-        "seerrFailure": "Seerr failure"
+        "seerrFailure": "Seerr failure",
+        "loginSuccess": "Login alert",
+        "loginSuccessHelp": "Sends a Discord message on every successful login (never on a plain session refresh). Without a dedicated alerts webhook, the message goes to the main webhook."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "No migration has been run.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Two-factor authentication",
+      "intro": "Add a one-time code (authenticator app) to your password to protect access to Hygie.",
+      "statusOn": "Two-factor authentication is enabled.",
+      "statusOff": "Two-factor authentication is disabled.",
+      "backupRemaining": "Backup codes remaining: {n}",
+      "encryptionUnavailable": "Cannot enable: encryption of secrets at rest is not available on this server. Configure Hygie's encryption key, then reload this page.",
+      "passwordLabel": "Current password",
+      "startSetup": "Set up two-factor authentication",
+      "starting": "Preparing...",
+      "scanQr": "Scan this QR code with your authenticator app, then enter the code it shows.",
+      "qrAlt": "Two-factor setup QR code",
+      "secretLabel": "Manual setup key",
+      "secretHelp": "Enter it in the app if you cannot scan the QR code.",
+      "codeLabel": "6-digit code",
+      "confirmEnable": "Enable",
+      "enabling": "Enabling...",
+      "backupWarning": "Keep these backup codes somewhere safe: they will never be shown again. Each one lets you sign in if you lose your app.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "download": "Download (.txt)",
+      "ack": "I have saved my backup codes",
+      "done": "Done",
+      "disableTitle": "Disable two-factor authentication",
+      "disableHelp": "Confirm with your password and a code (app or backup code). Other sessions will be signed out.",
+      "disableCode": "Code or backup code",
+      "disableBtn": "Disable",
+      "disabling": "Disabling...",
+      "errorGeneric": "Something went wrong, please try again."
     }
   },
   "logs": {

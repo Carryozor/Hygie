@@ -62,7 +62,21 @@
     "changePassword": "Cambiar contraseña",
     "currentPassword": "Contraseña actual",
     "newPassword": "Nueva contraseña",
-    "support": "Apoyar"
+    "support": "Apoyar",
+    "mfa": {
+      "title": "Verificación en dos pasos",
+      "codeLabel": "Código de la aplicación de autenticación",
+      "codeHint": "Introduzca el código de 6 dígitos que muestra su aplicación.",
+      "backupLabel": "Código de respaldo",
+      "backupHint": "Introduzca uno de sus códigos de respaldo. Cada código solo sirve una vez.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Verificar",
+      "verifying": "Verificando...",
+      "back": "Volver",
+      "useBackup": "Usar un código de respaldo",
+      "useTotp": "Usar el código de la aplicación",
+      "genericError": "No se pudo verificar, inténtelo de nuevo."
+    }
   },
   "sidebar": {
     "dryRun": "Simulación",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Base de datos"
+      "database": "Base de datos",
+      "security": "Seguridad"
     },
     "saveError": "Error al guardar",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Contraseña (opcional)",
         "passwordHelp": "Si se establece, los visitantes deberán introducir esta contraseña para acceder al panel."
+      },
+      "prometheus": {
+        "title": "Métricas de Prometheus",
+        "token": "Token de Prometheus (Bearer)",
+        "placeholder": "Dejar vacío para desactivar /metrics",
+        "help": "Sin token, el endpoint /metrics responde 404. Use el mismo token en la sección authorization de Prometheus."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Webhook de alertas (errores críticos)",
         "deletionError": "Error de eliminación",
         "scanFailure": "Fallo de análisis",
-        "seerrFailure": "Fallo de Seerr"
+        "seerrFailure": "Fallo de Seerr",
+        "loginSuccess": "Alerta de inicio de sesión",
+        "loginSuccessHelp": "Envía un mensaje de Discord en cada inicio de sesión correcto (nunca al renovar la sesión). Sin webhook de alertas dedicado, el mensaje va al webhook principal."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "No se ha realizado ninguna migración.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Autenticación de dos factores",
+      "intro": "Añada un código temporal (aplicación de autenticación) a su contraseña para proteger el acceso a Hygie.",
+      "statusOn": "La autenticación de dos factores está activada.",
+      "statusOff": "La autenticación de dos factores está desactivada.",
+      "backupRemaining": "Códigos de respaldo restantes: {n}",
+      "encryptionUnavailable": "No se puede activar: el cifrado de secretos en reposo no está disponible en este servidor. Configure la clave de cifrado de Hygie y recargue esta página.",
+      "passwordLabel": "Contraseña actual",
+      "startSetup": "Configurar la autenticación de dos factores",
+      "starting": "Preparando...",
+      "scanQr": "Escanee este código QR con su aplicación de autenticación e introduzca el código que muestra.",
+      "qrAlt": "Código QR de configuración de la autenticación de dos factores",
+      "secretLabel": "Clave de configuración manual",
+      "secretHelp": "Introdúzcala en la aplicación si no puede escanear el código QR.",
+      "codeLabel": "Código de 6 dígitos",
+      "confirmEnable": "Activar",
+      "enabling": "Activando...",
+      "backupWarning": "Guarde estos códigos de respaldo en un lugar seguro: no se volverán a mostrar. Cada uno permite iniciar sesión si pierde su aplicación.",
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "download": "Descargar (.txt)",
+      "ack": "He guardado mis códigos de respaldo",
+      "done": "Terminar",
+      "disableTitle": "Desactivar la autenticación de dos factores",
+      "disableHelp": "Confirme con su contraseña y un código (aplicación o código de respaldo). Las demás sesiones se cerrarán.",
+      "disableCode": "Código o código de respaldo",
+      "disableBtn": "Desactivar",
+      "disabling": "Desactivando...",
+      "errorGeneric": "Se produjo un error, inténtelo de nuevo."
     }
   },
   "logs": {

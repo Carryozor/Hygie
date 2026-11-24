@@ -17,6 +17,18 @@
       </div>
     </section>
 
+    <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-3">
+      <h2 class="font-semibold">{{ t('settings.general.prometheus.title') }}</h2>
+      <div>
+        <label class="block text-xs text-[var(--muted)] mb-1">{{ t('settings.general.prometheus.token') }}</label>
+        <input
+          v-model="form.prometheus_bearer_token" data-test="prometheus-token" type="password"
+          autocomplete="new-password" :placeholder="t('settings.general.prometheus.placeholder')" class="field font-mono"
+        />
+        <p class="text-xs text-[var(--muted)] mt-1">{{ t('settings.general.prometheus.help') }}</p>
+      </div>
+    </section>
+
     <section class="bg-[var(--bg2)] border border-[var(--border)] rounded-xl p-6 space-y-4">
       <h2 class="font-semibold">{{ t('settings.general.scheduling.title') }}</h2>
       <div class="grid grid-cols-2 gap-4">

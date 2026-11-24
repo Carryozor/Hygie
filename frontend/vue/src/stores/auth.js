@@ -26,6 +26,10 @@ export const useAuthStore = defineStore('auth', () => {
   const username            = ref('')
   const setupComplete       = ref(null)
   const triedSilentRefresh  = ref(false)
+  // Step-1 → step-2 login handoff. In-memory ONLY: this intermediate token must
+  // never reach localStorage/sessionStorage, and a page reload drops it on
+  // purpose (back to the password step). It grants no API access by itself.
+  const pendingMfa          = ref(null)
 
   let _refreshTimer = null
 
@@ -71,8 +75,39 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(u, p) {
     const { data } = await api.post('/auth/login', { username: u, password: p })
+    if (data.mfa_required) {
+      pendingMfa.value = { mfaToken: data.mfa_token, username: u }
+      return { mfaRequired: true }
+    }
+    pendingMfa.value = null
     username.value = data.username || u
     _setAccessToken(data.access_token || data.token)
+    return { mfaRequired: false }
+  }
+
+  // Step 2: TOTP or backup code. A wrong code keeps the challenge (the server
+  // allows a few tries); a dead challenge is dropped so the UI returns to step 1.
+  async function verifyMfa(code) {
+    const pending = pendingMfa.value
+    if (!pending) throw new Error('no pending MFA challenge')
+    try {
+      const { data } = await api.post('/auth/login/mfa', { mfa_token: pending.mfaToken, code })
+      username.value = data.username || pending.username
+      _setAccessToken(data.access_token || data.token)
+      pendingMfa.value = null
+    } catch (err) {
+      if (err?.response?.data?.code === 'mfa_challenge_invalid') pendingMfa.value = null
+      throw err
+    }
+  }
+
+  function cancelMfa() {
+    pendingMfa.value = null
+  }
+
+  // enable/disable return a fresh access token (other sessions are revoked).
+  function adoptAccessToken(access) {
+    _setAccessToken(access)
   }
 
   async function refresh() {
@@ -141,7 +176,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    token, username, setupComplete, isLoggedIn, triedSilentRefresh,
-    checkSetup, setup, login, refresh, fetchMe, logout,
+    token, username, setupComplete, isLoggedIn, triedSilentRefresh, pendingMfa,
+    checkSetup, setup, login, verifyMfa, cancelMfa, adoptAccessToken, refresh, fetchMe, logout,
   }
 })

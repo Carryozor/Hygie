@@ -30,9 +30,10 @@
     <QbitTab      v-show="activeTab === 'qbit'"      :form="form" />
     <DiscordTab   v-show="activeTab === 'discord'"   :form="form" />
     <DatabaseTab  v-show="activeTab === 'database'" />
+    <SecurityTab  v-show="activeTab === 'security'" />
 
     <button
-      v-if="activeTab !== 'servers' && activeTab !== 'database'"
+      v-if="!NO_SAVE_TABS.includes(activeTab)"
       :disabled="saving"
       class="w-full bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 rounded-lg px-6 py-3 text-sm font-semibold transition-opacity"
       @click="save"
@@ -55,6 +56,7 @@ import SeerrTab       from '@/components/settings/SeerrTab.vue'
 import QbitTab        from '@/components/settings/QbitTab.vue'
 import DiscordTab     from '@/components/settings/DiscordTab.vue'
 import DatabaseTab    from '@/components/settings/DatabaseTab.vue'
+import SecurityTab    from '@/components/settings/SecurityTab.vue'
 
 const { t }     = useI18n()
 const settings  = useSettingsStore()
@@ -63,6 +65,9 @@ const saved     = ref(false)
 const saveError = ref('')
 const activeTab = ref('general')
 const form      = ref({})
+
+// Tabs that persist through their own endpoints, not the global settings save.
+const NO_SAVE_TABS = ['servers', 'database', 'security']
 
 const TABS = computed(() => [
   { id: 'general', faIcon: 'fa-cog',    label: t('settings.tabs.general'), service: null },
@@ -73,6 +78,7 @@ const TABS = computed(() => [
   { id: 'qbit',    faIcon: null,        label: t('settings.tabs.qbit'),    service: form.value.qbit_proxy_url ? 'qui' : 'qbittorrent' },
   { id: 'discord',  faIcon: null,          label: t('settings.tabs.discord'),  service: 'discord' },
   { id: 'database', faIcon: 'fa-database', label: t('settings.tabs.database'), service: null },
+  { id: 'security', faIcon: 'fa-shield-halved', label: t('settings.tabs.security'), service: null },
 ])
 
 function syncForm() {
@@ -88,6 +94,7 @@ function syncForm() {
     job_history_retention_days: Number(s.job_history_retention_days || 30),
     backup_enabled: b('backup_enabled'), backup_interval_hours: Number(s.backup_interval_hours || 24),
     backup_retention_count: Number(s.backup_retention_count || 5), backup_path: s.backup_path || '',
+    prometheus_bearer_token: s.prometheus_bearer_token || '',
     public_dashboard_enabled:  b('public_dashboard_enabled'),
     public_dashboard_slug:     s.public_dashboard_slug     || '',
     public_dashboard_password: s.public_dashboard_password || '',
@@ -117,6 +124,7 @@ function syncForm() {
     discord_alert_seerr_failure_mention: s.discord_alert_seerr_failure_mention || '',
     discord_alert_seerr_failure_msg: s.discord_alert_seerr_failure_msg || '',
     discord_alert_error_threshold: Number(s.discord_alert_error_threshold || 0),
+    discord_alert_login_success: s.discord_alert_login_success || 'true',
   }
 }
 
@@ -136,6 +144,7 @@ async function save() {
       job_history_retention_days: String(f.job_history_retention_days),
       backup_enabled: String(f.backup_enabled), backup_interval_hours: String(f.backup_interval_hours),
       backup_retention_count: String(f.backup_retention_count), backup_path: f.backup_path,
+      prometheus_bearer_token: f.prometheus_bearer_token,
       public_dashboard_enabled:  String(f.public_dashboard_enabled),
       public_dashboard_slug:     f.public_dashboard_slug || '',
       public_dashboard_password: f.public_dashboard_password || '',
@@ -165,6 +174,7 @@ async function save() {
       discord_alert_seerr_failure_mention: f.discord_alert_seerr_failure_mention,
       discord_alert_seerr_failure_msg: f.discord_alert_seerr_failure_msg,
       discord_alert_error_threshold: String(f.discord_alert_error_threshold),
+      discord_alert_login_success: f.discord_alert_login_success,
     })
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)

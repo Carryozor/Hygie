@@ -62,7 +62,21 @@
     "changePassword": "Wachtwoord wijzigen",
     "currentPassword": "Huidig wachtwoord",
     "newPassword": "Nieuw wachtwoord",
-    "support": "Steunen"
+    "support": "Steunen",
+    "mfa": {
+      "title": "Verificatie in twee stappen",
+      "codeLabel": "Code van de authenticator-app",
+      "codeHint": "Voer de 6-cijferige code uit uw app in.",
+      "backupLabel": "Back-upcode",
+      "backupHint": "Voer een van uw back-upcodes in. Elke code werkt maar één keer.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Verifiëren",
+      "verifying": "Bezig met verifiëren...",
+      "back": "Terug",
+      "useBackup": "Een back-upcode gebruiken",
+      "useTotp": "De app-code gebruiken",
+      "genericError": "Verificatie mislukt, probeer het opnieuw."
+    }
   },
   "sidebar": {
     "dryRun": "Proefrun",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Database"
+      "database": "Database",
+      "security": "Beveiliging"
     },
     "saveError": "Opslaan mislukt",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Wachtwoord (optioneel)",
         "passwordHelp": "Indien ingesteld, moeten bezoekers dit wachtwoord invoeren om toegang te krijgen tot het dashboard."
+      },
+      "prometheus": {
+        "title": "Prometheus-metrics",
+        "token": "Prometheus-token (Bearer)",
+        "placeholder": "Leeg laten om /metrics uit te schakelen",
+        "help": "Zonder token geeft /metrics een 404. Gebruik hetzelfde token in de authorization-sectie van Prometheus."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Waarschuwings-webhook (kritieke fouten)",
         "deletionError": "Verwijderingsfout",
         "scanFailure": "Scanfout",
-        "seerrFailure": "Seerr-fout"
+        "seerrFailure": "Seerr-fout",
+        "loginSuccess": "Inlogmelding",
+        "loginSuccessHelp": "Stuurt bij elke geslaagde aanmelding een Discord-bericht (nooit bij een gewone sessieverversing). Zonder eigen alerts-webhook gaat het bericht naar de hoofdwebhook."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "Geen migratie uitgevoerd.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Tweestapsverificatie",
+      "intro": "Voeg een eenmalige code (authenticator-app) toe aan uw wachtwoord om de toegang tot Hygie te beveiligen.",
+      "statusOn": "Tweestapsverificatie is ingeschakeld.",
+      "statusOff": "Tweestapsverificatie is uitgeschakeld.",
+      "backupRemaining": "Resterende back-upcodes: {n}",
+      "encryptionUnavailable": "Activeren niet mogelijk: versleuteling van opgeslagen geheimen is niet beschikbaar op deze server. Stel de versleutelingssleutel van Hygie in en laad deze pagina opnieuw.",
+      "passwordLabel": "Huidig wachtwoord",
+      "startSetup": "Tweestapsverificatie instellen",
+      "starting": "Voorbereiden...",
+      "scanQr": "Scan deze QR-code met uw authenticator-app en voer de getoonde code in.",
+      "qrAlt": "QR-code voor het instellen van tweestapsverificatie",
+      "secretLabel": "Sleutel voor handmatige configuratie",
+      "secretHelp": "Voer hem in de app in als u de QR-code niet kunt scannen.",
+      "codeLabel": "6-cijferige code",
+      "confirmEnable": "Inschakelen",
+      "enabling": "Inschakelen...",
+      "backupWarning": "Bewaar deze back-upcodes op een veilige plek: ze worden nooit meer getoond. Elke code geeft toegang als u uw app kwijtraakt.",
+      "copy": "Kopiëren",
+      "copied": "Gekopieerd",
+      "download": "Downloaden (.txt)",
+      "ack": "Ik heb mijn back-upcodes opgeslagen",
+      "done": "Klaar",
+      "disableTitle": "Tweestapsverificatie uitschakelen",
+      "disableHelp": "Bevestig met uw wachtwoord en een code (app of back-upcode). Andere sessies worden afgemeld.",
+      "disableCode": "Code of back-upcode",
+      "disableBtn": "Uitschakelen",
+      "disabling": "Uitschakelen...",
+      "errorGeneric": "Er is iets misgegaan, probeer het opnieuw."
     }
   },
   "logs": {

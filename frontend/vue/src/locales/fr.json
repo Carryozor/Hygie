@@ -62,7 +62,21 @@
     "changePassword": "Changer le mot de passe",
     "currentPassword": "Mot de passe actuel",
     "newPassword": "Nouveau mot de passe",
-    "support": "Soutenir"
+    "support": "Soutenir",
+    "mfa": {
+      "title": "Vérification en deux étapes",
+      "codeLabel": "Code de l'application d'authentification",
+      "codeHint": "Saisissez le code à 6 chiffres affiché par votre application.",
+      "backupLabel": "Code de secours",
+      "backupHint": "Saisissez l'un de vos codes de secours. Chaque code ne sert qu'une fois.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Vérifier",
+      "verifying": "Vérification...",
+      "back": "Retour",
+      "useBackup": "Utiliser un code de secours",
+      "useTotp": "Utiliser le code de l'application",
+      "genericError": "Vérification impossible, réessayez."
+    }
   },
   "sidebar": {
     "dryRun": "Dry Run",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Base de données"
+      "database": "Base de données",
+      "security": "Sécurité"
     },
     "saveError": "Échec de la sauvegarde",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Mot de passe (optionnel)",
         "passwordHelp": "Si défini, le visiteur devra entrer ce mot de passe pour accéder au dashboard."
+      },
+      "prometheus": {
+        "title": "Métriques Prometheus",
+        "token": "Jeton Prometheus (Bearer)",
+        "placeholder": "Laisser vide pour désactiver /metrics",
+        "help": "Sans jeton, l'endpoint /metrics répond 404. Configurez le même jeton dans la section authorization de Prometheus."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Webhook alertes (erreurs critiques)",
         "deletionError": "Erreur de suppression",
         "scanFailure": "Échec de scan",
-        "seerrFailure": "Échec Seerr"
+        "seerrFailure": "Échec Seerr",
+        "loginSuccess": "Alerte de connexion",
+        "loginSuccessHelp": "Envoie un message Discord à chaque connexion réussie (jamais lors d'un simple rafraîchissement de session). Sans webhook d'alertes dédié, le message part sur le webhook principal."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "Aucune migration effectuée.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Authentification à deux facteurs",
+      "intro": "Ajoutez un code temporaire (application d'authentification) à votre mot de passe pour protéger l'accès à Hygie.",
+      "statusOn": "La double authentification est activée.",
+      "statusOff": "La double authentification est désactivée.",
+      "backupRemaining": "Codes de secours restants : {n}",
+      "encryptionUnavailable": "Activation impossible : le chiffrement des secrets au repos n'est pas disponible sur ce serveur. Configurez la clé de chiffrement d'Hygie, puis rechargez cette page.",
+      "passwordLabel": "Mot de passe actuel",
+      "startSetup": "Configurer la double authentification",
+      "starting": "Préparation...",
+      "scanQr": "Scannez ce QR code avec votre application d'authentification, puis saisissez le code qu'elle affiche.",
+      "qrAlt": "QR code de configuration de la double authentification",
+      "secretLabel": "Clé de configuration manuelle",
+      "secretHelp": "À saisir dans l'application si vous ne pouvez pas scanner le QR code.",
+      "codeLabel": "Code à 6 chiffres",
+      "confirmEnable": "Activer",
+      "enabling": "Activation...",
+      "backupWarning": "Conservez ces codes de secours en lieu sûr : ils ne seront plus jamais affichés. Chacun permet une connexion si vous perdez votre application.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "download": "Télécharger (.txt)",
+      "ack": "J'ai enregistré mes codes de secours",
+      "done": "Terminer",
+      "disableTitle": "Désactiver la double authentification",
+      "disableHelp": "Confirmez avec votre mot de passe et un code (application ou code de secours). Les autres sessions seront déconnectées.",
+      "disableCode": "Code ou code de secours",
+      "disableBtn": "Désactiver",
+      "disabling": "Désactivation...",
+      "errorGeneric": "Une erreur est survenue, réessayez."
     }
   },
   "logs": {

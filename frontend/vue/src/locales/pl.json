@@ -62,7 +62,21 @@
     "changePassword": "Zmień hasło",
     "currentPassword": "Aktualne hasło",
     "newPassword": "Nowe hasło",
-    "support": "Wesprzyj"
+    "support": "Wesprzyj",
+    "mfa": {
+      "title": "Weryfikacja dwuetapowa",
+      "codeLabel": "Kod z aplikacji uwierzytelniającej",
+      "codeHint": "Wpisz 6-cyfrowy kod wyświetlany w aplikacji.",
+      "backupLabel": "Kod zapasowy",
+      "backupHint": "Wpisz jeden z kodów zapasowych. Każdy kod działa tylko raz.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Zweryfikuj",
+      "verifying": "Weryfikowanie...",
+      "back": "Wstecz",
+      "useBackup": "Użyj kodu zapasowego",
+      "useTotp": "Użyj kodu z aplikacji",
+      "genericError": "Nie udało się zweryfikować, spróbuj ponownie."
+    }
   },
   "sidebar": {
     "dryRun": "Próba",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Baza danych"
+      "database": "Baza danych",
+      "security": "Bezpieczeństwo"
     },
     "saveError": "Zapisywanie nie powiodło się",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Hasło (opcjonalne)",
         "passwordHelp": "Jeśli ustawione, odwiedzający będą musieli podać to hasło, aby uzyskać dostęp do panelu."
+      },
+      "prometheus": {
+        "title": "Metryki Prometheus",
+        "token": "Token Prometheus (Bearer)",
+        "placeholder": "Zostaw puste, aby wyłączyć /metrics",
+        "help": "Bez tokenu endpoint /metrics zwraca 404. Użyj tego samego tokenu w sekcji authorization Prometheusa."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Webhook alertów (błędy krytyczne)",
         "deletionError": "Błąd usunięcia",
         "scanFailure": "Błąd skanowania",
-        "seerrFailure": "Błąd Seerr"
+        "seerrFailure": "Błąd Seerr",
+        "loginSuccess": "Alert o logowaniu",
+        "loginSuccessHelp": "Wysyła wiadomość na Discordzie po każdym udanym logowaniu (nigdy przy zwykłym odświeżeniu sesji). Bez osobnego webhooka alertów wiadomość trafia na główny webhook."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "Nie wykonano żadnej migracji.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Uwierzytelnianie dwuskładnikowe",
+      "intro": "Dodaj jednorazowy kod (aplikacja uwierzytelniająca) do hasła, aby chronić dostęp do Hygie.",
+      "statusOn": "Uwierzytelnianie dwuskładnikowe jest włączone.",
+      "statusOff": "Uwierzytelnianie dwuskładnikowe jest wyłączone.",
+      "backupRemaining": "Pozostałe kody zapasowe: {n}",
+      "encryptionUnavailable": "Nie można włączyć: szyfrowanie sekretów w spoczynku nie jest dostępne na tym serwerze. Skonfiguruj klucz szyfrujący Hygie i odśwież stronę.",
+      "passwordLabel": "Obecne hasło",
+      "startSetup": "Skonfiguruj uwierzytelnianie dwuskładnikowe",
+      "starting": "Przygotowywanie...",
+      "scanQr": "Zeskanuj ten kod QR w aplikacji uwierzytelniającej, a następnie wpisz wyświetlony kod.",
+      "qrAlt": "Kod QR konfiguracji uwierzytelniania dwuskładnikowego",
+      "secretLabel": "Klucz do ręcznej konfiguracji",
+      "secretHelp": "Wpisz go w aplikacji, jeśli nie możesz zeskanować kodu QR.",
+      "codeLabel": "Kod 6-cyfrowy",
+      "confirmEnable": "Włącz",
+      "enabling": "Włączanie...",
+      "backupWarning": "Przechowuj te kody zapasowe w bezpiecznym miejscu: nie zostaną już nigdy wyświetlone. Każdy pozwala się zalogować, jeśli utracisz aplikację.",
+      "copy": "Kopiuj",
+      "copied": "Skopiowano",
+      "download": "Pobierz (.txt)",
+      "ack": "Zapisałem(-am) moje kody zapasowe",
+      "done": "Zakończ",
+      "disableTitle": "Wyłącz uwierzytelnianie dwuskładnikowe",
+      "disableHelp": "Potwierdź hasłem i kodem (aplikacja lub kod zapasowy). Pozostałe sesje zostaną wylogowane.",
+      "disableCode": "Kod lub kod zapasowy",
+      "disableBtn": "Wyłącz",
+      "disabling": "Wyłączanie...",
+      "errorGeneric": "Wystąpił błąd, spróbuj ponownie."
     }
   },
   "logs": {

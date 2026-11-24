@@ -62,7 +62,21 @@
     "changePassword": "Passwort ändern",
     "currentPassword": "Aktuelles Passwort",
     "newPassword": "Neues Passwort",
-    "support": "Unterstützen"
+    "support": "Unterstützen",
+    "mfa": {
+      "title": "Zwei-Faktor-Bestätigung",
+      "codeLabel": "Code der Authenticator-App",
+      "codeHint": "Geben Sie den 6-stelligen Code Ihrer App ein.",
+      "backupLabel": "Backup-Code",
+      "backupHint": "Geben Sie einen Ihrer Backup-Codes ein. Jeder Code gilt nur einmal.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Bestätigen",
+      "verifying": "Wird geprüft...",
+      "back": "Zurück",
+      "useBackup": "Backup-Code verwenden",
+      "useTotp": "App-Code verwenden",
+      "genericError": "Bestätigung fehlgeschlagen, bitte erneut versuchen."
+    }
   },
   "sidebar": {
     "dryRun": "Probelauf",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Datenbank"
+      "database": "Datenbank",
+      "security": "Sicherheit"
     },
     "saveError": "Speichern fehlgeschlagen",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Passwort (optional)",
         "passwordHelp": "Wenn gesetzt, müssen Besucher dieses Passwort eingeben, um auf das Dashboard zuzugreifen."
+      },
+      "prometheus": {
+        "title": "Prometheus-Metriken",
+        "token": "Prometheus-Token (Bearer)",
+        "placeholder": "Leer lassen, um /metrics zu deaktivieren",
+        "help": "Ohne Token antwortet /metrics mit 404. Verwenden Sie denselben Token im Abschnitt authorization von Prometheus."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Warnungs-Webhook (kritische Fehler)",
         "deletionError": "Löschfehler",
         "scanFailure": "Scan-Fehler",
-        "seerrFailure": "Seerr-Fehler"
+        "seerrFailure": "Seerr-Fehler",
+        "loginSuccess": "Anmeldewarnung",
+        "loginSuccessHelp": "Sendet bei jeder erfolgreichen Anmeldung eine Discord-Nachricht (nie bei einer reinen Sitzungserneuerung). Ohne eigenen Alert-Webhook geht sie an den Haupt-Webhook."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "Keine Migration durchgeführt.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Zwei-Faktor-Authentifizierung",
+      "intro": "Fügen Sie Ihrem Passwort einen Einmalcode (Authenticator-App) hinzu, um den Zugriff auf Hygie zu schützen.",
+      "statusOn": "Die Zwei-Faktor-Authentifizierung ist aktiviert.",
+      "statusOff": "Die Zwei-Faktor-Authentifizierung ist deaktiviert.",
+      "backupRemaining": "Verbleibende Backup-Codes: {n}",
+      "encryptionUnavailable": "Aktivierung nicht möglich: Die Verschlüsselung gespeicherter Geheimnisse ist auf diesem Server nicht verfügbar. Richten Sie den Verschlüsselungsschlüssel von Hygie ein und laden Sie die Seite neu.",
+      "passwordLabel": "Aktuelles Passwort",
+      "startSetup": "Zwei-Faktor-Authentifizierung einrichten",
+      "starting": "Wird vorbereitet...",
+      "scanQr": "Scannen Sie diesen QR-Code mit Ihrer Authenticator-App und geben Sie den angezeigten Code ein.",
+      "qrAlt": "QR-Code zur Einrichtung der Zwei-Faktor-Authentifizierung",
+      "secretLabel": "Schlüssel zur manuellen Einrichtung",
+      "secretHelp": "Geben Sie ihn in der App ein, wenn Sie den QR-Code nicht scannen können.",
+      "codeLabel": "6-stelliger Code",
+      "confirmEnable": "Aktivieren",
+      "enabling": "Wird aktiviert...",
+      "backupWarning": "Bewahren Sie diese Backup-Codes sicher auf: Sie werden nie wieder angezeigt. Jeder erlaubt die Anmeldung, falls Sie Ihre App verlieren.",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "download": "Herunterladen (.txt)",
+      "ack": "Ich habe meine Backup-Codes gespeichert",
+      "done": "Fertig",
+      "disableTitle": "Zwei-Faktor-Authentifizierung deaktivieren",
+      "disableHelp": "Bestätigen Sie mit Ihrem Passwort und einem Code (App oder Backup-Code). Andere Sitzungen werden abgemeldet.",
+      "disableCode": "Code oder Backup-Code",
+      "disableBtn": "Deaktivieren",
+      "disabling": "Wird deaktiviert...",
+      "errorGeneric": "Ein Fehler ist aufgetreten, bitte erneut versuchen."
     }
   },
   "logs": {

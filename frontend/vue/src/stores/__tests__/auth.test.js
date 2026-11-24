@@ -101,4 +101,93 @@ describe('useAuthStore', () => {
     expect(await store.checkSetup()).toBe(true)
     expect(store.setupComplete).toBe(true)
   })
+  describe('two-step login (MFA)', () => {
+    const MFA = { data: { mfa_required: true, mfa_token: 'x'.repeat(43), expires_in: 300 } }
+
+    it('login with mfa_required keeps no access token', async () => {
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      const res = await store.login('admin', 'pass')
+      expect(res).toEqual({ mfaRequired: true })
+      expect(getToken()).toBeFalsy()
+      expect(store.isLoggedIn).toBe(false)
+      expect(store.pendingMfa).toBeTruthy()
+    })
+
+    it('login without 2FA still returns mfaRequired false and logs in', async () => {
+      api.post.mockResolvedValueOnce({ data: { access_token: 'acc', username: 'admin' } })
+      const store = useAuthStore()
+      expect(await store.login('admin', 'pass')).toEqual({ mfaRequired: false })
+      expect(store.isLoggedIn).toBe(true)
+    })
+
+    it('verifyMfa posts {mfa_token, code}, sets token and clears pending', async () => {
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      await store.login('admin', 'pass')
+      api.post.mockResolvedValueOnce({ data: { access_token: 'acc2', username: 'admin' } })
+      await store.verifyMfa('123456')
+      expect(api.post).toHaveBeenLastCalledWith('/auth/login/mfa', { mfa_token: 'x'.repeat(43), code: '123456' })
+      expect(getToken()).toBe('acc2')
+      expect(store.isLoggedIn).toBe(true)
+      expect(store.pendingMfa).toBeNull()
+    })
+
+    it('verifyMfa keeps pending on a wrong code (mfa_code_invalid)', async () => {
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      await store.login('admin', 'pass')
+      api.post.mockRejectedValueOnce({ response: { status: 401, data: { code: 'mfa_code_invalid' } } })
+      await expect(store.verifyMfa('000000')).rejects.toBeTruthy()
+      expect(store.pendingMfa).toBeTruthy()
+      expect(store.isLoggedIn).toBe(false)
+    })
+
+    it('challenge_invalid clears pending', async () => {
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      await store.login('admin', 'pass')
+      api.post.mockRejectedValueOnce({ response: { status: 401, data: { code: 'mfa_challenge_invalid' } } })
+      await expect(store.verifyMfa('000000')).rejects.toBeTruthy()
+      expect(store.pendingMfa).toBeNull()
+    })
+
+    it('verifyMfa without a pending challenge rejects without calling the API', async () => {
+      const store = useAuthStore()
+      await expect(store.verifyMfa('123456')).rejects.toBeTruthy()
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('cancelMfa drops the pending challenge', async () => {
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      await store.login('admin', 'pass')
+      store.cancelMfa()
+      expect(store.pendingMfa).toBeNull()
+    })
+
+    it('pending token never written to storage', async () => {
+      const spies = [
+        vi.spyOn(Storage.prototype, 'setItem'),
+      ]
+      api.post.mockResolvedValueOnce(MFA)
+      const store = useAuthStore()
+      await store.login('admin', 'pass')
+      api.post.mockResolvedValueOnce({ data: { access_token: 'acc2' } })
+      await store.verifyMfa('123456')
+      for (const spy of spies) {
+        for (const [, v] of spy.mock.calls) expect(String(v)).not.toContain('x'.repeat(43))
+        spy.mockRestore()
+      }
+      expect(JSON.stringify({ ...localStorage })).not.toContain('x'.repeat(43))
+      expect(JSON.stringify({ ...sessionStorage })).not.toContain('x'.repeat(43))
+    })
+
+    it('adoptAccessToken installs a new access token', () => {
+      const store = useAuthStore()
+      store.adoptAccessToken('fresh')
+      expect(getToken()).toBe('fresh')
+      expect(store.isLoggedIn).toBe(true)
+    })
+  })
 })

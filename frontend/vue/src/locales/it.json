@@ -62,7 +62,21 @@
     "changePassword": "Cambia password",
     "currentPassword": "Password attuale",
     "newPassword": "Nuova password",
-    "support": "Supporta"
+    "support": "Supporta",
+    "mfa": {
+      "title": "Verifica in due passaggi",
+      "codeLabel": "Codice dell'app di autenticazione",
+      "codeHint": "Inserisci il codice di 6 cifre mostrato dalla tua app.",
+      "backupLabel": "Codice di backup",
+      "backupHint": "Inserisci uno dei tuoi codici di backup. Ogni codice vale una sola volta.",
+      "backupPlaceholder": "xxxx xxxx xxxx xxxx",
+      "verify": "Verifica",
+      "verifying": "Verifica in corso...",
+      "back": "Indietro",
+      "useBackup": "Usa un codice di backup",
+      "useTotp": "Usa il codice dell'app",
+      "genericError": "Verifica non riuscita, riprova."
+    }
   },
   "sidebar": {
     "dryRun": "Prova",
@@ -106,7 +120,8 @@
       "seerr": "Seerr",
       "qbit": "qBittorrent",
       "discord": "Discord",
-      "database": "Database"
+      "database": "Database",
+      "security": "Sicurezza"
     },
     "saveError": "Salvataggio fallito",
     "general": {
@@ -149,6 +164,12 @@
         "slugPlaceholder": "my-calendar",
         "password": "Password (opzionale)",
         "passwordHelp": "Se impostata, i visitatori dovranno inserire questa password per accedere al dashboard."
+      },
+      "prometheus": {
+        "title": "Metriche Prometheus",
+        "token": "Token Prometheus (Bearer)",
+        "placeholder": "Lascia vuoto per disattivare /metrics",
+        "help": "Senza token, l'endpoint /metrics risponde 404. Usa lo stesso token nella sezione authorization di Prometheus."
       }
     },
     "servers": {
@@ -280,7 +301,9 @@
         "webhook": "Webhook avvisi (errori critici)",
         "deletionError": "Errore di eliminazione",
         "scanFailure": "Errore di scansione",
-        "seerrFailure": "Errore Seerr"
+        "seerrFailure": "Errore Seerr",
+        "loginSuccess": "Avviso di accesso",
+        "loginSuccessHelp": "Invia un messaggio Discord a ogni accesso riuscito (mai per un semplice rinnovo di sessione). Senza webhook di avvisi dedicato, il messaggio va al webhook principale."
       }
     },
     "libraries": {
@@ -343,6 +366,36 @@
       "noJob": "Nessuna migrazione eseguita.",
       "urlPlaceholder": "mysql+aiomysql://user:pass{'@'}host:3306/hygie",
       "pathPlaceholder": "/app/data/hygie_migrated.db"
+    },
+    "security": {
+      "title": "Autenticazione a due fattori",
+      "intro": "Aggiungi un codice temporaneo (app di autenticazione) alla password per proteggere l'accesso a Hygie.",
+      "statusOn": "L'autenticazione a due fattori è attiva.",
+      "statusOff": "L'autenticazione a due fattori è disattivata.",
+      "backupRemaining": "Codici di backup rimanenti: {n}",
+      "encryptionUnavailable": "Impossibile attivare: la cifratura dei segreti a riposo non è disponibile su questo server. Configura la chiave di cifratura di Hygie e ricarica questa pagina.",
+      "passwordLabel": "Password attuale",
+      "startSetup": "Configura l'autenticazione a due fattori",
+      "starting": "Preparazione...",
+      "scanQr": "Scansiona questo codice QR con la tua app di autenticazione, poi inserisci il codice mostrato.",
+      "qrAlt": "Codice QR per la configurazione dell'autenticazione a due fattori",
+      "secretLabel": "Chiave di configurazione manuale",
+      "secretHelp": "Inseriscila nell'app se non puoi scansionare il codice QR.",
+      "codeLabel": "Codice di 6 cifre",
+      "confirmEnable": "Attiva",
+      "enabling": "Attivazione...",
+      "backupWarning": "Conserva questi codici di backup in un luogo sicuro: non verranno più mostrati. Ognuno consente l'accesso se perdi la tua app.",
+      "copy": "Copia",
+      "copied": "Copiato",
+      "download": "Scarica (.txt)",
+      "ack": "Ho salvato i miei codici di backup",
+      "done": "Fine",
+      "disableTitle": "Disattiva l'autenticazione a due fattori",
+      "disableHelp": "Conferma con la password e un codice (app o codice di backup). Le altre sessioni verranno disconnesse.",
+      "disableCode": "Codice o codice di backup",
+      "disableBtn": "Disattiva",
+      "disabling": "Disattivazione...",
+      "errorGeneric": "Si è verificato un errore, riprova."
     }
   },
   "logs": {

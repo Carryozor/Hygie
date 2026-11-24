@@ -13,6 +13,7 @@ function baseForm(overrides = {}) {
     scan_interval_minutes: 60, deletion_check_interval_minutes: 60,
     deleted_retention_days: 30, log_retention_days: 30, job_history_retention_days: 30,
     backup_enabled: true, backup_interval_hours: 24, backup_retention_count: 5, backup_path: '/app/data/backups',
+    prometheus_bearer_token: '',
     public_dashboard_enabled: false, public_dashboard_slug: '', public_dashboard_password: '',
     ...overrides,
   }
@@ -244,5 +245,15 @@ describe('GeneralTab', () => {
       await flushPromises()
       expect(wrapper.find('[data-test="backup-stale"]').exists()).toBe(false)
     })
+  })
+  it('binds the Prometheus bearer token field to form.prometheus_bearer_token', async () => {
+    api.get.mockResolvedValueOnce({ data: [] })
+    const form = baseForm()
+    const wrapper = mount(GeneralTab, { props: { form }, global: { plugins: [i18n] } })
+    await flushPromises()
+    const input = wrapper.find('[data-test="prometheus-token"]')
+    expect(input.attributes('type')).toBe('password')
+    await input.setValue('tok123')
+    expect(form.prometheus_bearer_token).toBe('tok123')
   })
 })

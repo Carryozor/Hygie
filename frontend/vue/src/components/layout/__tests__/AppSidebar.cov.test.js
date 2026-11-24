@@ -204,4 +204,27 @@ describe('AppSidebar', () => {
     expect(clearSpy).toHaveBeenCalled()
     clearSpy.mockRestore()
   })
+  it('fetches /version once MFA login completes', async () => {
+    // Real auth store: the version fetch needs an access token, so it must only
+    // fire after verifyMfa() installed it (not after the password step).
+    const { createPinia, setActivePinia } = await import('pinia')
+    setActivePinia(createPinia())
+    const { useAuthStore } = await vi.importActual('@/stores/auth')
+    const { clearToken } = await import('@/api/tokenStore')
+    clearToken()
+    authState = useAuthStore()
+    const wrapper = await mountSidebar()
+
+    api.post.mockResolvedValueOnce({ data: { mfa_required: true, mfa_token: 't'.repeat(43), expires_in: 300 } })
+    await authState.login('admin', 'pw')
+    await flushPromises()
+    expect(api.get).not.toHaveBeenCalledWith('/version')
+
+    api.post.mockResolvedValueOnce({ data: { access_token: 'tok', username: 'admin' } })
+    await authState.verifyMfa('123456')
+    await flushPromises()
+    expect(api.get).toHaveBeenCalledWith('/version')
+    expect(wrapper.text()).toContain('4.3.6')
+    clearToken()
+  })
 })

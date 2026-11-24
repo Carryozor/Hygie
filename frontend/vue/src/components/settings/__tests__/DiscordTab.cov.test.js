@@ -15,6 +15,7 @@ function baseForm(overrides = {}) {
     discord_alert_scan_failure: 'false', discord_alert_scan_failure_mention: '', discord_alert_scan_failure_msg: '',
     discord_alert_seerr_failure: 'false', discord_alert_seerr_failure_mention: '', discord_alert_seerr_failure_msg: '',
     discord_alert_error_threshold: 5,
+    discord_alert_login_success: 'true',
     ...overrides,
   }
 }
@@ -58,7 +59,7 @@ describe('DiscordTab', () => {
 
   it('renders three AlertRow instances (deletion error, scan failure, seerr failure)', () => {
     const wrapper = mountTab()
-    expect(wrapper.findAll('input[type=checkbox]')).toHaveLength(3)
+    expect(wrapper.findAll('input[type=checkbox]')).toHaveLength(4)
   })
 
   it('toggling the deletion-error AlertRow updates form.discord_alert_deletion_error as a string', async () => {
@@ -111,5 +112,15 @@ describe('DiscordTab', () => {
     const thresholdsInput = wrapper.find('input[type=text]')
     await thresholdsInput.setValue('1,3,7')
     expect(form.discord_notif_thresholds).toBe('1,3,7')
+  })
+  it('login alert toggle', async () => {
+    const form = baseForm({ discord_alert_login_success: 'true' })
+    const wrapper = mount(DiscordTab, { props: { form }, global: { plugins: [i18n] } })
+    const toggle = wrapper.find('[data-test="login-alert"] input[type=checkbox]')
+    expect(toggle.element.checked).toBe(true)
+    await toggle.setValue(false)
+    expect(form.discord_alert_login_success).toBe('false')
+    await toggle.setValue(true)
+    expect(form.discord_alert_login_success).toBe('true')
   })
 })

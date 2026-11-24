@@ -24,6 +24,7 @@ const STUBS = {
   GeneralTab: GeneralTabStub, ServersTab: makeTabStub('ServersTabStub'), SeerrTab: makeTabStub('SeerrTabStub'),
   RadarrTab: makeTabStub('RadarrTabStub'), SonarrTab: makeTabStub('SonarrTabStub'), QbitTab: makeTabStub('QbitTabStub'),
   DiscordTab: makeTabStub('DiscordTabStub'), DatabaseTab: makeTabStub('DatabaseTabStub'),
+  SecurityTab: { name: 'SecurityTabStub', template: '<div class="security-stub" />' },
 }
 
 async function mountSettings(settings = {}) {
@@ -136,5 +137,25 @@ describe('SettingsView', () => {
     const [, payload] = api.post.mock.calls[0]
     expect(payload.log_level).toBe('WARNING')
     expect(payload.deleted_retention_days).toBe('45')
+  })
+  it('security tab hides global save', async () => {
+    const { wrapper } = await mountSettings()
+    const tab = [...wrapper.findAll('button')].find(b => b.text() === 'Sécurité')
+    await tab.trigger('click')
+    expect([...wrapper.findAll('button')].some(b => b.text() === 'Enregistrer')).toBe(false)
+  })
+
+  it('maps prometheus_bearer_token and discord_alert_login_success (default "true") in the form and the save payload', async () => {
+    const { wrapper } = await mountSettings({ prometheus_bearer_token: '***' })
+    const form = wrapper.findComponent(GeneralTabStub).props('form')
+    expect(form.prometheus_bearer_token).toBe('***')
+    expect(form.discord_alert_login_success).toBe('true')
+    api.post.mockResolvedValue({ data: {} })
+    const saveBtn = [...wrapper.findAll('button')].find(b => b.text() === 'Enregistrer')
+    await saveBtn.trigger('click')
+    await flushAll()
+    const [, payload] = api.post.mock.calls[0]
+    expect(payload.prometheus_bearer_token).toBe('***')
+    expect(payload.discord_alert_login_success).toBe('true')
   })
 })

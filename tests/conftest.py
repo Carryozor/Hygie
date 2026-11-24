@@ -24,6 +24,25 @@ def _reset_circuit_breakers():
 
 
 @pytest.fixture(autouse=True)
+def _no_login_notification(request, monkeypatch):
+    """Successful logins spawn a background Discord notification (4.6.0).
+
+    In tests that task outlives its event loop while holding the process-global
+    ``_discord_alert_lock``; later Discord tests then fail with "future belongs
+    to a different loop". The notification path itself is covered by
+    tests/test_auth_events.py, which keeps the real coroutine.
+    """
+    if request.node.path.name == "test_auth_events.py":
+        return
+    import backend.auth_events as auth_events
+
+    async def _noop(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(auth_events, "_notify_login", _noop)
+
+
+@pytest.fixture(autouse=True)
 async def _cancel_storage_refresh_task():
     """Never let a test end with the storage refresh task still pending.
 

@@ -82,6 +82,15 @@ async def _consolidated_last_play(row: dict, server_id: str, activity: dict) -> 
     try:
         target = await find_consolidated_target_strict(row, server_id)
         if not target:
+            if int(row.get("attempts") or 0) > 0:
+                # Retry of a failed deletion: an earlier step may already have
+                # removed the series/season, so there is nothing left to read
+                # or protect. Postponing would defer the row forever.
+                logger.info(
+                    "Consolidated retry for '%s': target already gone, "
+                    "no watch state to protect — proceeding", row.get("title", "?"),
+                )
+                return None
             raise WatchStateUnknown("série ou saison introuvable (Sonarr ou serveur média)")
         plays = []
         async for ep in iter_library_items_strict(str(target.get("Id")), server_id=server_id):

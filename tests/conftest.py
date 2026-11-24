@@ -25,7 +25,7 @@ def _reset_circuit_breakers():
 
 @pytest.fixture(autouse=True)
 def _no_login_notification(request, monkeypatch):
-    """Successful logins spawn a background Discord notification (4.6.0).
+    """Successful logins spawn a background Discord notification (4.5.1).
 
     In tests that task outlives its event loop while holding the process-global
     ``_discord_alert_lock``; later Discord tests then fail with "future belongs

@@ -10,6 +10,16 @@ All notable changes to Hygie are documented here.
 
 ## [4.5.1] — 2026-11-24
 
+Reliability and security release. Hygie is often published on the Internet (reverse proxy, tunnel): everything below lives in the app itself, no external access gateway required.
+
+### Added
+- **Two-factor authentication (TOTP).** Optional, per user, from Settings → Security: scan the QR code with any authenticator app (Aegis, Google Authenticator, 1Password…), confirm with a code, and keep the 10 single-use backup codes shown once. Login becomes two steps (password, then code); the intermediate step token is short-lived (5 min), single-use, limited to 3 tries, stored hashed and grants no API access. Codes are checked in constant time, a code can never be replayed, and code attempts are limited per account (5 per 5 min, 20 failures per 24 h) whatever the source IP. Turning 2FA on or off signs out every other session. Requires encryption at rest (`HYGIE_ENCRYPTION_KEY` with MariaDB); the QR code is generated locally, no external service is called.
+- **Lost device:** `docker exec -it hygie python -m backend.tools.reset_mfa --username <name>` disables 2FA for that account and signs out all its sessions.
+- **Authentication journal.** Every successful login, failed password, failed code, lockout and rejected session refresh is written to stdout as one stable line (`HYGIE_AUTH v=1 event=… ip=… method=… reason=… user=…`) and to the Logs page (source `auth`) with the real client IP. SECURITY.md ships a fail2ban filter and jails (journald and json-file); usernames are sanitised so a crafted name cannot inject a fake IP into the line.
+- **Login alert.** A Discord alert is sent on every successful login (password, 2FA code or backup code — not on silent session refresh). Enabled by default when a Discord webhook is configured; toggle in Settings → Discord.
+- **`HYGIE_TRUSTED_PROXIES`** (comma-separated IPs/CIDRs of your reverse proxy or tunnel). Forwarding headers (`X-Forwarded-For`, `CF-Connecting-IP`) are only honoured from those peers, so rate limiting and the journal use the real client IP and a direct client cannot spoof it. The entrypoint also passes the list to uvicorn (`--forwarded-allow-ips`, unless `FORWARDED_ALLOW_IPS` is already set) so access logs show the real IP. Proxy headers received from an untrusted peer raise a one-time warning in the Logs page.
+- **Prometheus token field** in Settings → General.
+
 ### Fixed
 - **Shared season-pack guard was a no-op on Sonarr 5.** Before erasing a torrent's files for one episode or season, Hygie checks whether other episodes of the same download still have files in Sonarr. That check read an `episodeIds` field on `/api/v3/episodefile` that Sonarr 5 (verified on 5.0.0.3041) does not return, so it always answered "not shared" and a season pack still used by other episodes could have been erased. It now reads `/api/v3/episode?seriesId=` (`hasFile` / `episodeFileId`) and keeps the torrent whenever the answer is unusable (unexpected payload, no matching episode, HTTP error). The test fixtures encoded the non-existent contract and were rewritten with real Sonarr 5 payloads. Not triggered in production so far (the episode-unit libraries had no rules).
 - **"Delete now" and bulk delete now apply the configured qBittorrent action.** Manual deletions ignored `qbit_action` / `qbit_tag` and only tagged the torrent (`tag_only`), while the deletion preview announced that files would be erased. They now behave like the scheduled job: with `delete_files`, a manual deletion removes the torrent and its files (with the same shared-path and cross-seed safeguards). A failure to read the settings is recorded as a failed attempt; the row never stays in `deleting`.
@@ -18,9 +28,21 @@ All notable changes to Hygie are documented here.
 
 ### Security
 - **A stolen refresh cookie can no longer survive "log out everywhere" or a password change.** A refresh landing between the token check and the version read could mint a new session with the new version, and the revocation and the version bump ran in two transactions. The version is now read with the refresh token itself, "log out everywhere" bumps the version and revokes in one transaction, and the new refresh token is only minted under a row lock if the version is unchanged. Concurrent test: 2/60 surviving sessions before, 0/60 after; row-lock behaviour checked on MariaDB 11.8.
+- **A password login can no longer outlive a concurrent 2FA activation, password change or "log out everywhere".** The session is now minted only if the account's session version is still the one read before the (slow) password check, the same guarantee this release gives to session refresh (see above).
+- The fail2ban and CrowdSec examples are scoped to Hygie's own container logs: reading every container's logs would let another service's logged text forge a Hygie line and get an arbitrary IP banned.
+
+### Changed
+- **`/metrics` is closed by default.** Without a Prometheus token it answers 404 (and logs a one-time warning explaining how to enable it). With a token, scrape with `authorization: {type: Bearer, credentials: <token>}`.
+- **`/api/version` requires a logged-in user**, and `/health` no longer returns the version: an anonymous visitor can no longer tell which release to target. Monitors should keep using `/health` (status only).
+- Unknown `/api/…` routes answer a constant `{"detail": "Not Found"}` instead of echoing the requested path.
+- `HYGIE_TRUST_PROXY=1` still works (trusts any peer) but now logs a startup warning recommending `HYGIE_TRUSTED_PROXIES`. An invalid `HYGIE_TRUSTED_PROXIES` entry is reported as critical at startup. Behind an HTTPS proxy whose address is trusted, the session cookie is now marked `Secure`.
 
 ### Upgrade notes
-- No migration. With `qbit_action = delete_files`, a manual "Delete now" now erases the torrent's files like the scheduled job (it used to only tag the torrent).
+- Migration **m020** runs automatically and is non-destructive (columns `users.totp_*`, tables `mfa_backup_codes`, `mfa_challenges`).
+- **Prometheus users:** set the token in Settings → General and add it to the scrape job *before* upgrading, or the scrape returns 404.
+- **Behind a reverse proxy or tunnel:** set `HYGIE_TRUSTED_PROXIES` to the proxy's address or network (for example the Docker network of your tunnel container).
+- **Downgrading to 4.5.0 or earlier silently disables 2FA** (the older release ignores the new columns). Re-enable it after upgrading again.
+- With `qbit_action = delete_files`, a manual "Delete now" now erases the torrent's files like the scheduled job (it used to only tag the torrent).
 - The "Leaving soon" collection is recreated at the next sync (after a scan, a deletion run or the 03:00 cleanup) and poster banners start applying for the first time.
 
 ---

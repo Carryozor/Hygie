@@ -1,4 +1,4 @@
-"""Authentication event journal (4.6.0).
+"""Authentication event journal (4.5.1).
 
 Every auth event is written to:
   1. stdout, as a stable one-line format (``HYGIE_AUTH v=1 ...``) parsed by

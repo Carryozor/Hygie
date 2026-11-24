@@ -1,4 +1,4 @@
-"""Auth event journal (4.6.0): stdout line format v1, journal entries, login notification."""
+"""Auth event journal (4.5.1): stdout line format v1, journal entries, login notification."""
 import asyncio
 import logging
 import os

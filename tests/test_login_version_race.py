@@ -1,4 +1,4 @@
-"""/login vs concurrent 2FA activation / password change (4.6.0 review, M1).
+"""/login vs concurrent 2FA activation / password change (4.5.1 review, M1).
 
 The user row is read BEFORE the ~170 ms Argon2 check. A token_version bump that
 lands during that window (2FA enabled, password changed, logout-all) must not

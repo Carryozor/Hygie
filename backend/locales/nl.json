@@ -65,5 +65,15 @@
   "discord.embed.server": "🖥️ Server",
   "discord.embed.requester": "👤 Aangevraagd door",
   "discord.embed.scheduled": "📅 Geplande verwijdering",
-  "discord.embed.date_label": "{date} (over {days} dag{s})"
+  "discord.embed.date_label": "{date} (over {days} dag{s})",
+  "auth.login_success": "Inloggen geslaagd: {user} vanaf {ip} ({method})",
+  "auth.login_failure": "Mislukte login voor {user} vanaf {ip} ({method}, {reason})",
+  "auth.mfa_failure": "2FA-fout voor {user} vanaf {ip} ({method}, {reason})",
+  "auth.locked": "Account {user} tijdelijk geblokkeerd voor {ip} ({reason})",
+  "auth.refresh_rejected": "Sessie geweigerd voor {user} vanaf {ip} ({reason})",
+  "auth.mfa_enabled": "2FA ingeschakeld voor {user} vanaf {ip}",
+  "auth.mfa_disabled": "2FA uitgeschakeld voor {user} vanaf {ip}",
+  "auth.mfa_reset": "2FA gereset voor {user} ({method})",
+  "auth.alert_title": "Nieuwe Hygie-login",
+  "auth.alert_body": "{user} is ingelogd vanaf {ip} (methode: {method})."
 }

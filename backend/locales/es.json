@@ -65,5 +65,15 @@
   "discord.embed.server": "🖥️ Servidor",
   "discord.embed.requester": "👤 Solicitado por",
   "discord.embed.scheduled": "📅 Eliminación programada",
-  "discord.embed.date_label": "{date} (en {days} día{s})"
+  "discord.embed.date_label": "{date} (en {days} día{s})",
+  "auth.login_success": "Inicio de sesión correcto: {user} desde {ip} ({method})",
+  "auth.login_failure": "Inicio de sesión fallido de {user} desde {ip} ({method}, {reason})",
+  "auth.mfa_failure": "Fallo de 2FA de {user} desde {ip} ({method}, {reason})",
+  "auth.locked": "Cuenta {user} bloqueada temporalmente para {ip} ({reason})",
+  "auth.refresh_rejected": "Sesión rechazada para {user} desde {ip} ({reason})",
+  "auth.mfa_enabled": "2FA activada para {user} desde {ip}",
+  "auth.mfa_disabled": "2FA desactivada para {user} desde {ip}",
+  "auth.mfa_reset": "2FA restablecida para {user} ({method})",
+  "auth.alert_title": "Nuevo inicio de sesión en Hygie",
+  "auth.alert_body": "{user} inició sesión desde {ip} (método: {method})."
 }

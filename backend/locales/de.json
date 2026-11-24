@@ -65,5 +65,15 @@
   "discord.embed.server": "🖥️ Server",
   "discord.embed.requester": "👤 Angefordert von",
   "discord.embed.scheduled": "📅 Geplante Löschung",
-  "discord.embed.date_label": "{date} (in {days} Tag{s})"
+  "discord.embed.date_label": "{date} (in {days} Tag{s})",
+  "auth.login_success": "Anmeldung erfolgreich: {user} von {ip} ({method})",
+  "auth.login_failure": "Anmeldung fehlgeschlagen für {user} von {ip} ({method}, {reason})",
+  "auth.mfa_failure": "2FA-Fehler für {user} von {ip} ({method}, {reason})",
+  "auth.locked": "Konto {user} für {ip} vorübergehend gesperrt ({reason})",
+  "auth.refresh_rejected": "Sitzung abgelehnt für {user} von {ip} ({reason})",
+  "auth.mfa_enabled": "2FA aktiviert für {user} von {ip}",
+  "auth.mfa_disabled": "2FA deaktiviert für {user} von {ip}",
+  "auth.mfa_reset": "2FA zurückgesetzt für {user} ({method})",
+  "auth.alert_title": "Neue Hygie-Anmeldung",
+  "auth.alert_body": "{user} hat sich von {ip} angemeldet (Methode: {method})."
 }

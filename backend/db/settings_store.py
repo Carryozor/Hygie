@@ -94,6 +94,7 @@ DEFAULT_SETTINGS = {
     "discord_alert_seerr_failure_mention": "",
     "discord_alert_seerr_failure_msg": "",
     "discord_alert_error_threshold": "3",
+    "discord_alert_login_success": "true",
     "max_parallel_library_scans": "3",
     "dry_run": "false",
     "scan_interval_minutes": "360",            # 6h par défaut

@@ -56,6 +56,7 @@ class SettingsUpdate(BaseModel):
     discord_alert_seerr_failure_mention: Optional[str] = None
     discord_alert_seerr_failure_msg: Optional[str] = None
     discord_alert_error_threshold: Optional[str] = None
+    discord_alert_login_success: Optional[str] = None
     max_parallel_library_scans: Optional[str] = None
     dry_run: Optional[str] = None
     log_level: Optional[str] = None

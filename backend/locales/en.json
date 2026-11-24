@@ -65,5 +65,15 @@
   "discord.embed.server": "🖥️ Server",
   "discord.embed.requester": "👤 Requested by",
   "discord.embed.scheduled": "📅 Scheduled deletion",
-  "discord.embed.date_label": "{date} (in {days} day{s})"
+  "discord.embed.date_label": "{date} (in {days} day{s})",
+  "auth.login_success": "Successful login: {user} from {ip} ({method})",
+  "auth.login_failure": "Failed login for {user} from {ip} ({method}, {reason})",
+  "auth.mfa_failure": "2FA failure for {user} from {ip} ({method}, {reason})",
+  "auth.locked": "Account {user} temporarily locked for {ip} ({reason})",
+  "auth.refresh_rejected": "Session rejected for {user} from {ip} ({reason})",
+  "auth.mfa_enabled": "2FA enabled for {user} from {ip}",
+  "auth.mfa_disabled": "2FA disabled for {user} from {ip}",
+  "auth.mfa_reset": "2FA reset for {user} ({method})",
+  "auth.alert_title": "New Hygie login",
+  "auth.alert_body": "{user} logged in from {ip} (method: {method})."
 }

@@ -33,6 +33,7 @@
   "sonarr.remove_err": "Sonarr: {title} — verwijderen mislukt",
   "seerr.deleted": "Seerr: aanvraag {title} verwijderd",
   "qbit.torrent_deleted": "qBittorrent: torrent + bestand verwijderd voor {title}",
+  "qbit.torrent_removed_files_kept": "qBittorrent: torrent verwijderd, bestanden bewaard voor {title}",
   "qbit.torrent_fail": "qBittorrent: verwijdering mislukt voor {title}",
   "qbit.tag_added": "qBittorrent: tag '{tag}' toegevoegd aan {title}",
   "qbit.tag_fail": "qBittorrent: taggen mislukt voor {title}",

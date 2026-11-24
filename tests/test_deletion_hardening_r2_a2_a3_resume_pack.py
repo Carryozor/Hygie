@@ -3,6 +3,8 @@ and A3 (season pack shared with episodes still in the library)."""
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from tests._qbit_plan_stub import echo_qbit_plan  # noqa: F401  (fixture)
 from pytest_httpx import HTTPXMock
 
 import backend.arr_clients.sonarr as sonarr
@@ -183,6 +185,7 @@ async def test_dry_run_persists_nothing(dbpath):
     assert await _stored_hash(nid) == ""
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_resume_after_interruption_runs_arr_seerr_qbit_with_persisted_hash(dbpath):
     """Retry (attempts=1): hash read from DB, ArrStep tolerant, Seerr+Qbit still run."""
     from backend.deletion_pipeline import (
@@ -328,6 +331,7 @@ async def test_shared_pack_with_remaining_episode_is_kept_and_warned():
     assert any(c.args[0] == "WARN" for c in log.await_args_list)
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_pack_deleted_when_no_file_remains():
     ctx = _qbit_ctx()
     chk, qb, _ = await _run_qbit(ctx, 0)
@@ -349,6 +353,7 @@ async def test_check_exception_means_no_delete():
     assert ctx.step_warnings
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_movie_is_unchanged_no_check():
     ctx = _qbit_ctx(media_type="Movie")
     chk, qb, _ = await _run_qbit(ctx, 5)
@@ -364,6 +369,7 @@ async def test_non_file_actions_never_blocked(action):
     qb.assert_awaited_once()
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_consolidated_checks_every_hash_and_keeps_only_shared_ones():
     from backend.deletion_pipeline import DeletionContext, QbitStep
     ctx = DeletionContext(

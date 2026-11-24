@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests._qbit_plan_stub import echo_qbit_plan  # noqa: F401  (fixture)
+
 import backend.qbit_client as qbit
 
 
@@ -161,6 +163,7 @@ async def test_qbit_step_missing_hash_warns():
     assert len(ctx.step_warnings) == 1
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_qbit_step_passes_ctx_warnings_to_handler():
     from backend.deletion_pipeline import DeletionContext, QbitStep
     ctx = DeletionContext(item={"title": "X"}, dry_run=False, qbit_action="delete_files")

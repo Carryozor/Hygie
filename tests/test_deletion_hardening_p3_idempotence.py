@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+
+from tests._qbit_plan_stub import echo_qbit_plan  # noqa: F401  (fixture)
 import respx
 from pytest_httpx import HTTPXMock
 
@@ -112,6 +114,7 @@ async def test_consolidated_series_path_unresolved_adds_warning():
     assert len(ctx.step_warnings) == 1
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_retry_after_media_server_404_runs_remaining_steps(httpx_mock: HTTPXMock):
     """Item already gone from Emby (404) must not block Arr/Seerr/Qbit on retry."""
     from backend.deletion_pipeline import (

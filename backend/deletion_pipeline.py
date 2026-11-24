@@ -346,7 +346,9 @@ class MediaServerStep(DeletionStep):
         series_id = ctx.item.get("sonarr_series_id")
         if not series_id:
             return
-        series = await sonarr_get_series_by_id_any(int(series_id))
+        srv = ctx.item.get("arr_server_url")
+        series = await (sonarr_get_series_by_id_any(int(series_id), arr_server_url=srv)
+                        if srv else sonarr_get_series_by_id_any(int(series_id)))
         series_path = (series or {}).get("path") or ""
         if not series_path:
             ctx.step_warnings.append(
@@ -482,10 +484,10 @@ class QbitStep(DeletionStep):
             ctx.step_warnings.append(f"Qbit: plan de suppression impossible ({e}) — torrents conservés")
             return kept + len(deletable)
         if plan is None:
-            # Listing unavailable: the delete itself will fail too and is reported.
-            for torrent_hash in deletable:
-                await _handle_qbit(torrent_hash, ctx.title, "delete_files", ctx.qbit_tag, ctx.step_warnings)
-            return kept
+            # Listing unavailable: survivors and twins cannot be checked, so erasing
+            # files blind is not an option. Fail the step: the row goes to 'error'
+            # and is retried with backoff (Emby/arr steps replay idempotently).
+            raise RuntimeError("liste qBittorrent indisponible : suppression des fichiers reportée")
 
         planned = {r.hash.lower() for r in plan}
         for torrent_hash in deletable:
@@ -514,9 +516,8 @@ class QbitStep(DeletionStep):
         through _delete_files, which plans removals across linked torrents."""
         from .deletion_helpers import _handle_qbit
 
-        await _handle_qbit(
+        return await _handle_qbit(
             torrent_hash, ctx.title, ctx.qbit_action, ctx.qbit_tag, ctx.step_warnings)
-        return True
 
 
 class StatsStep(DeletionStep):

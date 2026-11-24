@@ -208,8 +208,10 @@ async def _qbit_apply(torrent_hash: str, qbit_action: str, qbit_tag: str) -> tup
     """Run the configured action. Returns (ok, ok_message, failure_message)."""
     if qbit_action in ("delete_torrent", "delete_files"):
         # delete_torrent = remove the torrent but KEEP its files ("sans fichiers").
-        ok = await qbit_delete_torrent(torrent_hash, delete_files=(qbit_action == "delete_files"))
-        return ok, "qbit.torrent_deleted", "qbit.torrent_fail"
+        with_files = qbit_action == "delete_files"
+        ok = await qbit_delete_torrent(torrent_hash, delete_files=with_files)
+        ok_key = "qbit.torrent_deleted" if with_files else "qbit.torrent_removed_files_kept"
+        return ok, ok_key, "qbit.torrent_fail"
     if qbit_action == "pause":
         ok = await qbit_pause_torrent(torrent_hash)
         if ok:
@@ -233,8 +235,6 @@ async def _handle_qbit(
         ok, ok_key, fail_key = await _qbit_apply(torrent_hash, qbit_action, qbit_tag)
         if ok:
             msg = lm(ok_key, title=title, tag=qbit_tag)
-            if qbit_action == "delete_torrent":
-                msg += " (fichiers conservés)"
             await add_log("INFO", msg, "deletion")
             return True
         await add_log("WARN", lm(fail_key, title=title), "deletion")

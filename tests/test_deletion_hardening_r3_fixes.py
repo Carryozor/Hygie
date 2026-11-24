@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests._qbit_plan_stub import echo_qbit_plan  # noqa: F401  (fixture)
+
 import backend.db.utils as _db_utils
 import backend.db.settings_store as _db_ss
 import backend.db.schema as _db_schema
@@ -131,6 +133,7 @@ async def _run_qbit(ctx, *, series_count, remaining):
     return qb
 
 
+@pytest.mark.usefixtures("echo_qbit_plan")
 async def test_f2_whole_series_without_remaining_file_deletes_without_history(dbpath):
     ctx = _series_ctx()
     ctx.item["id"] = await _seed(media_type="Episode")

@@ -33,6 +33,7 @@
   "sonarr.remove_err": "Sonarr : {title} — échec du retrait",
   "seerr.deleted": "Seerr : requête {title} supprimée",
   "qbit.torrent_deleted": "qBittorrent : torrent + fichier supprimés pour {title}",
+  "qbit.torrent_removed_files_kept": "qBittorrent : torrent supprimé, fichiers conservés pour {title}",
   "qbit.torrent_fail": "qBittorrent : échec suppression {title}",
   "qbit.tag_added": "qBittorrent : tag '{tag}' ajouté à {title}",
   "qbit.tag_fail": "qBittorrent : échec tag {title}",

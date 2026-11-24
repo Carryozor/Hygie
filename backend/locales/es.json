@@ -33,6 +33,7 @@
   "sonarr.remove_err": "Sonarr: {title} — fallo al eliminar",
   "seerr.deleted": "Seerr: solicitud {title} eliminada",
   "qbit.torrent_deleted": "qBittorrent: torrent + archivo eliminados para {title}",
+  "qbit.torrent_removed_files_kept": "qBittorrent: torrent eliminado, archivos conservados para {title}",
   "qbit.torrent_fail": "qBittorrent: error al eliminar {title}",
   "qbit.tag_added": "qBittorrent: etiqueta '{tag}' agregada a {title}",
   "qbit.tag_fail": "qBittorrent: error al etiquetar {title}",

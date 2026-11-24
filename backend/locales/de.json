@@ -33,6 +33,7 @@
   "sonarr.remove_err": "Sonarr: {title} — Entfernung fehlgeschlagen",
   "seerr.deleted": "Seerr: Anfrage {title} gelöscht",
   "qbit.torrent_deleted": "qBittorrent: Torrent + Datei gelöscht für {title}",
+  "qbit.torrent_removed_files_kept": "qBittorrent: Torrent entfernt, Dateien behalten für {title}",
   "qbit.torrent_fail": "qBittorrent: Löschen fehlgeschlagen für {title}",
   "qbit.tag_added": "qBittorrent: Tag '{tag}' hinzugefügt zu {title}",
   "qbit.tag_fail": "qBittorrent: Tagging fehlgeschlagen für {title}",

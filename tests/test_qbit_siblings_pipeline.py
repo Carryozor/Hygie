@@ -79,10 +79,12 @@ async def test_target_sharing_its_path_with_a_survivor_keeps_the_files(qbit):
     assert any("autre torrent" in w for w in c.step_warnings)
 
 
-async def test_listing_unavailable_falls_back_to_previous_behaviour(qbit, monkeypatch):
+async def test_listing_unavailable_fails_the_step_without_deleting(qbit, monkeypatch):
+    # v4.6.0 (D2a): no blind delete_files; the step raises so the row is retried.
     monkeypatch.setattr(qs, "qbit_list_torrents", AsyncMock(return_value=None))
-    await QbitStep().execute(ctx())
-    assert qbit["calls"] == [("t", True)]
+    with pytest.raises(RuntimeError):
+        await QbitStep().execute(ctx())
+    assert qbit["calls"] == []
 
 
 async def test_target_already_gone_from_qbit_is_not_an_error(qbit):

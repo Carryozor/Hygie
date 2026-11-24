@@ -364,6 +364,22 @@ async def daily_failures(user_id: int, now: float | None = None) -> int:
     return max(0, int(row["spent"]) - int(row["ok"])) if row else 0
 
 
+async def record_code_failure(user_id: int, now: float | None = None) -> None:
+    """Count one failed code attempt made outside a login challenge (e.g. /mfa/disable).
+
+    Inserts an already-expired, never-claimable challenge row (random discarded
+    token) with attempts=1: it feeds daily_failures() and nothing else."""
+    t = time.time() if now is None else now
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT token_version FROM users WHERE id=?", (user_id,))
+        await db.execute(
+            "INSERT INTO mfa_challenges (user_id, token_hash, token_version, created_at, expires_at, attempts) "
+            "VALUES (?, ?, ?, ?, ?, 1)",
+            (user_id, _sha256(secrets.token_urlsafe(32)), (row or {}).get("token_version") or 0, t, t),
+        )
+        await db.commit()
+
+
 async def assert_under_daily_cap(user_id: int, now: float | None = None) -> None:
     """Raise MfaDailyCapReached at DAILY_FAILURE_CAP failures / 24 h / account.
 

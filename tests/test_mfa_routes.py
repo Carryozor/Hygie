@@ -477,3 +477,29 @@ async def test_no_secret_or_code_in_events(env, events):
     await _mfa_login(env, await _challenge(env), codes[0])
     blob = repr(events)
     assert secret not in blob and codes[0] not in blob and codes[0].replace("-", "") not in blob
+
+
+# ── /mfa/disable and the 24 h failure cap ───────────────────────────────────
+
+async def test_disable_wrong_code_counts_toward_daily_cap(env):
+    from backend import mfa
+    tok, _, _ = await _enable_mfa(env)
+    uid = (await env.auth.get_user("alice"))["id"]
+    before = await mfa.daily_failures(uid)
+    r = await env.c.post("/api/auth/mfa/disable", json={"current_password": PWD, "code": "000000"},
+                         headers=_bearer(tok))
+    assert r.status_code == 400 and r.json()["code"] == "mfa_code_invalid"
+    assert await mfa.daily_failures(uid) == before + 1
+
+
+async def test_disable_blocked_by_daily_cap_even_with_valid_code(env, events):
+    from backend import mfa
+    tok, secret, _ = await _enable_mfa(env)
+    uid = (await env.auth.get_user("alice"))["id"]
+    for _ in range(mfa.DAILY_FAILURE_CAP):
+        await mfa.record_code_failure(uid)
+    r = await env.c.post("/api/auth/mfa/disable",
+                         json={"current_password": PWD, "code": _next_code(env, secret)}, headers=_bearer(tok))
+    assert r.status_code == 429 and r.json()["code"] == "mfa_locked"
+    assert ("locked", "mfa", "daily_cap") in [(e["event"], e["method"], e["reason"]) for e in events]
+    assert (await env.c.get("/api/auth/mfa", headers=_bearer(tok))).json()["enabled"] is True

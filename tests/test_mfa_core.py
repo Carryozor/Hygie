@@ -388,3 +388,18 @@ async def test_remove_user_cascades_mfa_rows(env):
         await db.execute("DELETE FROM users WHERE id=?", (uid,))
         await db.commit()
     assert (await _q(path, "SELECT COUNT(*) FROM mfa_backup_codes"))[0][0] == 0
+
+
+# ── record_code_failure (disable-route failures count toward the daily cap) ─
+
+async def test_record_code_failure_counts_and_is_not_claimable(env, monkeypatch):
+    uid, path = env
+    monkeypatch.setattr(mfa.secrets, "token_urlsafe", lambda n=32: "known-raw-token")
+    before = await mfa.daily_failures(uid)
+    await mfa.record_code_failure(uid)
+    assert await mfa.daily_failures(uid) == before + 1
+    (h, att, cons, created, expires), = await _q(
+        path, "SELECT token_hash, attempts, consumed_at, created_at, expires_at FROM mfa_challenges")
+    assert att == 1 and cons is None and created == expires and h == hashlib.sha256(b"known-raw-token").hexdigest()
+    with pytest.raises(mfa.ChallengeInvalid):
+        await mfa.claim_challenge("known-raw-token")

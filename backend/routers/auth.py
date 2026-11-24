@@ -487,12 +487,18 @@ async def mfa_disable(body: MfaDisableRequest, request: Request, username: str =
     if limited is not None:
         return limited
     try:
+        await mfa.assert_under_daily_cap(user["id"])
+    except mfa.MfaDailyCapReached:
+        await log_auth_event("locked", ip=ip, username=username, method="mfa", reason="daily_cap")
+        return _err(_ERR_LOCKED)
+    try:
         check = await mfa.check_code(user["id"], body.code)
     except mfa.MfaNotEnabled:
         return _err(_ERR_NOT_ENABLED)
     except mfa.MfaSecretUnreadable:
         return _err(_ERR_UNREADABLE)
     if not check.ok:
+        await mfa.record_code_failure(user["id"])
         await log_auth_event("mfa_failure", ip=ip, username=username, method=check.method, reason=check.reason)
         return _err(_ERR_CODE)
     await asyncio.to_thread(release_attempt, rl_key, rl_token)

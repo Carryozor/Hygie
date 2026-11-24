@@ -1,4 +1,5 @@
 """Database query functions — single source of truth for media_queue and libraries SQL."""
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -575,15 +576,18 @@ async def set_queue_note(item_id: int, text: str) -> None:
         await db.commit()
 
 
-async def release_claim(item_id: int) -> bool:
-    """Give a claimed item back to the queue (deleting -> pending).
+# Waits (seconds) between release attempts when the DB errors out: ~1 min in
+# total. A row left in 'deleting' is only recovered at the next startup, so the
+# release is worth insisting on.
+_RELEASE_RETRY_DELAYS = (2, 4, 8, 16, 32)
 
-    Used when a deletion attempt is interrupted before its outcome could be
-    recorded; only touches a row still in 'deleting'. ``attempts`` is
-    incremented (capped below the definitive threshold): the interrupted run
-    may have removed the media already, so the next run must treat "already
-    absent" answers as success — yet interruptions alone never make it final.
-    """
+
+async def _release_sleep(seconds: float) -> None:
+    """Injectable wait between release attempts (patched in tests)."""
+    await asyncio.sleep(seconds)
+
+
+async def _release_claim_once(item_id: int) -> bool:
     async with get_db() as db:
         n = await db.execute_write(
             f"UPDATE media_queue SET status=?, attempts={_BUMP_ATTEMPTS_SQL} "  # nosec B608 - module-level constant SQL fragment, no user input
@@ -592,6 +596,34 @@ async def release_claim(item_id: int) -> bool:
         )
         await db.commit()
     return bool(n)
+
+
+async def release_claim(item_id: int) -> bool:
+    """Give a claimed item back to the queue (deleting -> pending).
+
+    Used when a deletion attempt is interrupted before its outcome could be
+    recorded; only touches a row still in 'deleting'. ``attempts`` is
+    incremented (capped below the definitive threshold): the interrupted run
+    may have removed the media already, so the next run must treat "already
+    absent" answers as success — yet interruptions alone never make it final.
+
+    A DB error is retried with a bounded backoff (``_RELEASE_RETRY_DELAYS``);
+    when every attempt fails a WARNING is logged and the last error re-raised.
+    """
+    for delay in _RELEASE_RETRY_DELAYS:
+        try:
+            return await _release_claim_once(item_id)
+        except Exception as e:
+            logger.info("release_claim(%s) failed (%s), retrying in %ss", item_id, e, delay)
+            await _release_sleep(delay)
+    try:
+        return await _release_claim_once(item_id)
+    except Exception:
+        logger.warning(
+            "release_claim(%s) gave up after %d retries: the row stays 'deleting' "
+            "until the next startup recovery", item_id, len(_RELEASE_RETRY_DELAYS),
+        )
+        raise
 
 
 async def update_last_played_scrobble(emby_id: str, last_played_iso: str) -> None:

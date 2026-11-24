@@ -151,6 +151,14 @@ async def _delete_claimed(media_id: int, row: dict) -> bool:
                 logger.error("Could not release claim on queue item %s: %s", media_id, e)
 
 
+async def _release_after_failed_reload(media_id: int) -> None:
+    """Hand a just-claimed row back to the queue; never raises."""
+    try:
+        await asyncio.shield(release_claim(media_id))
+    except Exception as e:
+        logger.error("Could not release claim on queue item %s: %s", media_id, e)
+
+
 @router.get("/{media_id}/deletion-preview")
 async def deletion_preview(media_id: int, user: str = Depends(require_auth)):
     """What deleting this item would touch (files, torrents). Read-only."""
@@ -178,8 +186,15 @@ async def delete_now(
     # Atomically claim the item by updating status to 'deleting' — prevents double-delete race
     if not await claim_for_deletion(media_id):
         raise HTTPException(404, "Média introuvable ou déjà supprimé")
-    row = await get_by_id(media_id)
-    server_map = await _load_library_server_map()
+    try:
+        row = await get_by_id(media_id)
+        server_map = await _load_library_server_map()
+    except Exception:
+        logger.exception("delete-now: reload after claim failed for item %s", media_id)
+        await _release_after_failed_reload(media_id)
+        raise HTTPException(503, "Base de données indisponible, réessayez")
+    if not row:
+        raise HTTPException(404, "Média introuvable ou déjà supprimé")
     row = {**dict(row), "_server_id": server_map.get(row.get("library_id"), "0")}
 
     ok = await _delete_claimed(media_id, row)

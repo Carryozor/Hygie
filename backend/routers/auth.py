@@ -1,11 +1,16 @@
-"""Auth routes — login, setup, password change."""
+"""Auth routes — login (with optional TOTP 2FA), setup, password change, 2FA management."""
 import asyncio
 import hashlib
 import unicodedata
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+from .. import mfa
+from ..auth_events import log_auth_event, refresh_rejection_reason
+from ..db.engine import get_db
 
 from ..auth import (
     issue_access_token,
@@ -95,6 +100,24 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=200)
 
 
+class MfaLoginRequest(BaseModel):
+    mfa_token: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=1, max_length=32)
+
+
+class MfaPasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+
+
+class MfaEnableRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=32)
+
+
+class MfaDisableRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    code: str = Field(min_length=1, max_length=32)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = ""   # optional — the httpOnly cookie is preferred
 
@@ -148,6 +171,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
     rl_key = _rl_key("login", ip, body.username)
     blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, rl_key)
     if blocked:
+        await log_auth_event("locked", ip=ip, username=body.username, method="password", reason="rate_limit")
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     user = await get_user(body.username)
     # Toujours appeler verify_password pour éliminer le timing side-channel :
@@ -159,11 +183,19 @@ async def login(body: LoginRequest, request: Request, response: Response):
         user["password_hash"] if user else _DUMMY_HASH,
     )
     if not user or not password_ok:
+        await log_auth_event(
+            "login_failure", ip=ip, username=body.username, method="password", reason="invalid_credentials")
         raise HTTPException(401, "Identifiants invalides")
     await asyncio.to_thread(release_attempt, rl_key, rl_token)
+    if user.get("totp_enabled"):
+        # Password is right but no session is granted yet: no cookie, no access
+        # token, only an opaque short-lived single-use challenge.
+        challenge = await mfa.create_challenge(user["id"], user.get("token_version") or 0)
+        return {"mfa_required": True, "mfa_token": challenge.token, "expires_in": challenge.expires_in}
     access_token  = await issue_access_token(user["username"])
     refresh_token = await create_refresh_token(user["username"])
     _set_refresh_cookie(response, request, refresh_token)
+    await log_auth_event("login_success", ip=ip, username=user["username"], method="password", notify=True)
     return {
         "token":        access_token,
         "access_token": access_token,
@@ -190,9 +222,14 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     ip = get_client_ip(request)
     blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, f"refresh:{ip}")
     if blocked:
+        await log_auth_event("locked", ip=ip, username=None, method="refresh", reason="rate_limit")
         raise HTTPException(429, "Trop de tentatives — réessayez dans 5 minutes")
     verified = await verify_refresh_token(raw)
     if not verified:
+        why = await refresh_rejection_reason(raw)
+        await log_auth_event(
+            "refresh_rejected", ip=ip, username=why[1] if why else None,
+            method="refresh", reason=why[0] if why else "revoked")
         raise HTTPException(401, "Refresh token invalide ou expiré")
     username, version = verified
     await asyncio.to_thread(release_attempt, f"refresh:{ip}", rl_token)
@@ -202,6 +239,7 @@ async def refresh(body: RefreshRequest, request: Request, response: Response):
     # this return None instead of leaving a surviving session.
     new_refresh = await create_refresh_token_if_version(username, version)
     if new_refresh is None:
+        await log_auth_event("refresh_rejected", ip=ip, username=username, method="refresh", reason="version")
         raise HTTPException(401, "Session révoquée")
     access_token = create_access_token(username, version)
     # Grace window: concurrent tabs may still hold the old cookie value.
@@ -264,3 +302,197 @@ async def change_password(
 @router.get("/me")
 async def me(username: str = Depends(require_auth)):
     return {"username": username}
+
+
+# ── Two-factor authentication ──────────────────────────────────────────────────
+_NO_STORE = {"Cache-Control": "no-store"}
+_ERR_CHALLENGE = (401, "mfa_challenge_invalid", "Session de connexion expirée — reconnectez-vous")
+_ERR_LOGIN_CODE = (401, "mfa_code_invalid", "Code invalide")
+_ERR_LOCKED = (429, "mfa_locked", "Trop de tentatives — réessayez plus tard")
+_ERR_CODE = (400, "mfa_code_invalid", "Code invalide")
+_ERR_PASSWORD = (400, "invalid_password", "Mot de passe incorrect")
+_ERR_RATE = (429, "rate_limited", "Trop de tentatives — réessayez dans 5 minutes")
+_ERR_ALREADY = (409, "mfa_already_enabled", "La double authentification est déjà activée")
+_ERR_NOT_ENABLED = (409, "mfa_not_enabled", "La double authentification n'est pas activée")
+_ERR_UNREADABLE = (503, "mfa_secret_unreadable", "Secret 2FA illisible — utilisez un code de secours")
+
+
+def _err(spec: tuple) -> JSONResponse:
+    """Error body of the 2FA endpoints: French message + stable machine code."""
+    status_code, code, detail = spec
+    return JSONResponse({"detail": detail, "code": code}, status_code=status_code)
+
+
+async def _username_of(user_id: int):
+    async with get_db() as db:
+        row = await db.fetch_one("SELECT username FROM users WHERE id=?", (user_id,))
+    return row["username"] if row else None
+
+
+async def _check_password(request: Request, user: dict, password: str):
+    """Rate-limited password check (setup / disable). None when right, else the error response."""
+    ip = get_client_ip(request)
+    rl_key = _rl_key("mfa", ip, user["username"])
+    blocked, rl_token = await asyncio.to_thread(rate_limit_attempt, rl_key)
+    if blocked:
+        await log_auth_event("locked", ip=ip, username=user["username"], method="password", reason="rate_limit")
+        return _err(_ERR_RATE)
+    if not await asyncio.to_thread(verify_password, password, user["password_hash"]):
+        await log_auth_event(
+            "mfa_failure", ip=ip, username=user["username"], method="password", reason="invalid_credentials")
+        return _err(_ERR_PASSWORD)
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
+    return None
+
+
+async def _account_code_budget(ip: str, user_id: int, username: str):
+    """Per-account 5 / 5 min budget for code guesses, whatever the IP.
+
+    Returns (error_response | None, rl_key, rl_token); release the attempt on success."""
+    key = f"mfa:{user_id}"
+    blocked, token = await asyncio.to_thread(rate_limit_attempt, key)
+    if blocked:
+        await log_auth_event("locked", ip=ip, username=username, method="mfa", reason="rate_limit")
+        return _err(_ERR_LOCKED), key, token
+    return None, key, token
+
+
+async def _rotated_session_response(request: Request, username: str, payload: dict) -> JSONResponse:
+    """Kill every session of the user, then answer with a fresh access token + cookie."""
+    await revoke_all_refresh_tokens(username)
+    result = JSONResponse({**payload, "access_token": await issue_access_token(username)}, headers=_NO_STORE)
+    _set_refresh_cookie(result, request, await create_refresh_token(username))
+    return result
+
+
+@router.post("/login/mfa")
+async def login_mfa(body: MfaLoginRequest, request: Request, response: Response):
+    ip = get_client_ip(request)
+
+    async def reject(spec, reason, username=None, method="mfa"):
+        await log_auth_event("mfa_failure", ip=ip, username=username, method=method, reason=reason)
+        return _err(spec)
+
+    # 1. atomic claim of one attempt (TTL, single use, 3 tries, token_version)
+    try:
+        chal = await mfa.claim_challenge(body.mfa_token)
+    except mfa.ChallengeInvalid:
+        return await reject(_ERR_CHALLENGE, "challenge_invalid")
+    username = await _username_of(chal.user_id)
+    if username is None:
+        return await reject(_ERR_CHALLENGE, "challenge_invalid")
+    # 2. per-account limiter, then the 24 h cap
+    limited, rl_key, rl_token = await _account_code_budget(ip, chal.user_id, username)
+    if limited is not None:
+        return limited
+    try:
+        await mfa.assert_under_daily_cap(chal.user_id)
+    except mfa.MfaDailyCapReached:
+        await log_auth_event("locked", ip=ip, username=username, method="mfa", reason="daily_cap")
+        return _err(_ERR_LOCKED)
+    # 3. the code itself (never logged)
+    try:
+        check = await mfa.check_code(chal.user_id, body.code)
+    except mfa.MfaNotEnabled:
+        return await reject(_ERR_CHALLENGE, "challenge_invalid", username)
+    except mfa.MfaSecretUnreadable:
+        logger.error("2FA secret of user id %s cannot be decrypted", chal.user_id)
+        return await reject(_ERR_UNREADABLE, "invalid_code", username, "totp")
+    if not check.ok:
+        return await reject(_ERR_LOGIN_CODE, check.reason, username, check.method)
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
+    # 4. consume, then mint the session with the 4.5.1 race guarantees
+    if not await mfa.consume_challenge(chal.id):
+        return await reject(_ERR_CHALLENGE, "challenge_invalid", username)
+    refresh_token = await create_refresh_token_if_version(username, chal.token_version)
+    if refresh_token is None:
+        return await reject(_ERR_CHALLENGE, "challenge_invalid", username)
+    access_token = create_access_token(username, chal.token_version)
+    _set_refresh_cookie(response, request, refresh_token)
+    await log_auth_event("login_success", ip=ip, username=username, method=check.method, notify=True)
+    return {"token": access_token, "access_token": access_token, "username": username}
+
+
+@router.get("/mfa")
+async def mfa_state(username: str = Depends(require_auth)):
+    user = await get_user(username)
+    st = await mfa.get_state(user["id"])
+    return {
+        "enabled": st.enabled,
+        "enabled_at": st.enabled_at,
+        "pending": st.pending,
+        "backup_codes_remaining": st.backup_codes_remaining,
+        "encryption_available": st.encryption_available,
+    }
+
+
+@router.post("/mfa/setup")
+async def mfa_setup(body: MfaPasswordRequest, request: Request, username: str = Depends(require_auth)):
+    user = await get_user(username)
+    if (err := await _check_password(request, user, body.current_password)) is not None:
+        return err
+    try:
+        info = await mfa.begin_setup(user["id"], username)
+    except mfa.MfaAlreadyEnabled:
+        return _err(_ERR_ALREADY)
+    except mfa.EncryptionUnavailable:
+        return _err((409, "encryption_unavailable",
+                     "Chiffrement indisponible : définissez HYGIE_ENCRYPTION_KEY pour activer la double authentification"))
+    return JSONResponse(
+        {"secret": info.secret, "otpauth_uri": info.otpauth_uri, "qr_svg_data_uri": info.qr_svg_data_uri},
+        headers=_NO_STORE,
+    )
+
+
+@router.post("/mfa/enable")
+async def mfa_enable(body: MfaEnableRequest, request: Request, username: str = Depends(require_auth)):
+    user = await get_user(username)
+    ip = get_client_ip(request)
+    limited, rl_key, rl_token = await _account_code_budget(ip, user["id"], username)
+    if limited is not None:
+        return limited
+    try:
+        backup_codes = await mfa.enable(user["id"], body.code)
+    except mfa.MfaNoPendingSetup:
+        return _err((400, "mfa_no_pending_setup", "Aucune configuration en attente — recommencez l'activation"))
+    except mfa.MfaAlreadyEnabled:
+        return _err(_ERR_ALREADY)
+    except mfa.MfaCodeInvalid:
+        await log_auth_event("mfa_failure", ip=ip, username=username, method="totp", reason="invalid_code")
+        return _err(_ERR_CODE)
+    except mfa.MfaSecretUnreadable:
+        return _err(_ERR_UNREADABLE)
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
+    result = await _rotated_session_response(request, username, {"enabled": True, "backup_codes": backup_codes})
+    await log_auth_event("mfa_enabled", ip=ip, username=username, method="totp")
+    return result
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(body: MfaDisableRequest, request: Request, username: str = Depends(require_auth)):
+    user = await get_user(username)
+    ip = get_client_ip(request)
+    if not user.get("totp_enabled"):
+        return _err(_ERR_NOT_ENABLED)
+    if (err := await _check_password(request, user, body.current_password)) is not None:
+        return err
+    limited, rl_key, rl_token = await _account_code_budget(ip, user["id"], username)
+    if limited is not None:
+        return limited
+    try:
+        check = await mfa.check_code(user["id"], body.code)
+    except mfa.MfaNotEnabled:
+        return _err(_ERR_NOT_ENABLED)
+    except mfa.MfaSecretUnreadable:
+        return _err(_ERR_UNREADABLE)
+    if not check.ok:
+        await log_auth_event("mfa_failure", ip=ip, username=username, method=check.method, reason=check.reason)
+        return _err(_ERR_CODE)
+    await asyncio.to_thread(release_attempt, rl_key, rl_token)
+    try:
+        await mfa.disable(user["id"])
+    except mfa.MfaNotEnabled:
+        return _err(_ERR_NOT_ENABLED)
+    result = await _rotated_session_response(request, username, {"enabled": False})
+    await log_auth_event("mfa_disabled", ip=ip, username=username, method=check.method)
+    return result

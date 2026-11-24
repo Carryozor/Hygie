@@ -74,7 +74,11 @@ async function _doRefresh() {
 /** Resolve with a fresh access token; concurrent callers share one request. */
 export function refreshOnce() {
   if (!_inflight) {
-    _inflight = _doRefresh().finally(() => { _inflight = null })
+    // Only clear the slot if it still holds THIS refresh: after
+    // invalidateRefresh() a newer refresh may own it, and a superseded one
+    // settling late must not erase it (that caused a double cookie rotation).
+    const p = _doRefresh().finally(() => { if (_inflight === p) _inflight = null })
+    _inflight = p
   }
   return _inflight
 }

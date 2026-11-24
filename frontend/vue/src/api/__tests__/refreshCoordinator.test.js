@@ -112,4 +112,19 @@ describe('refreshOnce', () => {
     expect(seen.length).toBe(0)
     expect(getToken()).toBe('')
   })
+
+  it('keeps sharing the live refresh after a superseded one settles', async () => {
+    const resolvers = []
+    axiosPost.mockImplementation(() => new Promise(r => { resolvers.push(r) }))
+    const p1 = refreshOnce()
+    invalidateRefresh()
+    const p2 = refreshOnce()
+    resolvers[0]({ data: { access_token: 'stale' } })
+    await expect(p1).rejects.toThrow()
+    const p3 = refreshOnce()
+    expect(p3).toBe(p2)
+    resolvers[1]({ data: { access_token: 'fresh' } })
+    await expect(p3).resolves.toBe('fresh')
+    expect(axiosPost).toHaveBeenCalledTimes(2)
+  })
 })

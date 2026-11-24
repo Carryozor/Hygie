@@ -79,7 +79,13 @@ failregex = HYGIE_AUTH v=1 event=(?:login_failure|mfa_failure|locked) ip=<ADDR>
 ignoreregex =
 ```
 
-Jail reading the Docker journald driver (`journalmatch` selects the container):
+**Scope the jail to the Hygie container only.** Any other container that logs
+attacker-controlled text (for example a User-Agent in a reverse-proxy access log) could
+otherwise forge a `HYGIE_AUTH v=1 event=login_failure ip=<victim IP> ` line and get any
+IP banned. The journald jail below is the recommended default because `journalmatch`
+filters on the container name; use the json-file jail only if journald logging is not an option.
+
+Jail reading the Docker journald driver (recommended; `journalmatch` selects the container):
 
 ```ini
 [hygie]
@@ -92,18 +98,25 @@ findtime = 10m
 bantime  = 1h
 ```
 
-Jail reading the default `json-file` driver:
+Jail reading the default `json-file` driver (fallback). Point `logpath` at the log file of
+the Hygie container alone, obtained with `docker inspect --format '{{.LogPath}}' hygie`
+(for example `/var/lib/docker/containers/<full container id>/<full container id>-json.log`):
 
 ```ini
 [hygie-json]
 enabled  = true
 filter   = hygie
 backend  = auto
-logpath  = /var/lib/docker/containers/*/*-json.log
+logpath  = /var/lib/docker/containers/<full container id>/<full container id>-json.log
 maxretry = 5
 findtime = 10m
 bantime  = 1h
 ```
+
+Warning: never use a wildcard such as `/var/lib/docker/containers/*/*-json.log` — it reads the
+logs of every container (see above). The container id changes each time the container is
+recreated (image update, `compose up` after a config change): update `logpath` and reload
+fail2ban after every recreation, or the jail silently stops matching.
 
 Note that a ban on the Docker host only protects Hygie if the banned IP is the one Hygie
 sees: behind a reverse proxy, configure `HYGIE_TRUSTED_PROXIES` first, otherwise you would
@@ -112,7 +125,9 @@ ban the proxy itself.
 ### CrowdSec
 
 The same lines can be parsed by CrowdSec: acquire the container logs with the `docker`
-datasource and write a parser matching `HYGIE_AUTH v=1 event=(login_failure|mfa_failure|locked) ip=(\S+) `.
+datasource restricted to the Hygie container (`container_name: [hygie]` in the acquisition
+file; never `container_name_regexp: .*` or an unfiltered source, for the same forgery reason
+as above) and write a parser matching `HYGIE_AUTH v=1 event=(login_failure|mfa_failure|locked) ip=(\S+) `.
 
 ## Reverse proxies and client IP
 

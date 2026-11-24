@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 BATCH_SIZE = 1000
 
 ORDERED_TABLES = [
-    "settings", "users", "refresh_tokens", "libraries",
+    "settings", "users", "mfa_backup_codes", "refresh_tokens", "libraries",
     "media_queue", "ignored_media", "seerr_user_rules",
     "logs", "job_history", "stats_history",
     "rate_limit", "expert_rules", "notifications",

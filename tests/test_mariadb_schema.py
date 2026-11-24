@@ -8,6 +8,7 @@ def test_all_tables_present():
         "settings", "users", "refresh_tokens", "libraries", "media_queue", "ignored_media",
         "seerr_user_rules", "logs", "job_history", "stats_history",
         "rate_limit", "expert_rules", "notifications", "plex_overlays",
+        "mfa_backup_codes", "mfa_challenges",
     }
     assert names == expected
 

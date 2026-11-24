@@ -25,6 +25,10 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             password_hash TEXT         NOT NULL,
             created_at    VARCHAR(32)  NOT NULL,
             token_version BIGINT  NOT NULL DEFAULT 0,
+            totp_secret   TEXT         DEFAULT NULL,
+            totp_enabled  TINYINT      NOT NULL DEFAULT 0,
+            totp_last_step BIGINT      DEFAULT NULL,
+            totp_enabled_at VARCHAR(32) DEFAULT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY uq_users_username (username)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
@@ -237,6 +241,36 @@ MARIADB_TABLES: list[tuple[str, str]] = [
             UNIQUE KEY uq_plex_overlays (server_id, rating_key)
         ) ENGINE=InnoDB CHARSET=utf8mb4""",
     ),
+    (
+        "mfa_backup_codes",
+        """CREATE TABLE IF NOT EXISTS mfa_backup_codes (
+            id         INT         NOT NULL AUTO_INCREMENT,
+            user_id    INT         NOT NULL,
+            code_hash  CHAR(64)    NOT NULL,
+            created_at VARCHAR(32) NOT NULL,
+            used_at    VARCHAR(32) DEFAULT NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT fk_mfa_bc_user FOREIGN KEY (user_id)
+                REFERENCES users (id) ON DELETE CASCADE
+        ) ENGINE=InnoDB CHARSET=utf8mb4""",
+    ),
+    (
+        "mfa_challenges",
+        """CREATE TABLE IF NOT EXISTS mfa_challenges (
+            id            INT       NOT NULL AUTO_INCREMENT,
+            user_id       INT       NOT NULL,
+            token_hash    CHAR(64)  NOT NULL,
+            token_version BIGINT    NOT NULL,
+            created_at    DOUBLE    NOT NULL,
+            expires_at    DOUBLE    NOT NULL,
+            attempts      INT       NOT NULL DEFAULT 0,
+            consumed_at   DOUBLE    DEFAULT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_mfa_ch_token (token_hash),
+            CONSTRAINT fk_mfa_ch_user FOREIGN KEY (user_id)
+                REFERENCES users (id) ON DELETE CASCADE
+        ) ENGINE=InnoDB CHARSET=utf8mb4""",
+    ),
 ]
 
 #  `CREATE INDEX IF NOT EXISTS` is only valid on MariaDB >= 10.5 and is a hard
@@ -246,6 +280,8 @@ MARIADB_TABLES: list[tuple[str, str]] = [
 #  which gives the same idempotency `IF NOT EXISTS` would have provided.
 MARIADB_INDEXES: list[str] = [
     "CREATE INDEX idx_rt_user ON refresh_tokens(user_id)",
+    "CREATE INDEX idx_mfa_bc_user ON mfa_backup_codes(user_id)",
+    "CREATE INDEX idx_mfa_ch_user ON mfa_challenges(user_id, created_at)",
     "CREATE INDEX idx_logs_ts        ON logs(ts)",
     "CREATE INDEX idx_media_status   ON media_queue(status)",
     "CREATE INDEX idx_media_delete_at ON media_queue(delete_at)",

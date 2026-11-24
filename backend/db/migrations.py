@@ -707,6 +707,50 @@ async def _m019_session_hardening_columns():
         await db.commit()
 
 
+async def _m020_mfa_schema():
+    """TOTP 2FA: users.totp_* columns + mfa_backup_codes / mfa_challenges tables.
+
+    Idempotent and non-destructive. init_db() already creates the new tables on
+    a fresh start, so on SQLite this mostly adds the missing users columns; on
+    MariaDB (whose init_db never ALTERs) it adds the columns and tables. The
+    DDL is taken from the schema modules so the two cannot drift.
+    """
+    from .schema import _TABLES
+    from .schema_mariadb import MARIADB_TABLES, MARIADB_INDEXES
+
+    maria = DIALECT == "mariadb"
+    wanted = (
+        ("totp_secret", "TEXT DEFAULT NULL"),
+        ("totp_enabled", "TINYINT NOT NULL DEFAULT 0" if maria else "INTEGER NOT NULL DEFAULT 0"),
+        ("totp_last_step", "BIGINT DEFAULT NULL" if maria else "INTEGER DEFAULT NULL"),
+        ("totp_enabled_at", "VARCHAR(32) DEFAULT NULL" if maria else "TEXT DEFAULT NULL"),
+    )
+    tables = MARIADB_TABLES if maria else [(n, d) for n, d, *_ in _TABLES]
+    mfa_ddl = [d for n, d, *_ in tables if n in ("mfa_backup_codes", "mfa_challenges")]
+    if maria:
+        indexes = [i for i in MARIADB_INDEXES if " idx_mfa_" in i]
+    else:
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_mfa_bc_user ON mfa_backup_codes(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mfa_ch_user ON mfa_challenges(user_id, created_at)",
+        ]
+    async with get_db() as db:
+        cols = await db.table_columns("users")
+        for col, col_type in wanted:
+            if col not in cols:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+        for ddl in mfa_ddl:
+            await db.execute(ddl)
+        for idx in indexes:
+            try:
+                await db.execute(idx)
+            except Exception as e:
+                # MariaDB has no CREATE INDEX IF NOT EXISTS: 1061 = already there.
+                if "1061" not in str(e) and "duplicate key name" not in str(e).lower():
+                    raise
+        await db.commit()
+
+
 _MIGRATIONS = [
     ("m001", "Establish migration tracking baseline",                    _m001_no_op),
     ("m002", "Ensure logs.seen_status column",                           _m002_ensure_seen_status_on_logs),
@@ -727,4 +771,5 @@ _MIGRATIONS = [
     ("m017", "Ensure plex_overlays table (persist Plex overlay tracking)", _m017_ensure_plex_overlays_table),
     ("m018", "Add media_queue attempts/last_error/next_retry_at (error replay with backoff)", _m018_add_deletion_retry_columns),
     ("m019", "Add users.token_version + refresh_tokens.rotated_at (session hardening)", _m019_session_hardening_columns),
+    ("m020", "Add TOTP columns + mfa_backup_codes/mfa_challenges tables", _m020_mfa_schema),
 ]

@@ -32,9 +32,19 @@ _TABLES = [
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            token_version INTEGER NOT NULL DEFAULT 0
+            token_version INTEGER NOT NULL DEFAULT 0,
+            totp_secret TEXT DEFAULT NULL,
+            totp_enabled INTEGER NOT NULL DEFAULT 0,
+            totp_last_step INTEGER DEFAULT NULL,
+            totp_enabled_at TEXT DEFAULT NULL
         )""",
-        [("token_version", "INTEGER NOT NULL DEFAULT 0")],
+        [
+            ("token_version", "INTEGER NOT NULL DEFAULT 0"),
+            ("totp_secret", "TEXT DEFAULT NULL"),
+            ("totp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("totp_last_step", "INTEGER DEFAULT NULL"),
+            ("totp_enabled_at", "TEXT DEFAULT NULL"),
+        ],
     ),
     (
         "refresh_tokens",
@@ -302,6 +312,31 @@ _TABLES = [
         )""",
         [],
     ),
+    (
+        "mfa_backup_codes",
+        """CREATE TABLE IF NOT EXISTS mfa_backup_codes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            code_hash  TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            used_at    TEXT DEFAULT NULL
+        )""",
+        [],
+    ),
+    (
+        "mfa_challenges",
+        """CREATE TABLE IF NOT EXISTS mfa_challenges (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash    TEXT NOT NULL UNIQUE,
+            token_version INTEGER NOT NULL,
+            created_at    REAL NOT NULL,
+            expires_at    REAL NOT NULL,
+            attempts      INTEGER NOT NULL DEFAULT 0,
+            consumed_at   REAL DEFAULT NULL
+        )""",
+        [],
+    ),
 ]
 
 
@@ -323,12 +358,15 @@ _SQLITE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_media_sonarr_id ON media_queue(sonarr_id)",
     "CREATE INDEX IF NOT EXISTS idx_media_tmdb_id ON media_queue(tmdb_id)",
     "CREATE INDEX IF NOT EXISTS idx_plex_overlays_server ON plex_overlays(server_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mfa_bc_user ON mfa_backup_codes(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mfa_ch_user ON mfa_challenges(user_id, created_at)",
 ]
 
 _KNOWN_TABLES = frozenset({
     "settings", "users", "refresh_tokens", "libraries", "media_queue",
     "ignored_media", "seerr_user_rules", "logs", "job_history", "stats_history",
     "rate_limit", "expert_rules", "notifications", "plex_overlays",
+    "mfa_backup_codes", "mfa_challenges",
     # Legacy names used during migration
     "logs_legacy", "job_history_legacy",
 })

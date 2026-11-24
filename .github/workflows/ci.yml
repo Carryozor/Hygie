@@ -2,56 +2,23 @@ name: CI
 
 # Only fires on tag pushes. Branch pushes to main and PRs are already fully
 # covered by test.yml (coverage, lint, schema check, MariaDB, security scans);
-# running a second, thinner test job on every push/PR was pure duplication
-# (same MariaDB service, same pytest run, no extra signal). The `test` job
-# below still exists because tag pushes are NOT covered by test.yml's
-# `branches: [main, develop]` trigger, and it's the gate for docker/release.
+# running a second, thinner test job on every push/PR was pure duplication.
+# The `gate` job calls test.yml (workflow_call) because tag pushes are NOT covered
+# by its `branches: [main, develop]` trigger; it gates docker/release.
 on:
   push:
     tags: ['v*']
 
 jobs:
-  test:
-    name: Tests (Python 3.12)
-    runs-on: ubuntu-latest
-
-    # Live MariaDB so the dual-dialect write paths are exercised in CI.
-    # Without this the SQLite-only upsert / reserved-word 'key' / startup-order
-    # bugs that broke MariaDB mode went undetected (schema tests are parse-only).
-    services:
-      mariadb:
-        image: mariadb:11
-        env:
-          MARIADB_ROOT_PASSWORD: ci
-          MARIADB_DATABASE: hygie
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=10
-
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-
-      - name: Run tests
-        timeout-minutes: 10
-        env:
-          TEST_MARIADB_URL: mysql+aiomysql://root:ci@127.0.0.1:3306/hygie
-        run: pytest tests/ -v --tb=short --timeout=60
+  # Full suite (coverage, lint, schema, MariaDB, security scans, frontend)
+  # reused from test.yml; nothing is pushed unless it is green.
+  gate:
+    name: Full test suite
+    uses: ./.github/workflows/test.yml
 
   docker:
     name: Build & Push Docker
-    needs: test
+    needs: gate
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -80,7 +47,7 @@ jobs:
           push: true
           build-args: VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
-            ghcr.io/carryozor/hygie:latest
+            ${{ !contains(github.ref_name, '-') && 'ghcr.io/carryozor/hygie:latest' || '' }}
             ghcr.io/carryozor/hygie:${{ steps.version.outputs.VERSION }}
 
   release:
@@ -149,14 +116,22 @@ jobs:
             echo "Full details in [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md)."
           } > /tmp/release-body.md
 
+          # Pre-release tags (v4.6.0-rc1) must never be flagged as the latest release.
+          PRERELEASE=""
+          case "${VERSION}" in
+            *-*) PRERELEASE="--prerelease" ;;
+          esac
+
           if gh release view "v${VERSION}" --repo "${REPO}" &>/dev/null; then
             gh release edit "v${VERSION}" \
               --title "v${VERSION}" \
               --notes-file /tmp/release-body.md \
+              ${PRERELEASE} \
               --repo "${REPO}"
           else
             gh release create "v${VERSION}" \
               --title "v${VERSION}" \
               --notes-file /tmp/release-body.md \
+              ${PRERELEASE} \
               --repo "${REPO}"
           fi

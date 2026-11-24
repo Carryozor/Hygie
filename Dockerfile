@@ -1,5 +1,5 @@
 # ── Stage 1: Build Vue frontend ────────────────────────────────────────────────
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend/vue/package*.json ./
 RUN npm ci
@@ -8,7 +8,7 @@ RUN npm run build
 # Output: /build/../dist = /dist  (vite outDir: '../dist')
 
 # ── Stage 2: Python backend ───────────────────────────────────────────────────
-FROM python:3.12-slim@sha256:9d3abd9fc11d06998ccdbdd93b4dd49b5ad7d67fcbbc11c016eb0eb2c2194891
+FROM python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b
 
 ARG VERSION=dev
 # Set to "true" to embed MariaDB in the container (adds ~350MB — requires user: root at runtime)
@@ -33,6 +33,9 @@ RUN apt-get update && \
         curl \
         mariadb-client \
     && rm -rf /var/lib/apt/lists/*
+
+# Fail the build if a base-image bump drops mysqldump (backups would break silently).
+RUN command -v mysqldump
 
 # ── Optional: MariaDB server (embedded mode) ──────────────────────────────────
 # Installed only when EMBEDDED_MARIADB_SUPPORT=true at build time.

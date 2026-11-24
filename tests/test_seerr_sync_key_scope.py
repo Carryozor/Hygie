@@ -144,3 +144,36 @@ async def test_sync_response_masks_keys_but_persists_real_ones(settings):
     assert result["sonarr_servers"][0]["api_key"] == "***"
     assert json.loads(settings["radarr_servers"])[0]["api_key"] == "radarr-secret"
     assert json.loads(settings["sonarr_servers"])[0]["api_key"] == "sonarr-secret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("location", [
+    "http://seerr.test:8443/api/v1/settings/radarr",
+    "https://seerr.test:8443/api/v1/settings/radarr",
+    "https://seerr.test/api/v1/settings/radarr",  # 5055 -> 443 is not the default upgrade
+])
+async def test_redirect_to_other_port_drops_key(settings, location):
+    base = "http://seerr.test:5055"
+    settings["seerr_url"] = base
+    with respx.mock(assert_all_called=False) as m:
+        m.get(f"{base}/api/v1/settings/radarr").mock(
+            return_value=httpx.Response(302, headers={"Location": location}))
+        other = m.get(url__regex=r"https?://seerr\.test(:8443)?/api/v1/settings/radarr").mock(
+            return_value=httpx.Response(200, json=[]))
+        with pytest.raises(ValueError, match="autre hôte"):
+            await svc.sync_arr_from_seerr(base, "typed-key")
+        assert not other.called
+
+
+@pytest.mark.asyncio
+async def test_same_port_redirect_on_non_default_port_is_followed(settings):
+    base = "http://seerr.test:5055"
+    settings["seerr_url"] = base
+    with respx.mock(assert_all_called=False) as m:
+        m.get(f"{base}/api/v1/settings/radarr").mock(
+            return_value=httpx.Response(301, headers={"Location": "/api/v1/settings/radarr/"}))
+        m.get(f"{base}/api/v1/settings/radarr/").mock(return_value=httpx.Response(200, json=[]))
+        m.get(url__regex=r".*/api/v1/(service/radarr|settings/sonarr|service/sonarr)").mock(
+            return_value=httpx.Response(200, json=[]))
+        result = await svc.sync_arr_from_seerr(base, "typed-key")
+        assert "message" in result

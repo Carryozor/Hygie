@@ -113,16 +113,28 @@ async def _seerr_get(client: httpx.AsyncClient, url: str, headers: dict) -> http
     httpx only strips Authorization on a cross-origin redirect, not X-Api-Key,
     so redirects are followed here: same hostname only (http -> https allowed,
     https -> http refused), each hop re-validated against the SSRF guard.
+    "Same host" includes the effective port: a redirect to another port of the
+    same hostname may be a different service. The only port change allowed is
+    the default http (80) -> https (443) upgrade.
     """
     origin_host = (urlparse(url).hostname or "").lower()
     for _ in range(_SEERR_MAX_REDIRECTS + 1):
+        origin = urlparse(url)  # current hop: ports are compared hop by hop
+        origin_port = origin.port or (443 if origin.scheme.lower() == "https" else 80)
         resp = await client.get(url, headers=headers)
         location = resp.headers.get("location")
         if resp.status_code not in (301, 302, 303, 307, 308) or not location:
             return resp
         target = urljoin(url, location)
         parsed = urlparse(target)
-        if (parsed.hostname or "").lower() != origin_host:
+        target_port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        default_upgrade = (
+            origin.scheme.lower() == "http" and parsed.scheme.lower() == "https"
+            and origin_port == 80 and target_port == 443
+        )
+        if (parsed.hostname or "").lower() != origin_host or (
+            target_port != origin_port and not default_upgrade
+        ):
             raise ValueError(
                 "Seerr redirige vers un autre hôte : la clé API n'est pas envoyée. "
                 "Saisissez l'URL finale de Seerr."
